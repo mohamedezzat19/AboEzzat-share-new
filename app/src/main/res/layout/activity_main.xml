@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background">
+
+    <!-- شريط البحث وإدخال الرابط -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:background="@color/panel">
+
+        <EditText
+            android:id="@+id/addressBar"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:imeOptions="actionGo"
+            android:hint="ابحث أو أدخل رابط فيديو"
+            android:inputType="textUri"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"
+            android:paddingHorizontal="12dp"
+            android:background="@drawable/address_background" />
+
+        <Button
+            android:id="@+id/goButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:text="فتح" />
+
+    </LinearLayout>
+
+    <!-- حالة الاتصال -->
+    <TextView
+        android:id="@+id/connectionStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="10dp"
+        android:text="الشاشة: غير متصلة"
+        android:textColor="@color/text_secondary"
+        android:background="@color/panel" />
+
+    <!-- المتصفح المدمج -->
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@color/background" />
+
+    <!-- لوحة الوسائط المكتشفة -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="170dp"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="8dp"
+        android:background="@color/panel">
+
+        <TextView
+            android:id="@+id/mediaCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="المصادر المكتشفة: 0"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold"
+            android:paddingBottom="4dp" />
+
+        <ListView
+            android:id="@+id/mediaList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="@color/divider"
+            android:dividerHeight="1dp"
+            android:background="@color/panel" />
+
+    </LinearLayout>
+
+    <!-- زر إرسال الفيديو -->
+    <Button
+        android:id="@+id/sendButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:minHeight="52dp"
+        android:text="إرسال بأفضل جودة" />
+
+</LinearLayout>
