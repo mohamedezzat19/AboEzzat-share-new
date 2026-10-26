@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="background">#111318</color>
+    <color name="panel">#191D24</color>
+
+    <color name="text_primary">#F4F6FA</color>
+    <color name="text_secondary">#AAB2C0</color>
+
+    <color name="divider">#343A46</color>
+
+    <color name="colorPrimary">#6C8CFF</color>
+    <color name="colorPrimaryDark">#354CA8</color>
+    <color name="colorAccent">#6C8CFF</color>
+
+</resources>
