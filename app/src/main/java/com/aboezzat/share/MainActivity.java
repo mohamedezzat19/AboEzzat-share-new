@@ -894,7 +894,12 @@ public class MainActivity extends Activity {
         if(receiverIp.isEmpty()){new AlertDialog.Builder(this).setTitle("إعداد الاستقبال").setMessage("لازم تحفظ عنوان IP الظاهر في تطبيق AboEzzat Receiver أولاً.").setPositiveButton("ضبط الآن",(d,w)->receiverSettings()).setNegativeButton("إلغاء",null).show();return;}
         final String ip=receiverIp;
         Toast.makeText(this,"جاري إرسال الوسائط إلى الشاشة…",Toast.LENGTH_SHORT).show();
-        CastingManager.send(ip, url, (success, message) -> runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()));
+        CastingManager.send(ip, url, (success, message) -> runOnUiThread(() -> {
+            receiverConnected = success;
+            refreshConnectionLabel();
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            if (!success) discoverReceiverInBackground();
+        }));
     }
 
     private void saveBookmark(){
@@ -1101,8 +1106,12 @@ public class MainActivity extends Activity {
             }
             String localUrl = "http://" + phoneIp + ":8082/photo.jpg";
             Toast.makeText(this, "جاري إرسال الصورة إلى التلفزيون…", Toast.LENGTH_SHORT).show();
-            CastingManager.send(receiverIp.trim(), localUrl, (success, message) -> runOnUiThread(() ->
-                    Toast.makeText(this, success ? "تم إرسال رابط الصورة. لو ما ظهرتش، اتأكد إن الجهازين على نفس الشبكة." : message, Toast.LENGTH_LONG).show()));
+            CastingManager.send(receiverIp.trim(), localUrl, (success, message) -> runOnUiThread(() -> {
+                    receiverConnected = success;
+                    refreshConnectionLabel();
+                    Toast.makeText(this, success ? "تم إرسال رابط الصورة. لو ما ظهرتش، اتأكد إن الجهازين على نفس الشبكة." : message, Toast.LENGTH_LONG).show();
+                    if (!success) discoverReceiverInBackground();
+            }));
         } catch (Exception e) {
             Toast.makeText(this, "تعذّر تجهيز مشاركة الصورة: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -1246,8 +1255,12 @@ public class MainActivity extends Activity {
                 return;
             }
             String url = "http://" + phoneIp + ":8082/media";
-            CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() ->
-                Toast.makeText(this, success ? "تم إرسال " + mediaName + " للريسيفر" : message, Toast.LENGTH_LONG).show()));
+            CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() -> {
+                receiverConnected = success;
+                refreshConnectionLabel();
+                Toast.makeText(this, success ? "تم إرسال " + mediaName + " للريسيفر" : message, Toast.LENGTH_LONG).show();
+                if (!success) discoverReceiverInBackground();
+            }));
         } catch (Exception e) {
             Toast.makeText(this, "تعذّر تجهيز الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
