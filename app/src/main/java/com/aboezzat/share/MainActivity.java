@@ -1131,6 +1131,8 @@ public class MainActivity extends Activity {
             return;
         }
         selectedMediaUri = localMediaQueue.get(Math.max(0, Math.min(currentLocalMediaIndex, localMediaQueue.size()-1)));
+        final Uri mediaToPlay = selectedMediaUri;
+        final String mediaName = getDisplayName(mediaToPlay);
         try {
             ensureLocalMediaServer();
             String phoneIp = findLocalIpv4();
@@ -1140,7 +1142,7 @@ public class MainActivity extends Activity {
             }
             String url = "http://" + phoneIp + ":8082/media";
             CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() ->
-                Toast.makeText(this, success ? "تم إرسال " + getDisplayName(selectedMediaUri) + " للريسيفر" : message, Toast.LENGTH_LONG).show()));
+                Toast.makeText(this, success ? "تم إرسال " + mediaName + " للريسيفر" : message, Toast.LENGTH_LONG).show()));
         } catch (Exception e) {
             Toast.makeText(this, "تعذّر تجهيز الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
