@@ -713,18 +713,72 @@ public class MainActivity extends Activity {
     }
 
     private void openDownloads() {
-        try {
-            startActivity(new android.content.Intent(DownloadManager.ACTION_VIEW_DOWNLOADS));
-        } catch (Exception e) {
+        DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm != null) {
+            android.database.Cursor cursor = null;
             try {
-                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
-                intent.setType("*/*");
-                intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
-                startActivity(android.content.Intent.createChooser(intent, "افتح ملفًا تم تنزيله"));
+                cursor = dm.query(new DownloadManager.Query());
+                java.util.ArrayList<Long> ids = new java.util.ArrayList<>();
+                java.util.ArrayList<String> labels = new java.util.ArrayList<>();
+                java.util.ArrayList<String> titles = new java.util.ArrayList<>();
+                if (cursor != null) {
+                    int idCol = cursor.getColumnIndex(DownloadManager.COLUMN_ID);
+                    int titleCol = cursor.getColumnIndex(DownloadManager.COLUMN_TITLE);
+                    int statusCol = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                    int localUriCol = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+                    while (cursor.moveToNext()) {
+                        String title = titleCol >= 0 ? cursor.getString(titleCol) : "";
+                        if (title == null || !title.startsWith("AboEzzat Share")) continue;
+                        long id = idCol >= 0 ? cursor.getLong(idCol) : -1;
+                        int status = statusCol >= 0 ? cursor.getInt(statusCol) : -1;
+                        String state = status == DownloadManager.STATUS_SUCCESSFUL ? "اكتمل" :
+                                status == DownloadManager.STATUS_FAILED ? "فشل التنزيل" :
+                                status == DownloadManager.STATUS_RUNNING ? "جارٍ التنزيل" :
+                                status == DownloadManager.STATUS_PENDING ? "في الانتظار" : "قيد المعالجة";
+                        ids.add(id);
+                        titles.add(title);
+                        labels.add(title + " — " + state);
+                    }
+                }
+                if (!ids.isEmpty()) {
+                    String[] choices = labels.toArray(new String[0]);
+                    new AlertDialog.Builder(this).setTitle("تنزيلات AboEzzat Share")
+                            .setItems(choices, (dialog, which) -> {
+                                long id = ids.get(which);
+                                try {
+                                    int status = -1;
+                                    android.database.Cursor q = dm.query(new DownloadManager.Query().setFilterById(id));
+                                    if (q != null) {
+                                        try { if (q.moveToFirst()) status = q.getInt(q.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)); }
+                                        finally { q.close(); }
+                                    }
+                                    if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                                        Toast.makeText(this, "الملف لسه ما اكتملش تنزيله", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    Uri uri = dm.getUriForDownloadedFile(id);
+                                    if (uri == null) throw new IllegalStateException("download uri unavailable");
+                                    android.content.Intent open = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+                                    open.setDataAndType(uri, "*/*");
+                                    open.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                    startActivity(open);
+                                } catch (Exception ex) {
+                                    Toast.makeText(this, "تعذّر فتح الملف؛ جرّب من إشعار التنزيل", Toast.LENGTH_LONG).show();
+                                }
+                            }).setNegativeButton("إغلاق", null).show();
+                    return;
+                }
             } catch (Exception ignored) {
-                Toast.makeText(this, "تعذّر فتح التنزيلات على الجهاز", Toast.LENGTH_LONG).show();
+            } finally {
+                if (cursor != null) cursor.close();
             }
         }
+        new AlertDialog.Builder(this).setTitle("التنزيلات")
+                .setMessage("مفيش تنزيلات مسجلة من AboEzzat Share لحد دلوقتي. بعد ما تبدأ تنزيل، هتظهر هنا، وتقدر كمان تفتح إشعار التنزيل.")
+                .setPositiveButton("فتح تنزيلات الجهاز", (d, w) -> {
+                    try { startActivity(new android.content.Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)); }
+                    catch (Exception e) { Toast.makeText(this, "تعذّر فتح تنزيلات الجهاز", Toast.LENGTH_LONG).show(); }
+                }).setNegativeButton("إغلاق", null).show();
     }
 
     private void downloadCurrent(){
