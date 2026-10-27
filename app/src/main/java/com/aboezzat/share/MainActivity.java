@@ -580,10 +580,11 @@ public class MainActivity extends Activity {
     }
 
     private String mediaType(String url){
-        String u=url.toLowerCase(Locale.ROOT);
-        if(u.contains(".m3u8"))return "HLS";
-        if(u.contains(".mpd"))return "DASH";
-        if(u.contains(".mp3")||u.contains(".m4a")||u.contains(".aac"))return "صوت";
+        String path = Uri.parse(url).getPath();
+        String u = (path == null ? url : path).toLowerCase(Locale.ROOT);
+        if(u.endsWith(".m3u8"))return "HLS";
+        if(u.endsWith(".mpd"))return "DASH";
+        if(u.endsWith(".mp3")||u.endsWith(".m4a")||u.endsWith(".aac")||u.endsWith(".ogg")||u.endsWith(".wav"))return "صوت";
         return "فيديو";
     }
 
@@ -639,15 +640,29 @@ public class MainActivity extends Activity {
     private void castBestQuality() {
         String best = null;
         int bestScore = -1;
+        int bestFormatScore = -1;
         for (String candidate : mediaOrder) {
-            String lower = candidate.toLowerCase(Locale.ROOT);
-            if (!(lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".mpd") || lower.contains(".webm") || lower.contains(".m4v"))) continue;
+            String path = Uri.parse(candidate).getPath();
+            String lower = (path == null ? candidate : path).toLowerCase(Locale.ROOT);
+            int formatScore;
+            if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) formatScore = 3;
+            else if (lower.endsWith(".webm") || lower.endsWith(".mov")) formatScore = 2;
+            else if (lower.endsWith(".m3u8") || lower.endsWith(".mpd")) formatScore = 1;
+            else continue;
             String quality = MediaDetector.quality(candidate);
             int score = 0;
             try { score = Integer.parseInt(quality.replace("p", "")); } catch (Exception ignored) {}
-            if (score > bestScore) { bestScore = score; best = candidate; }
+            if (score > bestScore || (score == bestScore && formatScore > bestFormatScore)) {
+                bestScore = score;
+                bestFormatScore = formatScore;
+                best = candidate;
+            }
         }
-        if (best == null) { castCurrent(); return; }
+        if (best == null) {
+            Toast.makeText(this, "ملقيناش رابط فيديو مباشر بجودة واضحة؛ هنجرب إرسال الصفحة الحالية", Toast.LENGTH_LONG).show();
+            castCurrent();
+            return;
+        }
         castUrl(best);
     }
 
