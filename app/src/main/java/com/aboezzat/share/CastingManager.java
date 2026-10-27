@@ -7,6 +7,8 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
+import java.net.MulticastSocket;
+import java.net.InetSocketAddress;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -47,6 +49,38 @@ public final class CastingManager {
     public static void discover(DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> found = new ArrayList<>();
+            // Listen briefly for receiver heartbeats before the slower TCP fallback scan.
+            try (MulticastSocket listener = new MulticastSocket(null)) {
+                listener.setReuseAddress(true);
+                listener.bind(new InetSocketAddress(37020));
+                listener.setSoTimeout(3000);
+                InetAddress group = InetAddress.getByName("239.255.42.99");
+                listener.joinGroup(group);
+                long until = System.currentTimeMillis() + 3000L;
+                while (System.currentTimeMillis() < until) {
+                    byte[] buffer = new byte[512];
+                    java.net.DatagramPacket packet = new java.net.DatagramPacket(buffer, buffer.length);
+                    try {
+                        listener.receive(packet);
+                        String message = new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8);
+                        String[] fields = message.split("\\|");
+                        if (fields.length == 3 && "ABOEZZAT_RECEIVER".equals(fields[0])) {
+                            String ip = fields[1].trim();
+                            if (ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
+                                synchronized (found) {
+                                    if (!found.contains(ip)) found.add(ip);
+                                }
+                                callback.onDevices(new ArrayList<>(found));
+                            }
+                        }
+                    } catch (java.net.SocketTimeoutException timeout) {
+                        break;
+                    }
+                }
+                listener.leaveGroup(group);
+            } catch (Exception ignored) {
+                // Multicast may be filtered; keep the existing TCP scan as a fallback.
+            }
             try {
                 Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
                 List<String> prefixes = new ArrayList<>();
