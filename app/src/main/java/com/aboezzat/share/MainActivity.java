@@ -999,7 +999,11 @@ public class MainActivity extends Activity {
                 bestScore=score;bestFormatScore=formatScore;best=candidate;
             }
         }
-        castUrl(best==null?pageUrl:best);
+        if (best == null) {
+            Toast.makeText(this, "الصفحة الحالية مش رابط وسائط مباشر. شغّل المقطع واختار مصدرًا من قائمة المصادر المكتشفة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        castUrl(best);
     }
 
     private void castUrl(String url){
