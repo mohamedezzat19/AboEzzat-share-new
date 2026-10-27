@@ -224,38 +224,97 @@ public class MainActivity extends Activity {
         resetContent();
         ScrollView scroll = new ScrollView(this);
         LinearLayout page = column();
-        page.setPadding(0,dp(4),0,dp(16));
+        page.setPadding(0, dp(4), 0, dp(16));
+
         LinearLayout hero = column();
-        hero.setPadding(dp(18),dp(18),dp(18),dp(18));
+        hero.setPadding(dp(18), dp(16), dp(18), dp(16));
         hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.rgb(28,63,130),Color.rgb(19,31,63),Color.rgb(40,29,66)}));
-        ((GradientDrawable)hero.getBackground()).setCornerRadius(dp(22));
-        hero.addView(text("تصفّح. اكتشف. اعرض على الشاشة.",22,WHITE,true),lp(-1,42));
-        hero.addView(text("كل أدواتك للويب والوسائط في مكان واحد",13,Color.rgb(207,220,246),false),lp(-1,30));
-        TextView start = button("ابدأ التصفح  →", BLUE, WHITE);
-        LinearLayout.LayoutParams sp = lp(-1,48); sp.topMargin=dp(12);
-        hero.addView(start,sp);
-        start.setOnClickListener(v -> { showBrowser(); if(web!=null && web.getUrl()==null) web.loadUrl("https://www.google.com"); });
-        page.addView(hero,lp(-1,-2));
-        LinearLayout.LayoutParams gap = lp(-1,18); page.addView(new View(this),gap);
-        addSection(page,"اختصارات سريعة","اختار اللي محتاجه");
-        LinearLayout r1=row();
-        addCard(r1,"⌕","بحث سريع","افتح المواقع وابحث",() -> {showBrowser();});
-        addCard(r1,"▣","اكتشاف الوسائط","روابط الفيديو والصوت",() -> showMedia());
-        page.addView(r1,lp(-1,-2));
-        LinearLayout r2=row();
-        addCard(r2,"☆","المفضلة","مواقعك المحفوظة",() -> showLibrary());
-        addCard(r2,"⇩","التنزيلات","احفظ الملفات على جهازك",() -> showBrowser());
-        page.addView(r2,lp(-1,-2));
-        LinearLayout.LayoutParams gap2=lp(-1,16);page.addView(new View(this),gap2);
-        addSection(page,"ابدأ من هنا","روابط سريعة لمواقع شائعة");
-        quickLink(page,"▶  YouTube","https://m.youtube.com");
-        quickLink(page,"🌐  Google","https://www.google.com");
-        quickLink(page,"🎬  Vimeo","https://vimeo.com");
-        quickLink(page,"📺  Dailymotion","https://www.dailymotion.com");
-        page.addView(text("ملاحظة: اكتشاف روابط الفيديو يعتمد على الموقع نفسه؛ بعض الخدمات المحمية لا تسمح بالبث الخارجي.",11,MUTED,false),lp(-1,-2));
+                new int[]{Color.rgb(28,63,130), Color.rgb(19,31,63), Color.rgb(40,29,66)}));
+        ((GradientDrawable) hero.getBackground()).setCornerRadius(dp(22));
+        hero.addView(text("تصفّح واكتشف واعرض على الشاشة", 21, WHITE, true), lp(-1, 38));
+        hero.addView(text("افتح موقعك واكتشف روابط الفيديو والصوت بسرعة", 12, Color.rgb(207,220,246), false), lp(-1, 28));
+        TextView start = button("افتح المتصفح  ↗", BLUE, WHITE);
+        LinearLayout.LayoutParams sp = lp(-1, 46); sp.topMargin = dp(10);
+        hero.addView(start, sp);
+        start.setOnClickListener(v -> { showBrowser(); if (web != null && web.getUrl() == null) web.loadUrl("https://www.google.com"); });
+        page.addView(hero, lp(-1, -2));
+
+        LinearLayout.LayoutParams gap = lp(-1, 14); page.addView(new View(this), gap);
+        addSection(page, "وصول سريع للمنصات", "اختار المنصة وافتحها مباشرة");
+        String[][] sites = {
+            {"▶", "YouTube", "https://m.youtube.com"},
+            {"f", "Facebook", "https://m.facebook.com"},
+            {"♪", "TikTok", "https://www.tiktok.com"},
+            {"◎", "Instagram", "https://www.instagram.com"},
+            {"𝕏", "X / Twitter", "https://x.com"},
+            {"＠", "Threads", "https://www.threads.net"}
+        };
+        for (int i = 0; i < sites.length; i += 3) {
+            LinearLayout r = row();
+            for (int j = i; j < Math.min(i + 3, sites.length); j++) {
+                final String url = sites[j][2];
+                LinearLayout card = column();
+                card.setGravity(Gravity.CENTER);
+                card.setPadding(dp(5), dp(10), dp(5), dp(10));
+                card.setBackground(shape(PANEL, PANEL2, 16));
+                TextView icon = text(sites[j][0], 24, j == 1 ? Color.rgb(86,150,255) : GOLD, true);
+                icon.setGravity(Gravity.CENTER);
+                card.addView(icon, lp(-1, 34));
+                TextView label = text(sites[j][1], 11, WHITE, true);
+                label.setGravity(Gravity.CENTER);
+                card.addView(label, lp(-1, 24));
+                card.setOnClickListener(v -> openQuickSite(url));
+                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(82), 1);
+                cp.setMargins(dp(3), dp(4), dp(3), dp(4));
+                r.addView(card, cp);
+            }
+            page.addView(r, lp(-1, -2));
+        }
+
+        LinearLayout.LayoutParams gap2 = lp(-1, 12); page.addView(new View(this), gap2);
+        addSection(page, "أقسام التطبيق", "كل أدواتك في كروت واضحة");
+        LinearLayout r1 = row();
+        addCard(r1, "◎", "المتصفح", "تصفح وابحث وأرسل", () -> showBrowser());
+        addCard(r1, "▣", "وسائط الهاتف", "الفيديوهات والملفات", () -> showMedia());
+        page.addView(r1, lp(-1, -2));
+        LinearLayout r2 = row();
+        addCard(r2, "▧", "معرض الصور", "عرض الصور والملفات", () -> showPhoneGallery());
+        addCard(r2, "♫", "قائمة التشغيل", "المصادر المحفوظة", () -> showLibrary());
+        page.addView(r2, lp(-1, -2));
+        page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
         scroll.addView(page);
-        content.addView(scroll,lp(-1,-1));
+        content.addView(scroll, lp(-1, -1));
+    }
+
+    private void openQuickSite(String url) {
+        showBrowser();
+        address.setText(url);
+        loadAddress();
+    }
+
+    private void showPhoneGallery() {
+        currentPage = "gallery";
+        resetContent();
+        addSection(content, "معرض الصور", "الصور والملفات المحلية");
+        TextView note = text("لعرض صور الهاتف وإدارتها، افتح معرض الصور من تطبيق النظام. صلاحيات الوصول للملفات تعتمد على إصدار أندرويد.", 14, MUTED, false);
+        note.setPadding(dp(8), dp(12), dp(8), dp(12));
+        content.addView(note, lp(-1, -2));
+        TextView open = button("فتح معرض الصور", BLUE, WHITE);
+        content.addView(open, lp(-1, 48));
+        open.setOnClickListener(v -> {
+            try {
+                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+                intent.setType("image/*");
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(this, "مفيش تطبيق معرض صور متاح على الجهاز", Toast.LENGTH_LONG).show();
+            }
+        });
+        TextView back = button("الرجوع للرئيسية", PANEL2, WHITE);
+        LinearLayout.LayoutParams bp = lp(-1, 44); bp.topMargin = dp(8);
+        content.addView(back, bp);
+        back.setOnClickListener(v -> showHome());
     }
 
     private void quickLink(LinearLayout parent,String title,String url) {
@@ -282,31 +341,43 @@ public class MainActivity extends Activity {
         address.setPadding(dp(12),0,dp(12),0);
         address.setBackground(shape(PANEL2,BLUE,14));
         addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
-        TextView go=button("فتح",BLUE,WHITE);
-        LinearLayout.LayoutParams gp=lp(58,48);gp.setMargins(dp(6),0,0,0);addressRow.addView(go,gp);
+        TextView clear=button("×",PANEL2,WHITE);
+        LinearLayout.LayoutParams clp=lp(42,48);clp.setMargins(dp(5),0,0,0);addressRow.addView(clear,clp);
+        clear.setOnClickListener(v -> address.setText(""));
+        TextView go=button("Go",BLUE,WHITE);
+        LinearLayout.LayoutParams gp=lp(52,48);gp.setMargins(dp(5),0,0,0);addressRow.addView(go,gp);
         browserTools.addView(addressRow);
         LinearLayout controls=row();
         addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();});
         addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();});
         addSmallControl(controls,"↻",()->web.reload());
+        addSmallControl(controls,"⌂",()->showHome());
         addSmallControl(controls,"☆",()->saveBookmark());
-        addSmallControl(controls,"⇩",()->downloadCurrent());
-        addSmallControl(controls,"▣ إرسال",()->castCurrent());
-        browserTools.addView(controls,lp(-1,48));
+        browserTools.addView(controls,lp(-1,44));
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
         content.addView(pageTitle,lp(-1,24));
         if(web.getParent()!=null) ((android.view.ViewGroup)web.getParent()).removeView(web);
         content.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         mediaPanel=column();
-        mediaPanel.setPadding(dp(10),dp(6),dp(10),dp(6));
+        mediaPanel.setPadding(dp(9),dp(6),dp(9),dp(6));
         mediaPanel.setBackgroundColor(PANEL);
-        mediaLabel=text("الوسائط المكتشفة: "+mediaOrder.size(),12,GOLD,true);
-        mediaPanel.addView(mediaLabel,lp(-1,24));
-        TextView mediaButton=button("عرض المصادر المكتشفة / إرسال",PANEL2,WHITE);
-        mediaPanel.addView(mediaButton,lp(-1,38));
-        mediaButton.setOnClickListener(v->showMedia());
-        content.addView(mediaPanel,lp(-1,72));
+        mediaLabel=text("المصادر المكتشفة: "+mediaOrder.size(),12,GOLD,true);
+        mediaPanel.addView(mediaLabel,lp(-1,22));
+        LinearLayout castActions=row();
+        TextView cast=button("▶ إرسال",GOLD,BG);
+        TextView best=button("أفضل جودة",PANEL2,WHITE);
+        TextView list=button("القائمة",PANEL2,WHITE);
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(42),1);
+        ap.setMargins(dp(2),0,dp(2),0);
+        castActions.addView(cast,new LinearLayout.LayoutParams(0,dp(42),1));
+        castActions.addView(best,new LinearLayout.LayoutParams(0,dp(42),1));
+        castActions.addView(list,new LinearLayout.LayoutParams(0,dp(42),1));
+        mediaPanel.addView(castActions,lp(-1,44));
+        cast.setOnClickListener(v->castCurrent());
+        best.setOnClickListener(v->castBestQuality());
+        list.setOnClickListener(v->showMedia());
+        content.addView(mediaPanel,lp(-1,70));
         go.setOnClickListener(v->loadAddress());
         address.setOnEditorActionListener((v,id,event)->{
             if(id==EditorInfo.IME_ACTION_GO || (event!=null && event.getKeyCode()==KeyEvent.KEYCODE_ENTER && event.getAction()==KeyEvent.ACTION_DOWN)){loadAddress();return true;} return false;
@@ -382,7 +453,7 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
-            if(mediaLabel!=null)mediaLabel.setText("الوسائط المكتشفة: "+mediaOrder.size());
+            if(mediaLabel!=null)mediaLabel.setText("المصادر المكتشفة: "+mediaOrder.size());
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
         });
     }
@@ -396,10 +467,19 @@ public class MainActivity extends Activity {
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
-            card.addView(text(mediaType(url)+"  •  "+host,14,WHITE,true),lp(-1,28));
+            card.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,14,WHITE,true),lp(-1,28));
             TextView small=text(url,10,MUTED,false);small.setMaxLines(2);small.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(small,lp(-1,36));
-            TextView cast=button("إرسال إلى الشاشة",BLUE,WHITE);card.addView(cast,lp(-1,40));
+            LinearLayout actions=row();
+            TextView cast=button("إرسال",BLUE,WHITE);
+            TextView best=button("أفضل جودة",PANEL2,GOLD);
+            TextView download=button("تنزيل",PANEL2,WHITE);
+            actions.addView(cast,new LinearLayout.LayoutParams(0,dp(40),1));
+            actions.addView(best,new LinearLayout.LayoutParams(0,dp(40),1));
+            actions.addView(download,new LinearLayout.LayoutParams(0,dp(40),1));
+            card.addView(actions,lp(-1,42));
             cast.setOnClickListener(v->castUrl(url));
+            best.setOnClickListener(v->castBestQuality());
+            download.setOnClickListener(v->downloadUrl(url, "application/octet-stream"));
             LinearLayout.LayoutParams cp=lp(-1,-2);cp.topMargin=dp(7);list.addView(card,cp);
         }
         if(mediaOrder.isEmpty()){
@@ -466,6 +546,21 @@ public class MainActivity extends Activity {
             final boolean result=ok;
             runOnUiThread(()->Toast.makeText(this,result?"الاتصال ناجح":"لم نقدر نتصل. تأكد من الشبكة وعنوان IP وتشغيل Receiver.",Toast.LENGTH_LONG).show());
         }).start();
+    }
+
+    private void castBestQuality() {
+        String best = null;
+        int bestScore = -1;
+        for (String candidate : mediaOrder) {
+            String lower = candidate.toLowerCase(Locale.ROOT);
+            if (!(lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".mpd") || lower.contains(".webm") || lower.contains(".m4v"))) continue;
+            String quality = MediaDetector.quality(candidate);
+            int score = 0;
+            try { score = Integer.parseInt(quality.replace("p", "")); } catch (Exception ignored) {}
+            if (score > bestScore) { bestScore = score; best = candidate; }
+        }
+        if (best == null) { castCurrent(); return; }
+        castUrl(best);
     }
 
     private void castCurrent(){
