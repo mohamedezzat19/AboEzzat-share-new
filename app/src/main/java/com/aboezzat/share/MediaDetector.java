@@ -8,7 +8,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-import org.json.JSONArray;
 
 import java.io.IOException;
 import java.util.LinkedHashSet;
@@ -23,7 +22,7 @@ public final class MediaDetector {
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .followRedirects(true).followSslRedirects(true)
             .connectTimeout(6, TimeUnit.SECONDS).readTimeout(8, TimeUnit.SECONDS).build();
-    private static final Pattern URL_PATTERN = Pattern.compile("(?i)(https?:\\\\?/\\\\?/[^\\\\s\\\\\\\"'<>\\\\\\\\]+?\\\\.(?:mp4|m3u8|mpd|webm|m4v|mov|mp3|m4a|aac|ogg|wav)(?:\\\\?[^\\\\s\\\\\\\"'<>\\\\\\\\]*)?)");
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)(https?://[^\\s\"'<>]+?\\.(?:mp4|m3u8|mpd|webm|m4v|mov|mp3|m4a|aac|ogg|wav)(?:\\?[^\\s\"'<>]*)?)");
     private MediaDetector() {}
 
     public static String kind(String url) {
@@ -32,7 +31,7 @@ public final class MediaDetector {
         p = p.toLowerCase(Locale.ROOT);
         if (p.endsWith(".m3u8")) return "HLS";
         if (p.endsWith(".mpd")) return "DASH";
-        if (p.matches(".*\\\\.(mp3|m4a|aac|ogg|wav)$")) return "Audio";
+        if (p.endsWith(".mp3") || p.endsWith(".m4a") || p.endsWith(".aac") || p.endsWith(".ogg") || p.endsWith(".wav")) return "Audio";
         return "Video";
     }
 
