@@ -1091,22 +1091,31 @@ public class MainActivity extends Activity {
     }
 
     private String findLocalIpv4() {
+        // Prefer a private LAN IPv4 address on the Wi-Fi interface; avoid VPN/mobile
+        // interfaces where possible so the receiver can actually reach this phone.
+        String fallback = null;
         try {
             java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces != null && interfaces.hasMoreElements()) {
                 NetworkInterface ni = interfaces.nextElement();
-                if (!ni.isUp() || ni.isLoopback()) continue;
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                String interfaceName = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
+                boolean likelyWifi = interfaceName.contains("wlan") || interfaceName.contains("wifi") || interfaceName.contains("swlan");
                 java.util.Enumeration<InetAddress> addresses = ni.getInetAddresses();
                 while (addresses.hasMoreElements()) {
                     InetAddress address = addresses.nextElement();
-                    if (address instanceof Inet4Address && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
-                        String ip = address.getHostAddress();
-                        if (ip != null && !ip.startsWith("10.0.2.")) return ip;
-                    }
+                    if (!(address instanceof Inet4Address) || address.isLoopbackAddress() || address.isLinkLocalAddress()) continue;
+                    String ip = address.getHostAddress();
+                    if (ip == null || ip.startsWith("10.0.2.")) continue;
+                    boolean privateLan = ip.startsWith("192.168.") || ip.startsWith("10.")
+                            || ip.matches("172\\.(1[6-9]|2[0-9]|3[0-1])\\..*");
+                    if (privateLan && likelyWifi) return ip;
+                    if (privateLan && fallback == null) fallback = ip;
+                    if (fallback == null) fallback = ip;
                 }
             }
         } catch (Exception ignored) { }
-        return null;
+        return fallback;
     }
 
     private void openLocalMediaPicker() {
