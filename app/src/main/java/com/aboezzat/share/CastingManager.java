@@ -92,11 +92,20 @@ public final class CastingManager {
             } finally {
                 if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
             }
+            // Trust a multicast announcement only after its receiver port responds.
+            // If a stale or unreachable address was announced, continue with the TCP fallback scan.
+            List<String> verifiedMulticast = new ArrayList<>();
             synchronized (found) {
-                if (!found.isEmpty()) {
-                    callback.onDevices(new ArrayList<>(found));
-                    return; // Multicast discovery is faster; do not scan the subnet unnecessarily.
+                for (String candidate : found) {
+                    try (Socket socket = new Socket()) {
+                        socket.connect(new InetSocketAddress(candidate, 8081), 700);
+                        verifiedMulticast.add(candidate);
+                    } catch (Exception ignored) { }
                 }
+            }
+            if (!verifiedMulticast.isEmpty()) {
+                callback.onDevices(verifiedMulticast);
+                return; // A verified receiver was found; avoid scanning the subnet.
             }
             try {
                 Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
