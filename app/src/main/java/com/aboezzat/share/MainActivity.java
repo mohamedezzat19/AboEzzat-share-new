@@ -779,6 +779,17 @@ public class MainActivity extends Activity {
         r2.addView(ff,new LinearLayout.LayoutParams(0,dp(42),1));
         r2.addView(stop,new LinearLayout.LayoutParams(0,dp(42),1));
         remote.addView(r2,lp(-1,dp(44)));
+        LinearLayout r3 = row();
+        TextView volumeDown = button("خفض الصوت",PANEL,WHITE);
+        TextView mute = button("كتم / تشغيل الصوت",PANEL2,GOLD);
+        TextView volumeUp = button("رفع الصوت",PANEL,WHITE);
+        r3.addView(volumeDown,new LinearLayout.LayoutParams(0,dp(42),1));
+        r3.addView(mute,new LinearLayout.LayoutParams(0,dp(42),1));
+        r3.addView(volumeUp,new LinearLayout.LayoutParams(0,dp(42),1));
+        remote.addView(r3,lp(-1,dp(44)));
+        volumeDown.setOnClickListener(v -> sendRemoteCommand("volume_down"));
+        mute.setOnClickListener(v -> sendRemoteCommand("mute"));
+        volumeUp.setOnClickListener(v -> sendRemoteCommand("volume_up"));
         prev.setOnClickListener(v -> sendRemoteCommand("prev"));
         play.setOnClickListener(v -> sendRemoteCommand("play_pause"));
         next.setOnClickListener(v -> sendRemoteCommand("next"));
