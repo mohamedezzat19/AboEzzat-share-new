@@ -547,9 +547,56 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void sendRemoteCommand(String command) {
+        String ip = receiverIp == null ? "" : receiverIp.trim();
+        if (ip.isEmpty()) {
+            Toast.makeText(this, "اضبط عنوان IP للريسيفر أولاً", Toast.LENGTH_SHORT).show();
+            receiverSettings();
+            return;
+        }
+        new Thread(() -> {
+            try {
+                String endpoint = ip.startsWith("http") ? ip : "http://" + ip;
+                if (!endpoint.matches(".*:\\d+$")) endpoint += ":8081";
+                java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(endpoint + "/?command=" + java.net.URLEncoder.encode(command, "UTF-8")).openConnection();
+                connection.setConnectTimeout(2500);
+                connection.setReadTimeout(2500);
+                int code = connection.getResponseCode();
+                connection.disconnect();
+                runOnUiThread(() -> Toast.makeText(this, code == 200 ? "تم إرسال أمر الريموت" : "الريسيفر لم يؤكد أمر الريموت (" + code + ")", Toast.LENGTH_SHORT).show());
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "تعذر إرسال أمر الريموت: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }, "RemoteCommand").start();
+    }
+
     private void showMedia(){
         currentPage="media";resetContent();
         addSection(content,"مركز الوسائط","اختار مصدرًا مكتشفًا لإرساله إلى جهاز الاستقبال");
+        LinearLayout remote = column();
+        remote.setPadding(dp(10),dp(8),dp(10),dp(8));
+        remote.setBackground(shape(PANEL2,PANEL,14));
+        remote.addView(text("ريموت التشغيل",15,WHITE,true),lp(-1,28));
+        LinearLayout r1 = row();
+        TextView prev = button("⏮ السابق",PANEL,WHITE);
+        TextView play = button("▶ / ⏸",BLUE,WHITE);
+        TextView next = button("التالي ⏭",PANEL,WHITE);
+        r1.addView(prev,new LinearLayout.LayoutParams(0,dp(42),1));
+        r1.addView(play,new LinearLayout.LayoutParams(0,dp(42),1));
+        r1.addView(next,new LinearLayout.LayoutParams(0,dp(42),1));
+        remote.addView(r1,lp(-1,dp(44)));
+        LinearLayout r2 = row();
+        TextView rw = button("⏪ -10 ث",PANEL,WHITE);
+        TextView ff = button("+10 ث ⏩",PANEL,WHITE);
+        r2.addView(rw,new LinearLayout.LayoutParams(0,dp(42),1));
+        r2.addView(ff,new LinearLayout.LayoutParams(0,dp(42),1));
+        remote.addView(r2,lp(-1,dp(44)));
+        prev.setOnClickListener(v -> sendRemoteCommand("prev"));
+        play.setOnClickListener(v -> sendRemoteCommand("play_pause"));
+        next.setOnClickListener(v -> sendRemoteCommand("next"));
+        rw.setOnClickListener(v -> sendRemoteCommand("rw"));
+        ff.setOnClickListener(v -> sendRemoteCommand("ff"));
+        content.addView(remote,lp(-1,-2));
         TextView info=button("عدد المصادر المكتشفة: "+mediaOrder.size(),PANEL2,GOLD);
         LinearLayout.LayoutParams ip=lp(-1,44);ip.topMargin=dp(6);content.addView(info,ip);
         ScrollView scroll=new ScrollView(this);LinearLayout list=column();
