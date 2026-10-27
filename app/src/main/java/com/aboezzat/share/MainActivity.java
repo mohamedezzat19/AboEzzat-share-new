@@ -331,6 +331,10 @@ public class MainActivity extends Activity {
         addCard(r2, "▧", "معرض الصور", "عرض الصور والملفات", () -> showPhoneGallery());
         addCard(r2, "♫", "قائمة التشغيل", "المصادر المحفوظة", () -> showLibrary());
         page.addView(r2, lp(-1, -2));
+        LinearLayout r3 = row();
+        addCard(r3, "⇩", "التنزيلات", "فتح ملفات التنزيل", () -> openDownloads());
+        addCard(r3, "⚙", "إعداد الاستقبال", "عنوان IP والمنفذ", () -> receiverSettings());
+        page.addView(r3, lp(-1, -2));
         page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
         scroll.addView(page);
         content.addView(scroll, lp(-1, -1));
@@ -706,6 +710,21 @@ public class MainActivity extends Activity {
 
     private void removeSaved(String key,String url){
         try{JSONArray old=new JSONArray(prefs.getString(key,"[]"));JSONArray next=new JSONArray();for(int i=0;i<old.length();i++)if(!url.equals(old.optString(i)))next.put(old.optString(i));prefs.edit().putString(key,next.toString()).apply();}catch(Exception ignored){}
+    }
+
+    private void openDownloads() {
+        try {
+            startActivity(new android.content.Intent(DownloadManager.ACTION_VIEW_DOWNLOADS));
+        } catch (Exception e) {
+            try {
+                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+                intent.setType("*/*");
+                intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                startActivity(android.content.Intent.createChooser(intent, "افتح ملفًا تم تنزيله"));
+            } catch (Exception ignored) {
+                Toast.makeText(this, "تعذّر فتح التنزيلات على الجهاز", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void downloadCurrent(){
