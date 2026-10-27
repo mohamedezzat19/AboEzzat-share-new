@@ -727,6 +727,11 @@ public class MainActivity extends Activity {
         iptvParams.topMargin = dp(6);
         content.addView(iptv, iptvParams);
         iptv.setOnClickListener(v -> showIptvUrlDialog());
+        TextView recentCast = button("الوسائط المرسلة مؤخرًا", PANEL2, WHITE);
+        LinearLayout.LayoutParams recentParams = lp(-1, 44);
+        recentParams.topMargin = dp(6);
+        content.addView(recentCast, recentParams);
+        recentCast.setOnClickListener(v -> showRecentCastDialog());
         LinearLayout mediaActions = row();
         TextView playlist = button("قائمة التشغيل (" + localMediaQueue.size() + ")", PANEL2, GOLD);
         TextView playSelected = button("▶ تشغيل المحدد", BLUE, WHITE);
