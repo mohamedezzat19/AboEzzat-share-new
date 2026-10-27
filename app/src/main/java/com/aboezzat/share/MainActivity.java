@@ -559,6 +559,45 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+                final WebView popupWeb = new WebView(MainActivity.this);
+                WebSettings popupSettings = popupWeb.getSettings();
+                popupSettings.setJavaScriptEnabled(true);
+                popupSettings.setDomStorageEnabled(true);
+                popupSettings.setDatabaseEnabled(true);
+                popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+                popupSettings.setSupportMultipleWindows(true);
+                popupSettings.setUserAgentString(view.getSettings().getUserAgentString());
+                CookieManager.getInstance().setAcceptCookie(true);
+                CookieManager.getInstance().setAcceptThirdPartyCookies(popupWeb, true);
+
+                final android.app.Dialog dialog = new android.app.Dialog(MainActivity.this);
+                dialog.setContentView(popupWeb);
+                dialog.setOnDismissListener(d -> {
+                    try { popupWeb.stopLoading(); popupWeb.destroy(); } catch (Exception ignored) { }
+                });
+                dialog.show();
+                if (dialog.getWindow() != null) {
+                    dialog.getWindow().setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT);
+                }
+                popupWeb.setWebViewClient(new WebViewClient() {
+                    @Override public boolean shouldOverrideUrlLoading(WebView child, WebResourceRequest request) {
+                        Uri uri = request.getUrl();
+                        String scheme = uri != null ? uri.getScheme() : null;
+                        return scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
+                    }
+                });
+                popupWeb.setWebChromeClient(new WebChromeClient() {
+                    @Override public void onCloseWindow(WebView window) {
+                        if (!isFinishing() && dialog.isShowing()) dialog.dismiss();
+                    }
+                });
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(popupWeb);
+                resultMsg.sendToTarget();
+                return true;
+            }
             @Override public void onProgressChanged(WebView view,int progress){
                 if(pageTitle!=null) pageTitle.setText(progress<100?"تحميل الصفحة… "+progress+"%":"تم تحميل الصفحة");
             }
