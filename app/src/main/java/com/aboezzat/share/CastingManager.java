@@ -34,7 +34,11 @@ public final class CastingManager {
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
-                boolean ok = status != null && status.contains("200");
+                boolean ok = false;
+                if (status != null) {
+                    String[] parts = status.trim().split("\\s+", 3);
+                    ok = parts.length >= 2 && "200".equals(parts[1]);
+                }
                 callback.onResult(ok, ok ? "تم استلام طلب الإرسال" : "جهاز الاستقبال لم يؤكد الطلب");
             } catch (Exception e) { callback.onResult(false, "تعذّر الاتصال: " + e.getMessage()); }
         });
