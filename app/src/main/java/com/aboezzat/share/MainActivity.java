@@ -69,6 +69,15 @@ public class MainActivity extends Activity {
     private final ArrayList<String> mediaOrder = new ArrayList<>();
     private String currentPage = "home";
     private String receiverIp = "";
+    private boolean receiverConnected = false;
+    private boolean discoveryInProgress = false;
+    private final android.os.Handler receiverMonitorHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable receiverMonitorRunnable = new Runnable() {
+        @Override public void run() {
+            monitorReceiverConnection();
+            receiverMonitorHandler.postDelayed(this, 7000);
+        }
+    };
     private SharedPreferences prefs;
     private boolean loadingHome = false;
     private Uri selectedImageUri;
@@ -104,6 +113,7 @@ public class MainActivity extends Activity {
         setContentView(root);
         showHome();
         handleSharedIntent(getIntent());
+        receiverMonitorHandler.post(receiverMonitorRunnable);
     }
 
     @Override protected void onNewIntent(android.content.Intent intent) {
@@ -746,7 +756,67 @@ public class MainActivity extends Activity {
     }
 
     private void refreshConnectionLabel(){
-        if(connectionLabel!=null)connectionLabel.setText(receiverIp.isEmpty()?"● جهاز الاستقبال: لم يُضبط بعد — اضغط ⚙":"● جهاز الاستقبال: "+receiverIp+":8081");
+        if (connectionLabel == null) return;
+        if (receiverIp == null || receiverIp.isEmpty()) {
+            connectionLabel.setText("● جهاز الاستقبال: غير متصل — جاري البحث تلقائيًا");
+        } else {
+            connectionLabel.setText((receiverConnected ? "● متصل بالريسيفر: " : "● آخر عنوان للريسيفر (غير مؤكد): ") + receiverIp + ":8081");
+        }
+    }
+
+    private void monitorReceiverConnection() {
+        final String ip = receiverIp == null ? "" : receiverIp.trim();
+        if (ip.isEmpty()) {
+            receiverConnected = false;
+            refreshConnectionLabel();
+            discoverReceiverInBackground();
+            return;
+        }
+        new Thread(() -> {
+            boolean ok = false;
+            try (Socket socket = new Socket()) {
+                socket.connect(new java.net.InetSocketAddress(ip, 8081), 1800);
+                ok = true;
+            } catch (Exception ignored) { }
+            final boolean connected = ok;
+            runOnUiThread(() -> {
+                receiverConnected = connected;
+                refreshConnectionLabel();
+                if (!connected) discoverReceiverInBackground();
+            });
+        }, "ReceiverConnectionMonitor").start();
+    }
+
+    private synchronized void discoverReceiverInBackground() {
+        if (discoveryInProgress || isFinishing() || isDestroyed()) return;
+        discoveryInProgress = true;
+        CastingManager.discover(this, devices -> {
+            if (devices == null || devices.isEmpty()) {
+                runOnUiThread(() -> discoveryInProgress = false);
+                return;
+            }
+            // Only accept a discovered device after its TCP receiver port responds.
+            for (String candidate : devices) {
+                if (candidate == null || candidate.trim().isEmpty()) continue;
+                boolean ok = false;
+                try (Socket socket = new Socket()) {
+                    socket.connect(new java.net.InetSocketAddress(candidate, 8081), 1200);
+                    ok = true;
+                } catch (Exception ignored) { }
+                if (ok) {
+                    final String verifiedIp = candidate;
+                    runOnUiThread(() -> {
+                        receiverIp = verifiedIp;
+                        receiverConnected = true;
+                        prefs.edit().putString("receiver_ip", receiverIp).apply();
+                        refreshConnectionLabel();
+                        discoveryInProgress = false;
+                    });
+                    return;
+                }
+            }
+            runOnUiThread(() -> discoveryInProgress = false);
+        });
     }
 
     private void testReceiver(String ip){
@@ -757,6 +827,7 @@ public class MainActivity extends Activity {
             final boolean result=ok;
             runOnUiThread(()->{
                 if (result) {
+                    receiverConnected = true;
                     receiverIp = ip;
                     prefs.edit().putString("receiver_ip", receiverIp).apply();
                     refreshConnectionLabel();
@@ -1254,6 +1325,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy(){
+        receiverMonitorHandler.removeCallbacks(receiverMonitorRunnable);
         slideshowRunning = false;
         slideshowHandler.removeCallbacks(slideshowRunnable);
         if(web!=null){web.stopLoading();web.destroy();web=null;}
