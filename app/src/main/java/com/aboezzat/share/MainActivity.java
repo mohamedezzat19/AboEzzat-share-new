@@ -646,9 +646,14 @@ public class MainActivity extends Activity {
         rw.setOnClickListener(v -> sendRemoteCommand("rw"));
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
         content.addView(remote,lp(-1,-2));
-        TextView info=button("عدد المصادر المكتشفة: "+mediaOrder.size(),PANEL2,GOLD);
+        TextView info=button("عرض المصادر المكتشفة ("+mediaOrder.size()+")",PANEL2,GOLD);
         LinearLayout.LayoutParams ip=lp(-1,44);ip.topMargin=dp(6);content.addView(info,ip);
-        ScrollView scroll=new ScrollView(this);LinearLayout list=column();
+        ScrollView scroll=new ScrollView(this);scroll.setVisibility(View.GONE);LinearLayout list=column();
+        info.setOnClickListener(v -> {
+            boolean show = scroll.getVisibility() != View.VISIBLE;
+            scroll.setVisibility(show ? View.VISIBLE : View.GONE);
+            info.setText((show ? "إخفاء المصادر المكتشفة (" : "عرض المصادر المكتشفة (") + mediaOrder.size() + ")");
+        });
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
