@@ -408,6 +408,10 @@ public class MainActivity extends Activity {
         addCard(r3, "⇩", "التنزيلات", "فتح ملفات التنزيل", () -> openDownloads());
         addCard(r3, "⚙", "إعداد الاستقبال", "عنوان IP والمنفذ", () -> receiverSettings());
         page.addView(r3, lp(-1, -2));
+        LinearLayout r4 = row();
+        addCard(r4, "◷", "الوسائط الأخيرة", "إعادة إرسال رابط سابق", () -> showRecentCastDialog());
+        addCard(r4, "▤", "بث IPTV", "إضافة رابط بث مباشر", () -> showIptvUrlDialog());
+        page.addView(r4, lp(-1, -2));
         page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
         scroll.addView(page);
         content.addView(scroll, lp(-1, -1));
