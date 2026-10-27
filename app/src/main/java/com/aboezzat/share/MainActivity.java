@@ -721,6 +721,11 @@ public class MainActivity extends Activity {
         TextView pickLocal = button("اختيار فيديوهات أو ملفات صوتية من الهاتف", BLUE, WHITE);
         content.addView(pickLocal,lp(-1,48));
         pickLocal.setOnClickListener(v -> openLocalMediaPicker());
+        TextView iptv = button("إدخال رابط بث مباشر IPTV", PANEL2, GOLD);
+        LinearLayout.LayoutParams iptvParams = lp(-1, 46);
+        iptvParams.topMargin = dp(6);
+        content.addView(iptv, iptvParams);
+        iptv.setOnClickListener(v -> showIptvUrlDialog());
         LinearLayout mediaActions = row();
         TextView playlist = button("قائمة التشغيل (" + localMediaQueue.size() + ")", PANEL2, GOLD);
         TextView playSelected = button("▶ تشغيل المحدد", BLUE, WHITE);
@@ -1032,6 +1037,34 @@ public class MainActivity extends Activity {
             return;
         }
         castUrl(best);
+    }
+
+    private void showIptvUrlDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        input.setHint("https://example.com/live.m3u8");
+        input.setTextColor(WHITE);
+        input.setHintTextColor(MUTED);
+        input.setSelectAllOnFocus(true);
+
+        new AlertDialog.Builder(this)
+                .setTitle("بث مباشر IPTV")
+                .setMessage("أدخل رابط بث مباشر متاحًا بدون حماية تمنع التشغيل.")
+                .setView(input)
+                .setPositiveButton("إرسال إلى التلفزيون", (dialog, which) -> {
+                    String url = input.getText() == null ? "" : input.getText().toString().trim();
+                    Uri parsed = Uri.parse(url);
+                    String scheme = parsed.getScheme();
+                    if (url.isEmpty() || parsed.getHost() == null ||
+                            !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                        Toast.makeText(this, "أدخل رابطًا صحيحًا يبدأ بـ http:// أو https://", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    castUrl(url);
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
     }
 
     private void castUrl(String url){
