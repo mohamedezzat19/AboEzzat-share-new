@@ -26,6 +26,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.ValueCallback;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -60,6 +61,8 @@ public class MainActivity extends Activity {
     private static final int GOLD = Color.rgb(255, 196, 87);
     private static final String PREFS = "aboezzat_browser";
     private static final int PICK_IMAGE_REQUEST = 901;
+    private static final int PICK_BROWSER_FILE_REQUEST = 903;
+    private ValueCallback<Uri[]> browserFileCallback;
     private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
     private FrameLayout contentFrame;
     private EditText address;
@@ -559,6 +562,26 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (browserFileCallback != null) {
+                    browserFileCallback.onReceiveValue(null);
+                    browserFileCallback = null;
+                }
+                browserFileCallback = filePathCallback;
+                try {
+                    Intent picker = new Intent(Intent.ACTION_GET_CONTENT);
+                    picker.addCategory(Intent.CATEGORY_OPENABLE);
+                    picker.setType("*/*");
+                    picker.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, fileChooserParams != null && fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE);
+                    startActivityForResult(Intent.createChooser(picker, "اختار ملفًا"), PICK_BROWSER_FILE_REQUEST);
+                    return true;
+                } catch (Exception e) {
+                    browserFileCallback.onReceiveValue(null);
+                    browserFileCallback = null;
+                    Toast.makeText(MainActivity.this, "تعذّر فتح اختيار الملفات", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
+            }
             @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
                 final WebView popupWeb = new WebView(MainActivity.this);
                 WebSettings popupSettings = popupWeb.getSettings();
@@ -1468,6 +1491,23 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_BROWSER_FILE_REQUEST) {
+            if (browserFileCallback != null) {
+                Uri[] results = null;
+                if (resultCode == RESULT_OK && data != null) {
+                    if (data.getClipData() != null) {
+                        android.content.ClipData clips = data.getClipData();
+                        results = new Uri[clips.getItemCount()];
+                        for (int i = 0; i < clips.getItemCount(); i++) results[i] = clips.getItemAt(i).getUri();
+                    } else if (data.getData() != null) {
+                        results = new Uri[]{data.getData()};
+                    }
+                }
+                browserFileCallback.onReceiveValue(results);
+                browserFileCallback = null;
+            }
+            return;
+        }
         if (resultCode != RESULT_OK || data == null) return;
         if (requestCode == PICK_LOCAL_MEDIA_REQUEST) {
             localMediaQueue.clear();
@@ -1522,6 +1562,7 @@ public class MainActivity extends Activity {
         receiverMonitorHandler.removeCallbacks(receiverMonitorRunnable);
         slideshowRunning = false;
         slideshowHandler.removeCallbacks(slideshowRunnable);
+        if (browserFileCallback != null) { browserFileCallback.onReceiveValue(null); browserFileCallback = null; }
         if(web!=null){web.stopLoading();web.destroy();web=null;}
         localMediaServerRunning = false;
         try { if (localMediaServer != null) localMediaServer.close(); } catch (Exception ignored) { }
