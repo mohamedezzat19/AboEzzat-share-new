@@ -757,7 +757,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
                 return;
             }
-            String localUrl = "http://" + phoneIp + ":8082/photo";
+            String localUrl = "http://" + phoneIp + ":8082/photo.jpg";
             Toast.makeText(this, "جاري إرسال الصورة إلى التلفزيون…", Toast.LENGTH_SHORT).show();
             CastingManager.send(receiverIp.trim(), localUrl, (success, message) -> runOnUiThread(() ->
                     Toast.makeText(this, success ? "تم إرسال رابط الصورة. لو ما ظهرتش، اتأكد إن الجهازين على نفس الشبكة." : message, Toast.LENGTH_LONG).show()));
@@ -773,7 +773,7 @@ public class MainActivity extends Activity {
             String request = reader.readLine();
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) { }
-            if (request == null || !request.startsWith("GET /photo ")) {
+            if (request == null || !request.startsWith("GET /photo.jpg ")) {
                 byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
                 socket.getOutputStream().write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: " + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
                 socket.getOutputStream().write(notFound);
