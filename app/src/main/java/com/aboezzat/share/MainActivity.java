@@ -425,6 +425,20 @@ public class MainActivity extends Activity {
         input.setText(receiverIp);
         LinearLayout box=column();box.setPadding(dp(20),dp(10),dp(20),0);
         box.addView(text("اكتب عنوان IP الظاهر في تطبيق AboEzzat Receiver على نفس شبكة الواي فاي.",13,MUTED,false));
+        TextView discover = button("⌕ البحث تلقائيًا عن Receiver", PANEL2, GOLD);
+        box.addView(discover, lp(-1, 42));
+        discover.setOnClickListener(v -> {
+            discover.setText("جاري البحث على شبكة الواي فاي…");
+            CastingManager.discover(devices -> runOnUiThread(() -> {
+                if (devices.isEmpty()) {
+                    discover.setText("لم يتم العثور عليه — اكتب IP يدويًا");
+                    Toast.makeText(this, "تأكد أن Receiver مفتوح وعلى نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
+                } else {
+                    input.setText(devices.get(0));
+                    discover.setText("تم العثور على " + devices.size() + " جهاز — تم اختيار أول جهاز");
+                }
+            }));
+        });
         box.addView(input,lp(-1,52));
         new AlertDialog.Builder(this).setTitle("إعداد جهاز الاستقبال").setView(box)
             .setPositiveButton("حفظ", (d,w)->{
