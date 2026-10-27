@@ -1,5 +1,7 @@
 package com.aboezzat.share;
 
+import android.content.Context;
+import android.net.wifi.WifiManager;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -46,9 +48,15 @@ public final class CastingManager {
         });
     }
 
-    public static void discover(DiscoveryCallback callback) {
+    public static void discover(Context context, DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> found = new ArrayList<>();
+            // Android Wi-Fi filters multicast unless a MulticastLock is held.
+            WifiManager.MulticastLock multicastLock = null;
+            try {
+                WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wifi != null) { multicastLock = wifi.createMulticastLock("AboEzzatDiscovery"); multicastLock.setReferenceCounted(false); multicastLock.acquire(); }
+            } catch (Exception ignored) { }
             // Listen briefly for receiver heartbeats before the slower TCP fallback scan.
             try (MulticastSocket listener = new MulticastSocket(null)) {
                 listener.setReuseAddress(true);
@@ -80,6 +88,8 @@ public final class CastingManager {
                 listener.leaveGroup(group);
             } catch (Exception ignored) {
                 // Multicast may be filtered; keep the existing TCP scan as a fallback.
+            } finally {
+                if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
             }
             try {
                 Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
