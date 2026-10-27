@@ -47,48 +47,60 @@ public final class CastingManager {
     public static void discover(DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> found = new ArrayList<>();
+            String selectedLocal = null;
             try {
                 Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+                List<String> wifiAddresses = new ArrayList<>();
+                List<String> fallbackAddresses = new ArrayList<>();
                 while (interfaces != null && interfaces.hasMoreElements()) {
                     NetworkInterface ni = interfaces.nextElement();
-                    if (!ni.isUp() || ni.isLoopback()) continue;
+                    if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                    String name = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
+                    boolean likelyWifi = name.contains("wlan") || name.contains("wifi") || name.contains("swlan");
                     Enumeration<InetAddress> addresses = ni.getInetAddresses();
                     while (addresses.hasMoreElements()) {
                         InetAddress a = addresses.nextElement();
                         if (!(a instanceof Inet4Address) || a.isLoopbackAddress() || a.isLinkLocalAddress()) continue;
                         String local = a.getHostAddress();
-                        int dot = local.lastIndexOf('.');
-                        if (dot < 0) continue;
-                        String prefix = local.substring(0, dot + 1);
-                        ExecutorService workers = Executors.newFixedThreadPool(32);
-                        CountDownLatch done = new CountDownLatch(254);
-                        for (int i = 1; i < 255; i++) {
-                            String candidate = prefix + i;
-                            if (candidate.equals(local)) {
-                                done.countDown();
-                                continue;
-                            }
-                            final String host = candidate;
-                            workers.execute(() -> {
-                                try (Socket socket = new Socket()) {
-                                    socket.connect(new java.net.InetSocketAddress(host, 8081), 250);
-                                    synchronized (found) {
-                                        if (!found.contains(host)) found.add(host);
-                                    }
-                                } catch (Exception ignored) {
-                                } finally {
-                                    done.countDown();
+                        if (local == null || !local.matches("\\d{1,3}(\\.\\d{1,3}){3}")) continue;
+                        if (likelyWifi) wifiAddresses.add(local);
+                        else if (a.isSiteLocalAddress()) fallbackAddresses.add(local);
+                    }
+                }
+                // Scan one likely Wi-Fi subnet only. Fall back to one private IPv4
+                // address when Android exposes a differently named Wi-Fi interface.
+                List<String> choices = wifiAddresses.isEmpty() ? fallbackAddresses : wifiAddresses;
+                if (!choices.isEmpty()) selectedLocal = choices.get(0);
+                if (selectedLocal != null) {
+                    int dot = selectedLocal.lastIndexOf('.');
+                    String prefix = selectedLocal.substring(0, dot + 1);
+                    ExecutorService workers = Executors.newFixedThreadPool(32);
+                    CountDownLatch done = new CountDownLatch(254);
+                    for (int i = 1; i < 255; i++) {
+                        String candidate = prefix + i;
+                        if (candidate.equals(selectedLocal)) {
+                            done.countDown();
+                            continue;
+                        }
+                        final String host = candidate;
+                        workers.execute(() -> {
+                            try (Socket socket = new Socket()) {
+                                socket.connect(new java.net.InetSocketAddress(host, 8081), 250);
+                                synchronized (found) {
+                                    if (!found.contains(host)) found.add(host);
                                 }
-                            });
-                        }
-                        try {
-                            done.await(5, TimeUnit.SECONDS);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        } finally {
-                            workers.shutdownNow();
-                        }
-                        break;
+                            } catch (Exception ignored) {
+                            } finally {
+                                done.countDown();
+                            }
+                        });
+                    }
+                    try {
+                        done.await(5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        workers.shutdownNow();
                     }
                 }
             } catch (Exception ignored) {
@@ -98,4 +110,5 @@ public final class CastingManager {
             }
         });
     }
+}
 }
