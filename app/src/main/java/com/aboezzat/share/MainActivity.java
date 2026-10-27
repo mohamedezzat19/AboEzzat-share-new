@@ -1273,6 +1273,22 @@ public class MainActivity extends Activity {
         }
     }
 
+    private long queryLocalMediaSize(Uri uri) {
+        try (android.database.Cursor cursor = getContentResolver().query(
+                uri, new String[]{android.provider.OpenableColumns.SIZE}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeColumn = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
+                if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) {
+                    long size = cursor.getLong(sizeColumn);
+                    if (size >= 0) return size;
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.d("AboEzzatShare", "Unable to query local media size", e);
+        }
+        return -1L;
+    }
+
     private void serveLocalImage(Socket client) {
         try (Socket socket = client) {
             socket.setSoTimeout(15000);
@@ -1360,6 +1376,10 @@ public class MainActivity extends Activity {
                 if (afd == null) throw new java.io.IOException("تعذّر فتح الملف");
 
                 long length = afd.getLength();
+                // Some document providers report UNKNOWN_LENGTH from the descriptor even
+                // when OpenableColumns exposes the real size. Recover it so Range requests
+                // can return 206 instead of an unseekable chunked response.
+                if (length < 0) length = queryLocalMediaSize(uri);
                 long start = 0L;
                 long end = length >= 0 ? length - 1 : -1L;
                 boolean partial = false;
