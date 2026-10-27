@@ -1019,16 +1019,17 @@ public class MainActivity extends Activity {
             String request = reader.readLine();
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) { }
-            boolean isPhoto = request != null && request.startsWith("GET /photo.jpg ");\n            boolean isMedia = request != null && request.startsWith("GET /media ");\n            if (!isPhoto && !isMedia) {
+            boolean isPhoto = request != null && request.startsWith("GET /photo.jpg ");
+            boolean isMedia = request != null && request.startsWith("GET /media ");\n            if (!isPhoto && !isMedia) {
                 byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
                 socket.getOutputStream().write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: " + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
                 socket.getOutputStream().write(notFound);
                 return;
             }
-            Uri uri = selectedImageUri;
+            Uri uri = isMedia ? selectedMediaUri : selectedImageUri;
             if (uri == null) return;
             String mime = getContentResolver().getType(uri);
-            if (mime == null || !mime.startsWith("image/")) mime = "image/jpeg";
+            if (mime == null) mime = isMedia ? "application/octet-stream" : "image/jpeg";
             byte[] bytes;
             try (InputStream in = getContentResolver().openInputStream(uri); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 if (in == null) throw new java.io.IOException("تعذّر قراءة الصورة");
