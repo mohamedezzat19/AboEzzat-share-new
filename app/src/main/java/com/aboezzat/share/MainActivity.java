@@ -711,9 +711,16 @@ public class MainActivity extends Activity {
     }
 
     private void sendRemoteCommand(String command) {
-        // The current receiver protocol accepts media URLs only, not remote commands.
-        // Keep this explicit until the receiver itself supports a command endpoint.
-        Toast.makeText(this, "الريسيفر الحالي لا يدعم أوامر الريموت بعد؛ إرسال الأمر لن يغيّر التشغيل.", Toast.LENGTH_LONG).show();
+        if ("prev".equals(command) || "next".equals(command)) {
+            Toast.makeText(this, "السابق والتالي يحتاجان قائمة تشغيل على الريسيفر، وهي غير مدعومة حاليًا.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (receiverIp == null || receiverIp.trim().isEmpty()) {
+            Toast.makeText(this, "حدّد عنوان IP للريسيفر أولًا من إعدادات الاستقبال.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        CastingManager.sendCommand(receiverIp.trim(), command, (success, message) ->
+                runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()));
     }
 
     private void showMedia(){
