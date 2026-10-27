@@ -697,7 +697,7 @@ public class MainActivity extends Activity {
         box.addView(discover, lp(-1, 42));
         discover.setOnClickListener(v -> {
             discover.setText("جاري البحث على شبكة الواي فاي…");
-            CastingManager.discover(devices -> runOnUiThread(() -> {
+            CastingManager.discover(this, devices -> runOnUiThread(() -> {
                 if (devices.isEmpty()) {
                     discover.setText("لم يتم العثور عليه — اكتب IP يدويًا");
                     Toast.makeText(this, "تأكد أن Receiver مفتوح وعلى نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
