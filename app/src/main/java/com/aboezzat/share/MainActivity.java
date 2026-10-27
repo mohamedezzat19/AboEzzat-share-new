@@ -343,10 +343,10 @@ public class MainActivity extends Activity {
         content.addView(open, lp(-1, 48));
         open.setOnClickListener(v -> {
             try {
-                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
                 intent.setType("image/*");
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
+                intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                startActivity(android.content.Intent.createChooser(intent, "اختار صورة"));
             } catch (Exception e) {
                 Toast.makeText(this, "مفيش تطبيق معرض صور متاح على الجهاز", Toast.LENGTH_LONG).show();
             }
