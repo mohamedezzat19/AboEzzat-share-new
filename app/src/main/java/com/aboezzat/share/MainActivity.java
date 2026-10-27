@@ -132,8 +132,9 @@ public class MainActivity extends Activity {
         brandText.addView(text("ABO EZZAT", 19, WHITE, true));
         brandText.addView(text("SHARE  •  متصفح وإرسال الوسائط", 11, MUTED, false));
         brandRow.addView(brandText, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView receiver = button("⚙", PANEL2, WHITE);
-        receiver.setOnClickListener(v -> receiverSettings());
+        TextView receiver = button("☰", PANEL2, WHITE);
+        receiver.setContentDescription("القائمة");
+        receiver.setOnClickListener(v -> showToolsMenu());
         brandRow.addView(receiver, lp(46,44));
         header.addView(brandRow);
         connectionLabel = text("", 12, MUTED, false);
@@ -175,6 +176,17 @@ public class MainActivity extends Activity {
             else if ("media".equals(page)) showMedia();
             else showLibrary();
         });
+    }
+
+    private void showToolsMenu() {
+        String[] items = {"إعداد جهاز الاستقبال", "مركز الوسائط", "معرض الصور", "قائمة التشغيل", "تنزيل الصفحة الحالية"};
+        new AlertDialog.Builder(this).setTitle("أدوات AboEzzat Share").setItems(items, (dialog, which) -> {
+            if (which == 0) receiverSettings();
+            else if (which == 1) showMedia();
+            else if (which == 2) showPhoneGallery();
+            else if (which == 3) showLibrary();
+            else downloadCurrent();
+        }).show();
     }
 
     private void resetContent() {
@@ -232,7 +244,7 @@ public class MainActivity extends Activity {
         hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 new int[]{Color.rgb(28,63,130), Color.rgb(19,31,63), Color.rgb(40,29,66)}));
         ((GradientDrawable) hero.getBackground()).setCornerRadius(dp(22));
-        hero.addView(text("تصفّح واكتشف واعرض على الشاشة", 21, WHITE, true), lp(-1, 38));
+        hero.addView(text("متصفح وإرسال الوسائط", 21, WHITE, true), lp(-1, 38));
         hero.addView(text("افتح موقعك واكتشف روابط الفيديو والصوت بسرعة", 12, Color.rgb(207,220,246), false), lp(-1, 28));
         TextView start = button("افتح المتصفح  ↗", BLUE, WHITE);
         LinearLayout.LayoutParams sp = lp(-1, 46); sp.topMargin = dp(10);
@@ -354,7 +366,6 @@ public class MainActivity extends Activity {
         addSmallControl(controls,"↻",()->web.reload());
         addSmallControl(controls,"⌂",()->showHome());
         addSmallControl(controls,"☆",()->saveBookmark());
-        browserTools.addView(controls,lp(-1,44));
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
         content.addView(pageTitle,lp(-1,24));
@@ -380,6 +391,9 @@ public class MainActivity extends Activity {
         best.setOnClickListener(v->castBestQuality());
         list.setOnClickListener(v->showMedia());
         content.addView(mediaPanel,lp(-1,70));
+        LinearLayout.LayoutParams navParams = lp(-1,44);
+        navParams.topMargin = dp(2);
+        content.addView(controls, navParams);
         go.setOnClickListener(v->loadAddress());
         address.setOnEditorActionListener((v,id,event)->{
             if(id==EditorInfo.IME_ACTION_GO || (event!=null && event.getKeyCode()==KeyEvent.KEYCODE_ENTER && event.getAction()==KeyEvent.ACTION_DOWN)){loadAddress();return true;} return false;
@@ -449,7 +463,7 @@ public class MainActivity extends Activity {
         if(url==null||url.trim().isEmpty()||url.startsWith("blob:")||url.startsWith("data:"))return;
         String lower=url.toLowerCase(Locale.ROOT);
         boolean ok=false;
-        String[] exts={".mp4",".m3u8",".mpd",".webm",".mov",".m4v",".mp3",".m4a",".aac",".ogg",".wav",".jpg",".jpeg",".png",".webp"};
+        String[] exts={".mp4",".m3u8",".mpd",".webm",".mov",".m4v",".mp3",".m4a",".aac",".ogg",".wav"};
         for(String e:exts){if(lower.contains(e)){ok=true;break;}}
         if(!ok||media.containsKey(url))return;
         runOnUiThread(()->{
@@ -504,7 +518,6 @@ public class MainActivity extends Activity {
         if(u.contains(".m3u8"))return "HLS";
         if(u.contains(".mpd"))return "DASH";
         if(u.contains(".mp3")||u.contains(".m4a")||u.contains(".aac"))return "صوت";
-        if(u.contains(".jpg")||u.contains(".png")||u.contains(".webp")||u.contains(".jpeg"))return "صورة";
         return "فيديو";
     }
 
