@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
     private static final int BLUE = Color.rgb(86, 132, 255);
     private static final int GOLD = Color.rgb(255, 196, 87);
     private static final String PREFS = "aboezzat_browser";
+    private static final int PICK_IMAGE_REQUEST = 901;
     private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
     private FrameLayout contentFrame;
     private EditText address;
@@ -63,6 +64,7 @@ public class MainActivity extends Activity {
     private String receiverIp = "";
     private SharedPreferences prefs;
     private boolean loadingHome = false;
+    private Uri selectedImageUri;
 
     @Override @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle state) {
@@ -335,22 +337,31 @@ public class MainActivity extends Activity {
     private void showPhoneGallery() {
         currentPage = "gallery";
         resetContent();
-        addSection(content, "معرض الصور", "الصور والملفات المحلية");
-        TextView note = text("لعرض صور الهاتف وإدارتها، افتح معرض الصور من تطبيق النظام. صلاحيات الوصول للملفات تعتمد على إصدار أندرويد.", 14, MUTED, false);
+        addSection(content, "معرض الصور", "اختار صورة من جهازك واعرض معاينتها");
+        TextView note = text("اختار صورة لعرضها هنا. إرسال الملفات المحلية للتلفزيون يحتاج مشاركة الملف عبر اتصال يمكن لجهاز الاستقبال الوصول إليه.", 14, MUTED, false);
         note.setPadding(dp(8), dp(12), dp(8), dp(12));
         content.addView(note, lp(-1, -2));
-        TextView open = button("فتح معرض الصور", BLUE, WHITE);
+        TextView open = button("اختيار صورة", BLUE, WHITE);
         content.addView(open, lp(-1, 48));
         open.setOnClickListener(v -> {
             try {
                 android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
                 intent.setType("image/*");
                 intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
-                startActivity(android.content.Intent.createChooser(intent, "اختار صورة"));
+                startActivityForResult(android.content.Intent.createChooser(intent, "اختار صورة"), PICK_IMAGE_REQUEST);
             } catch (Exception e) {
-                Toast.makeText(this, "مفيش تطبيق معرض صور متاح على الجهاز", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "مفيش تطبيق لاختيار الصور متاح على الجهاز", Toast.LENGTH_LONG).show();
             }
         });
+        if (selectedImageUri != null) {
+            android.widget.ImageView preview = new android.widget.ImageView(this);
+            preview.setImageURI(selectedImageUri);
+            preview.setAdjustViewBounds(true);
+            preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            LinearLayout.LayoutParams pp = lp(-1, 280);
+            pp.topMargin = dp(12);
+            content.addView(preview, pp);
+        }
         TextView back = button("الرجوع للرئيسية", PANEL2, WHITE);
         LinearLayout.LayoutParams bp = lp(-1, 44); bp.topMargin = dp(8);
         content.addView(back, bp);
@@ -695,6 +706,14 @@ public class MainActivity extends Activity {
             if(mime!=null)req.setMimeType(mime);
             dm.enqueue(req);Toast.makeText(this,"بدأ التنزيل — هتلاقيه في إشعارات الجهاز",Toast.LENGTH_LONG).show();
         }catch(Exception e){Toast.makeText(this,"تعذّر بدء التنزيل: "+e.getMessage(),Toast.LENGTH_LONG).show();}
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            selectedImageUri = data.getData();
+            showPhoneGallery();
+        }
     }
 
     @Override public void onBackPressed(){
