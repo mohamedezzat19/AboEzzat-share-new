@@ -1123,46 +1123,114 @@ public class MainActivity extends Activity {
             java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
             String request = reader.readLine();
+            if (request == null) return;
+            String rangeHeader = null;
             String line;
-            while ((line = reader.readLine()) != null && !line.isEmpty()) { }
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+                int colon = line.indexOf(':');
+                if (colon > 0 && "range".equalsIgnoreCase(line.substring(0, colon).trim())) {
+                    rangeHeader = line.substring(colon + 1).trim();
+                }
+            }
 
-            boolean isPhoto = request != null && request.startsWith("GET /photo.jpg ");
-            boolean isMedia = request != null && request.startsWith("GET /media ");
+            boolean isPhoto = request.startsWith("GET /photo.jpg ");
+            boolean isMedia = request.startsWith("GET /media ");
+            OutputStream out = socket.getOutputStream();
             if (!isPhoto && !isMedia) {
-                byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
-                OutputStream out = socket.getOutputStream();
+                byte[] body = "Not Found".getBytes(StandardCharsets.UTF_8);
                 out.write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: "
-                        + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
-                out.write(notFound);
+                        + body.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                out.write(body);
                 out.flush();
                 return;
             }
 
-            // Capture the selected URI once so a playlist change cannot switch files mid-response.
+            // Capture the URI once; a playlist change must not switch the file mid-response.
             final Uri uri = isMedia ? selectedMediaUri : selectedImageUri;
             if (uri == null) {
-                socket.getOutputStream().write("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+                out.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+                        .getBytes(StandardCharsets.US_ASCII));
+                out.flush();
                 return;
             }
 
             String mime = getContentResolver().getType(uri);
-            if (mime == null) mime = isMedia ? "application/octet-stream" : "image/jpeg";
+            if (mime == null || mime.trim().isEmpty()) {
+                mime = isMedia ? "application/octet-stream" : "image/jpeg";
+            }
 
-            try (android.content.res.AssetFileDescriptor afd = getContentResolver().openAssetFileDescriptor(uri, "r")) {
+            try (android.content.res.AssetFileDescriptor afd =
+                         getContentResolver().openAssetFileDescriptor(uri, "r")) {
                 if (afd == null) throw new java.io.IOException("تعذّر فتح الملف");
+
                 long length = afd.getLength();
-                OutputStream out = socket.getOutputStream();
-                String headers = "HTTP/1.1 200 OK\r\nContent-Type: " + mime
-                        + "\r\nCache-Control: no-store\r\nConnection: close\r\n"
-                        + (length >= 0 ? "Content-Length: " + length + "\r\n" : "Transfer-Encoding: chunked\r\n")
-                        + "\r\n";
-                out.write(headers.getBytes(StandardCharsets.US_ASCII));
+                long start = 0L;
+                long end = length >= 0 ? length - 1 : -1L;
+                boolean partial = false;
+
+                if (rangeHeader != null && rangeHeader.startsWith("bytes=") && length > 0) {
+                    String spec = rangeHeader.substring(6).trim();
+                    int comma = spec.indexOf(',');
+                    if (comma >= 0) spec = spec.substring(0, comma).trim(); // Serve the first requested range.
+                    int dash = spec.indexOf('-');
+                    try {
+                        if (dash < 0) throw new NumberFormatException("invalid range");
+                        String left = spec.substring(0, dash).trim();
+                        String right = spec.substring(dash + 1).trim();
+                        if (left.isEmpty()) {
+                            long suffixLength = Long.parseLong(right);
+                            if (suffixLength <= 0) throw new NumberFormatException("invalid suffix range");
+                            start = Math.max(0L, length - suffixLength);
+                        } else {
+                            start = Long.parseLong(left);
+                        }
+                        end = right.isEmpty() ? length - 1 : Long.parseLong(right);
+                        if (start < 0 || start >= length || end < start) throw new NumberFormatException("range out of bounds");
+                        end = Math.min(end, length - 1);
+                        partial = true;
+                    } catch (Exception invalidRange) {
+                        out.write(("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */"
+                                + length + "\r\nConnection: close\r\nContent-Length: 0\r\n\r\n")
+                                .getBytes(StandardCharsets.US_ASCII));
+                        out.flush();
+                        return;
+                    }
+                }
+
+                long contentLength = length >= 0 ? (end - start + 1L) : -1L;
+                String status = partial ? "206 Partial Content" : "200 OK";
+                StringBuilder headers = new StringBuilder("HTTP/1.1 ").append(status).append("\r\n")
+                        .append("Content-Type: ").append(mime).append("\r\n")
+                        .append("Accept-Ranges: bytes\r\n")
+                        .append("Cache-Control: no-store\r\n")
+                        .append("Connection: close\r\n");
+                if (partial && length >= 0) {
+                    headers.append("Content-Range: bytes ").append(start).append('-').append(end)
+                            .append('/').append(length).append("\r\n");
+                }
+                if (contentLength >= 0) {
+                    headers.append("Content-Length: ").append(contentLength).append("\r\n");
+                } else {
+                    headers.append("Transfer-Encoding: chunked\r\n");
+                }
+                headers.append("\r\n");
+                out.write(headers.toString().getBytes(StandardCharsets.US_ASCII));
 
                 try (InputStream in = afd.createInputStream()) {
+                    long toSkip = start;
+                    while (toSkip > 0) {
+                        long skipped = in.skip(toSkip);
+                        if (skipped <= 0) {
+                            if (in.read() == -1) throw new java.io.IOException("تعذّر الوصول إلى موضع الملف المطلوب");
+                            skipped = 1;
+                        }
+                        toSkip -= skipped;
+                    }
+
                     byte[] buffer = new byte[32 * 1024];
                     int n;
-                    if (length >= 0) {
-                        long remaining = length;
+                    if (contentLength >= 0) {
+                        long remaining = contentLength;
                         while (remaining > 0 && (n = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) != -1) {
                             out.write(buffer, 0, n);
                             remaining -= n;
