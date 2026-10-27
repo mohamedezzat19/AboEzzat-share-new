@@ -56,7 +56,8 @@ public final class MediaDetector {
                         return;
                     }
                     if (!type.contains("html") && !type.isEmpty()) return;
-                    String html = r.body().string();
+                    String html;
+                    try { html = r.body().string(); } catch (IOException e) { return; }
                     Set<String> found = new LinkedHashSet<>();
                     Matcher m = URL_PATTERN.matcher(html);
                     while (m.find()) found.add(m.group(1).replace("\\\\/", "/").replace("&amp;", "&"));
