@@ -72,6 +72,7 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private boolean loadingHome = false;
     private Uri selectedImageUri;
+    private volatile Uri selectedMediaUri;
     private final java.util.ArrayList<Uri> localMediaQueue = new java.util.ArrayList<>();
     private final java.util.ArrayList<Uri> slideshowQueue = new java.util.ArrayList<>();
     private int currentSlideIndex = 0;
@@ -1018,7 +1019,7 @@ public class MainActivity extends Activity {
             String request = reader.readLine();
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) { }
-            if (request == null || !request.startsWith("GET /photo.jpg ")) {
+            boolean isPhoto = request != null && request.startsWith("GET /photo.jpg ");\n            boolean isMedia = request != null && request.startsWith("GET /media ");\n            if (!isPhoto && !isMedia) {
                 byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
                 socket.getOutputStream().write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: " + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
                 socket.getOutputStream().write(notFound);
@@ -1089,6 +1090,45 @@ public class MainActivity extends Activity {
         return name == null ? "ملف وسائط" : name;
     }
 
+    private void playSelectedLocalMedia() {
+        if (localMediaQueue.isEmpty()) return;
+        if (receiverIp == null || receiverIp.trim().isEmpty()) {
+            receiverSettings();
+            Toast.makeText(this, "اضبط عنوان IP للريسيفر أولاً", Toast.LENGTH_LONG).show();
+            return;
+        }
+        selectedMediaUri = localMediaQueue.get(Math.max(0, Math.min(currentLocalMediaIndex, localMediaQueue.size()-1)));
+        try {
+            ensureLocalMediaServer();
+            String phoneIp = findLocalIpv4();
+            if (phoneIp == null) {
+                Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
+                return;
+            }
+            String url = "http://" + phoneIp + ":8082/media";
+            CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() ->
+                Toast.makeText(this, success ? "تم إرسال " + getDisplayName(selectedMediaUri) + " للريسيفر" : message, Toast.LENGTH_LONG).show()));
+        } catch (Exception e) {
+            Toast.makeText(this, "تعذّر تجهيز الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void ensureLocalMediaServer() throws java.io.IOException {
+        if (localMediaServer != null && !localMediaServer.isClosed()) return;
+        localMediaServer = new ServerSocket(8082, 8, InetAddress.getByName("0.0.0.0"));
+        localMediaServerRunning = true;
+        new Thread(() -> {
+            while (localMediaServerRunning && localMediaServer != null && !localMediaServer.isClosed()) {
+                try {
+                    Socket client = localMediaServer.accept();
+                    new Thread(() -> serveLocalImage(client), "LocalMediaClient").start();
+                } catch (Exception e) {
+                    if (localMediaServerRunning) android.util.Log.w("AboEzzatShare", "Local media server", e);
+                }
+            }
+        }, "LocalMediaServer").start();
+    }
+
     private void showLocalPlaylist() {
         if (localMediaQueue.isEmpty()) {
             Toast.makeText(this, "قائمة التشغيل فارغة؛ اختار ملفات من الهاتف أولاً", Toast.LENGTH_SHORT).show();
@@ -1099,7 +1139,8 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("قائمة التشغيل ("+names.length+")")
             .setItems(names, (d, which) -> {
                 currentLocalMediaIndex = which;
-                Toast.makeText(this, "تم اختيار: " + getDisplayName(localMediaQueue.get(which)) + ". الإرسال الفعلي يحتاج ربط مسار الوسائط بالريسيفر.", Toast.LENGTH_LONG).show();
+                currentLocalMediaIndex = which;
+                playSelectedLocalMedia();
                 showMedia();
             }).setNegativeButton("إغلاق", null).show();
     }
