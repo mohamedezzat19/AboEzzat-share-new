@@ -348,7 +348,7 @@ public class MainActivity extends Activity {
         page.addView(r1, lp(-1, -2));
         LinearLayout r2 = row();
         addCard(r2, "▧", "معرض الصور", "عرض الصور والملفات", () -> showPhoneGallery());
-        addCard(r2, "♫", "قائمة التشغيل", "المصادر المحفوظة", () -> showLibrary());
+        addCard(r2, "♫", "قائمة التشغيل", "ملفات الصوت والفيديو المختارة", () -> showLocalPlaylist());
         page.addView(r2, lp(-1, -2));
         LinearLayout r3 = row();
         addCard(r3, "⇩", "التنزيلات", "فتح ملفات التنزيل", () -> openDownloads());
@@ -597,9 +597,21 @@ public class MainActivity extends Activity {
         TextView pickLocal = button("اختيار فيديوهات أو ملفات صوتية من الهاتف", BLUE, WHITE);
         content.addView(pickLocal,lp(-1,48));
         pickLocal.setOnClickListener(v -> openLocalMediaPicker());
-        TextView playlist = button("قائمة التشغيل المحلية (" + localMediaQueue.size() + ")", PANEL2, GOLD);
-        LinearLayout.LayoutParams qlp=lp(-1,44); qlp.topMargin=dp(6); content.addView(playlist,qlp);
+        LinearLayout mediaActions = row();
+        TextView playlist = button("قائمة التشغيل (" + localMediaQueue.size() + ")", PANEL2, GOLD);
+        TextView playSelected = button("▶ تشغيل المحدد", BLUE, WHITE);
+        mediaActions.addView(playlist, new LinearLayout.LayoutParams(0, dp(46), 1));
+        mediaActions.addView(playSelected, new LinearLayout.LayoutParams(0, dp(46), 1));
+        LinearLayout.LayoutParams qlp=lp(-1,48); qlp.topMargin=dp(6); content.addView(mediaActions,qlp);
         playlist.setOnClickListener(v -> showLocalPlaylist());
+        playSelected.setOnClickListener(v -> {
+            if (localMediaQueue.isEmpty()) {
+                Toast.makeText(this, "اختار فيديو أو ملف صوتي من الهاتف أولاً", Toast.LENGTH_LONG).show();
+                openLocalMediaPicker();
+            } else {
+                playSelectedLocalMedia();
+            }
+        });
         if (!localMediaQueue.isEmpty()) {
             Uri current = localMediaQueue.get(Math.min(currentLocalMediaIndex, localMediaQueue.size()-1));
             TextView now = text("يعمل حاليًا: " + getDisplayName(current), 13, WHITE, true);
@@ -704,15 +716,33 @@ public class MainActivity extends Activity {
         box.addView(input,lp(-1,52));
         new AlertDialog.Builder(this).setTitle("إعداد جهاز الاستقبال").setView(box)
             .setPositiveButton("حفظ", (d,w)->{
-                receiverIp=input.getText().toString().trim().replace("http://","").replace("https://","");
-                if(receiverIp.contains(":"))receiverIp=receiverIp.substring(0,receiverIp.indexOf(':'));
+                String normalized = normalizeReceiverIp(input.getText().toString());
+                if (normalized == null) {
+                    Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                receiverIp=normalized;
                 prefs.edit().putString("receiver_ip",receiverIp).apply();refreshConnectionLabel();
-                Toast.makeText(this,receiverIp.isEmpty()?"لم يتم حفظ عنوان": "تم حفظ عنوان الاستقبال",Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "تم حفظ عنوان الاستقبال: " + receiverIp,Toast.LENGTH_SHORT).show();
             }).setNeutralButton("اختبار الاتصال",(d,w)->{
-                String ip=input.getText().toString().trim().replace("http://","").replace("https://","");
-                if(ip.contains(":"))ip=ip.substring(0,ip.indexOf(':'));
+                String ip = normalizeReceiverIp(input.getText().toString());
+                if (ip == null) {
+                    Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
+                    return;
+                }
                 testReceiver(ip);
             }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private String normalizeReceiverIp(String raw) {
+        if (raw == null) return null;
+        String ip = raw.trim().replace("http://", "").replace("https://", "");
+        int slash = ip.indexOf('/');
+        if (slash >= 0) ip = ip.substring(0, slash);
+        int colon = ip.indexOf(':');
+        if (colon >= 0) ip = ip.substring(0, colon);
+        if (!ip.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")) return null;
+        return ip;
     }
 
     private void refreshConnectionLabel(){
@@ -725,7 +755,14 @@ public class MainActivity extends Activity {
             boolean ok=false;
             try(Socket s=new Socket()){s.connect(new java.net.InetSocketAddress(ip,8081),2500);ok=true;}catch(Exception ignored){}
             final boolean result=ok;
-            runOnUiThread(()->Toast.makeText(this,result?"الاتصال ناجح":"لم نقدر نتصل. تأكد من الشبكة وعنوان IP وتشغيل Receiver.",Toast.LENGTH_LONG).show());
+            runOnUiThread(()->{
+                if (result) {
+                    receiverIp = ip;
+                    prefs.edit().putString("receiver_ip", receiverIp).apply();
+                    refreshConnectionLabel();
+                }
+                Toast.makeText(this,result?"الاتصال ناجح وتم حفظ عنوان الريسيفر":"فشل الاتصال على "+ip+":8081. تأكد أن الهاتف والريسيفر على نفس شبكة الواي فاي وأن المنفذ 8081 متاح.",Toast.LENGTH_LONG).show();
+            });
         }).start();
     }
 
@@ -1170,7 +1207,6 @@ public class MainActivity extends Activity {
         for (int i=0; i<names.length; i++) names[i] = (i == currentLocalMediaIndex ? "▶ " : "") + (i+1) + ". " + getDisplayName(localMediaQueue.get(i));
         new AlertDialog.Builder(this).setTitle("قائمة التشغيل ("+names.length+")")
             .setItems(names, (d, which) -> {
-                currentLocalMediaIndex = which;
                 currentLocalMediaIndex = which;
                 playSelectedLocalMedia();
                 showMedia();
