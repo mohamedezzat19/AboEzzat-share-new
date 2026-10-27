@@ -78,7 +78,8 @@ public final class CastingManager {
                                 synchronized (found) {
                                     if (!found.contains(ip)) found.add(ip);
                                 }
-                                callback.onDevices(new ArrayList<>(found));
+                                // Keep collecting multicast candidates; report once below so
+                                // the caller cannot accept a later fallback-scan result over this one.
                             }
                         }
                     } catch (java.net.SocketTimeoutException timeout) {
@@ -90,6 +91,12 @@ public final class CastingManager {
                 // Multicast may be filtered; keep the existing TCP scan as a fallback.
             } finally {
                 if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
+            }
+            synchronized (found) {
+                if (!found.isEmpty()) {
+                    callback.onDevices(new ArrayList<>(found));
+                    return; // Multicast discovery is faster; do not scan the subnet unnecessarily.
+                }
             }
             try {
                 Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
