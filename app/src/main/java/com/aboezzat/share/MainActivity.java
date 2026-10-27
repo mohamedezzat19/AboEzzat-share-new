@@ -72,6 +72,8 @@ public class MainActivity extends Activity {
     private boolean loadingHome = false;
     private Uri selectedImageUri;
     private final java.util.ArrayList<Uri> localMediaQueue = new java.util.ArrayList<>();
+    private final java.util.ArrayList<Uri> slideshowQueue = new java.util.ArrayList<>();
+    private int currentSlideIndex = 0;
     private int currentLocalMediaIndex = 0;
     private static final int PICK_LOCAL_MEDIA_REQUEST = 902;
     private volatile ServerSocket localMediaServer;
