@@ -1014,37 +1014,68 @@ public class MainActivity extends Activity {
 
     private void serveLocalImage(Socket client) {
         try (Socket socket = client) {
-            socket.setSoTimeout(5000);
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
+            socket.setSoTimeout(15000);
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
             String request = reader.readLine();
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) { }
+
             boolean isPhoto = request != null && request.startsWith("GET /photo.jpg ");
             boolean isMedia = request != null && request.startsWith("GET /media ");
             if (!isPhoto && !isMedia) {
                 byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
-                socket.getOutputStream().write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: " + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
-                socket.getOutputStream().write(notFound);
+                OutputStream out = socket.getOutputStream();
+                out.write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: "
+                        + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                out.write(notFound);
+                out.flush();
                 return;
             }
-            Uri uri = isMedia ? selectedMediaUri : selectedImageUri;
-            if (uri == null) return;
+
+            // Capture the selected URI once so a playlist change cannot switch files mid-response.
+            final Uri uri = isMedia ? selectedMediaUri : selectedImageUri;
+            if (uri == null) {
+                socket.getOutputStream().write("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+                return;
+            }
+
             String mime = getContentResolver().getType(uri);
             if (mime == null) mime = isMedia ? "application/octet-stream" : "image/jpeg";
-            byte[] bytes;
-            try (InputStream in = getContentResolver().openInputStream(uri); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-                if (in == null) throw new java.io.IOException("تعذّر قراءة الصورة");
-                byte[] buffer = new byte[8192];
-                int n;
-                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
-                bytes = out.toByteArray();
+
+            try (android.content.res.AssetFileDescriptor afd = getContentResolver().openAssetFileDescriptor(uri, "r")) {
+                if (afd == null) throw new java.io.IOException("تعذّر فتح الملف");
+                long length = afd.getLength();
+                OutputStream out = socket.getOutputStream();
+                String headers = "HTTP/1.1 200 OK\r\nContent-Type: " + mime
+                        + "\r\nCache-Control: no-store\r\nConnection: close\r\n"
+                        + (length >= 0 ? "Content-Length: " + length + "\r\n" : "Transfer-Encoding: chunked\r\n")
+                        + "\r\n";
+                out.write(headers.getBytes(StandardCharsets.US_ASCII));
+
+                try (InputStream in = afd.createInputStream()) {
+                    byte[] buffer = new byte[32 * 1024];
+                    int n;
+                    if (length >= 0) {
+                        long remaining = length;
+                        while (remaining > 0 && (n = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) != -1) {
+                            out.write(buffer, 0, n);
+                            remaining -= n;
+                        }
+                    } else {
+                        while ((n = in.read(buffer)) != -1) {
+                            out.write(Integer.toHexString(n).getBytes(StandardCharsets.US_ASCII));
+                            out.write("\r\n".getBytes(StandardCharsets.US_ASCII));
+                            out.write(buffer, 0, n);
+                            out.write("\r\n".getBytes(StandardCharsets.US_ASCII));
+                        }
+                        out.write("0\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+                    }
+                    out.flush();
+                }
             }
-            OutputStream out = socket.getOutputStream();
-            out.write(("HTTP/1.1 200 OK\r\nContent-Type: " + mime + "\r\nContent-Length: " + bytes.length + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
-            out.write(bytes);
-            out.flush();
         } catch (Exception e) {
-            android.util.Log.w("AboEzzatShare", "Serving local image failed", e);
+            android.util.Log.w("AboEzzatShare", "Serving local media failed", e);
         }
     }
 
