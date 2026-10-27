@@ -1143,7 +1143,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
                 return;
             }
-            String localUrl = "http://" + phoneIp + ":8082/photo.jpg";
+            String localUrl = "http://" + phoneIp + ":8082/photo.jpg" + (slideshowQueue.size() > 1 ? "?index=" + currentSlideIndex + "&t=" + System.currentTimeMillis() : "");
             Toast.makeText(this, "جاري إرسال الصورة إلى التلفزيون…", Toast.LENGTH_SHORT).show();
             CastingManager.send(receiverIp.trim(), localUrl, (success, message) -> runOnUiThread(() -> {
                     receiverConnected = success;
@@ -1174,6 +1174,24 @@ public class MainActivity extends Activity {
 
             boolean isPhoto = request.startsWith("GET /photo.jpg ");
             boolean isMedia = request.startsWith("GET /media ");
+            int requestedSlideIndex = -1;
+            if (isPhoto && slideshowQueue.size() > 1) {
+                try {
+                    int pathStart = request.indexOf("GET ") + 4;
+                    int pathEnd = request.indexOf(' ', pathStart);
+                    String path = request.substring(pathStart, pathEnd);
+                    int queryStart = path.indexOf('?');
+                    if (queryStart >= 0) {
+                        String[] params = path.substring(queryStart + 1).split("&");
+                        for (String param : params) {
+                            if (param.startsWith("index=")) {
+                                requestedSlideIndex = Integer.parseInt(param.substring(6));
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) { requestedSlideIndex = -1; }
+            }
             OutputStream out = socket.getOutputStream();
             if (!isPhoto && !isMedia) {
                 byte[] body = "Not Found".getBytes(StandardCharsets.UTF_8);
@@ -1185,7 +1203,9 @@ public class MainActivity extends Activity {
             }
 
             // Capture the URI once; a playlist change must not switch the file mid-response.
-            final Uri uri = isMedia ? selectedMediaUri : selectedImageUri;
+            final Uri uri = isMedia ? selectedMediaUri
+                    : (requestedSlideIndex >= 0 && requestedSlideIndex < slideshowQueue.size()
+                        ? slideshowQueue.get(requestedSlideIndex) : selectedImageUri);
             if (uri == null) {
                 out.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
                         .getBytes(StandardCharsets.US_ASCII));
