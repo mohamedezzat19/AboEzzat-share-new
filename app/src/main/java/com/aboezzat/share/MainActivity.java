@@ -16,6 +16,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.view.animation.AlphaAnimation;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
@@ -55,7 +56,7 @@ public class MainActivity extends Activity {
     private FrameLayout contentFrame;
     private EditText address;
     private WebView web;
-    private TextView pageTitle, connectionLabel, mediaLabel;
+    private TextView pageTitle, connectionLabel, mediaLabel, castActionButton;
     private final LinkedHashMap<String,String> media = new LinkedHashMap<>();
     private final ArrayList<String> mediaOrder = new ArrayList<>();
     private String currentPage = "home";
@@ -366,6 +367,7 @@ public class MainActivity extends Activity {
         mediaPanel.addView(mediaLabel,lp(-1,22));
         LinearLayout castActions=row();
         TextView cast=button("▶ إرسال",GOLD,BG);
+        castActionButton=cast;
         TextView best=button("أفضل جودة",PANEL2,WHITE);
         TextView list=button("القائمة",PANEL2,WHITE);
         LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(42),1);
@@ -455,6 +457,13 @@ public class MainActivity extends Activity {
             media.put(url,url);mediaOrder.add(url);
             if(mediaLabel!=null)mediaLabel.setText("المصادر المكتشفة: "+mediaOrder.size());
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
+            if(castActionButton!=null) {
+                AlphaAnimation pulse = new AlphaAnimation(1.0f, 0.35f);
+                pulse.setDuration(650);
+                pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
+                pulse.setRepeatCount(android.view.animation.Animation.INFINITE);
+                castActionButton.startAnimation(pulse);
+            }
         });
     }
 
