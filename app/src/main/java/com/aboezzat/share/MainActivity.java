@@ -1181,10 +1181,11 @@ public class MainActivity extends Activity {
                             long suffixLength = Long.parseLong(right);
                             if (suffixLength <= 0) throw new NumberFormatException("invalid suffix range");
                             start = Math.max(0L, length - suffixLength);
+                            end = length - 1;
                         } else {
                             start = Long.parseLong(left);
+                            end = right.isEmpty() ? length - 1 : Long.parseLong(right);
                         }
-                        end = right.isEmpty() ? length - 1 : Long.parseLong(right);
                         if (start < 0 || start >= length || end < start) throw new NumberFormatException("range out of bounds");
                         end = Math.min(end, length - 1);
                         partial = true;
