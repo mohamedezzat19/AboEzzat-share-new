@@ -820,6 +820,32 @@ public class MainActivity extends Activity {
         downloadUrl(url,"application/octet-stream");
     }
 
+    private String downloadMimeType(String url) {
+        String path = Uri.parse(url).getPath();
+        String u = (path == null ? url : path).toLowerCase(Locale.ROOT);
+        if (u.endsWith(".jpg") || u.endsWith(".jpeg")) return "image/jpeg";
+        if (u.endsWith(".png")) return "image/png";
+        if (u.endsWith(".webp")) return "image/webp";
+        if (u.endsWith(".gif")) return "image/gif";
+        if (u.endsWith(".avif")) return "image/avif";
+        if (u.endsWith(".mp3")) return "audio/mpeg";
+        if (u.endsWith(".m4a")) return "audio/mp4";
+        if (u.endsWith(".aac")) return "audio/aac";
+        if (u.endsWith(".ogg") || u.endsWith(".oga")) return "audio/ogg";
+        if (u.endsWith(".opus")) return "audio/opus";
+        if (u.endsWith(".wav")) return "audio/wav";
+        if (u.endsWith(".flac")) return "audio/flac";
+        if (u.endsWith(".mp4") || u.endsWith(".m4v")) return "video/mp4";
+        if (u.endsWith(".webm")) return "video/webm";
+        if (u.endsWith(".mov")) return "video/quicktime";
+        if (u.endsWith(".avi")) return "video/x-msvideo";
+        if (u.endsWith(".mkv")) return "video/x-matroska";
+        if (u.endsWith(".3gp")) return "video/3gpp";
+        if (u.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
+        if (u.endsWith(".mpd")) return "application/dash+xml";
+        return "application/octet-stream";
+    }
+
     private void downloadUrl(String url,String mime){
         try{
             Uri source=Uri.parse(url);
