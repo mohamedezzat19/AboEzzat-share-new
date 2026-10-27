@@ -606,8 +606,14 @@ public class MainActivity extends Activity {
                     discover.setText("لم يتم العثور عليه — اكتب IP يدويًا");
                     Toast.makeText(this, "تأكد أن Receiver مفتوح وعلى نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
                 } else {
-                    input.setText(devices.get(0));
-                    discover.setText("تم العثور على " + devices.size() + " جهاز — تم اختيار أول جهاز");
+                    discover.setText("تم العثور على " + devices.size() + " جهاز — اختر يدويًا");
+                    String[] choices = devices.toArray(new String[0]);
+                    new AlertDialog.Builder(this)
+                        .setTitle("اختار عنوان Receiver الصحيح")
+                        .setMessage("البحث قد يعثر على أجهزة أخرى على الشبكة. اختار العنوان الظاهر داخل تطبيق Receiver، أو ألغِ واكتب العنوان يدويًا.")
+                        .setItems(choices, (dialog, which) -> input.setText(choices[which]))
+                        .setNegativeButton("إلغاء", null)
+                        .show();
                 }
             }));
         });
