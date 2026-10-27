@@ -426,6 +426,8 @@ public class MainActivity extends Activity {
             @Override public void onPageFinished(WebView view,String url){
                 if(address!=null && "browser".equals(currentPage)) address.setText(url);
                 saveHistory(url);
+                // Supplement WebView request sniffing with a best-effort HTML/media scan.
+                MediaDetector.inspectPage(url, (mediaUrl, kind, quality) -> detectMedia(mediaUrl));
                 String js="(function(){var a=[];document.querySelectorAll('video,audio,source').forEach(function(e){var u=e.currentSrc||e.src;if(u&&u.indexOf('blob:')!==0)a.push(u)});return JSON.stringify(a)})()";
                 view.evaluateJavascript(js,value->{
                     if(value!=null){
