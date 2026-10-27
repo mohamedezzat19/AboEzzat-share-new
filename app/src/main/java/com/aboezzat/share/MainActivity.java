@@ -529,7 +529,7 @@ public class MainActivity extends Activity {
         String path=Uri.parse(url).getPath();
         String lower=(path==null?url:path).toLowerCase(Locale.ROOT);
         boolean ok=false;
-        String[] exts={".mp4",".m3u8",".mpd",".webm",".mov",".m4v",".mp3",".m4a",".aac",".ogg",".wav"};
+        String[] exts={".mp4",".m4v",".webm",".mov",".avi",".mkv",".3gp",".ts",".m3u8",".mpd",".mp3",".m4a",".aac",".ogg",".oga",".opus",".wav",".flac",".mid",".midi",".jpg",".jpeg",".png",".webp",".gif",".bmp",".avif"};
         for(String e:exts){if(lower.endsWith(e)){ok=true;break;}}
         if(!ok||media.containsKey(url))return;
         runOnUiThread(()->{
