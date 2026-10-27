@@ -1479,7 +1479,15 @@ public class MainActivity extends Activity {
                 NetworkInterface ni = interfaces.nextElement();
                 if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
                 String interfaceName = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
-                boolean likelyWifi = interfaceName.contains("wlan") || interfaceName.contains("wifi") || interfaceName.contains("swlan");
+                boolean likelyWifi = interfaceName.contains("wlan") || interfaceName.contains("wifi")
+                        || interfaceName.contains("swlan") || interfaceName.equals("ap0");
+                // Avoid advertising VPN/tunnel or cellular addresses to the TV. Those
+                // addresses can reach the internet but are commonly unreachable from LAN peers.
+                boolean likelyTunnelOrCellular = interfaceName.startsWith("tun")
+                        || interfaceName.startsWith("tap") || interfaceName.startsWith("wg")
+                        || interfaceName.startsWith("ppp") || interfaceName.startsWith("rmnet")
+                        || interfaceName.startsWith("ccmni") || interfaceName.startsWith("pdp")
+                        || interfaceName.startsWith("clat") || interfaceName.startsWith("ipsec");
                 java.util.Enumeration<InetAddress> addresses = ni.getInetAddresses();
                 while (addresses.hasMoreElements()) {
                     InetAddress address = addresses.nextElement();
@@ -1489,6 +1497,7 @@ public class MainActivity extends Activity {
                     boolean privateLan = ip.startsWith("192.168.") || ip.startsWith("10.")
                             || ip.matches("172\\.(1[6-9]|2[0-9]|3[0-1])\\..*");
                     if (privateLan && likelyWifi) return ip;
+                    if (likelyTunnelOrCellular) continue;
                     if (privateLan && fallback == null) fallback = ip;
                     if (fallback == null) fallback = ip;
                 }
