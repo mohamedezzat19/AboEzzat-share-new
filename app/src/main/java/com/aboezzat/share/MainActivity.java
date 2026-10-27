@@ -972,8 +972,7 @@ public class MainActivity extends Activity {
             }
         }
         if (best == null) {
-            Toast.makeText(this, "ملقيناش رابط فيديو مباشر بجودة واضحة؛ هنجرب إرسال الصفحة الحالية", Toast.LENGTH_LONG).show();
-            castCurrent();
+            Toast.makeText(this, "ملقيناش مصدر فيديو مباشر مناسب للاختيار التلقائي. اختار مصدرًا من القائمة أو جرّب تشغيل المقطع من الموقع أولًا.", Toast.LENGTH_LONG).show();
             return;
         }
         castUrl(best);
