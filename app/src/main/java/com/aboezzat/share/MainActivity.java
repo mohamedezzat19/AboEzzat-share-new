@@ -463,10 +463,12 @@ public class MainActivity extends Activity {
 
     private synchronized void detectMedia(String url){
         if(url==null||url.trim().isEmpty()||url.startsWith("blob:")||url.startsWith("data:"))return;
-        String lower=url.toLowerCase(Locale.ROOT);
+        // Match the media extension in the URL path, not in unrelated query parameters.
+        String path=Uri.parse(url).getPath();
+        String lower=(path==null?url:path).toLowerCase(Locale.ROOT);
         boolean ok=false;
         String[] exts={".mp4",".m3u8",".mpd",".webm",".mov",".m4v",".mp3",".m4a",".aac",".ogg",".wav"};
-        for(String e:exts){if(lower.contains(e)){ok=true;break;}}
+        for(String e:exts){if(lower.endsWith(e)){ok=true;break;}}
         if(!ok||media.containsKey(url))return;
         runOnUiThread(()->{
             if(media.containsKey(url))return;
