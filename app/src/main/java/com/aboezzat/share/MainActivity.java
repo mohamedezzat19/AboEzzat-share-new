@@ -123,23 +123,62 @@ public class MainActivity extends Activity {
     }
 
     private void handleSharedIntent(android.content.Intent intent) {
-        if (intent == null || !android.content.Intent.ACTION_SEND.equals(intent.getAction())) return;
-        String shared = intent.getStringExtra(android.content.Intent.EXTRA_TEXT);
-        if (shared == null || shared.trim().isEmpty()) return;
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("(?i)https?://[^\\s<>\\\"']+")
-                .matcher(shared);
-        if (!matcher.find()) {
-            Toast.makeText(this, "لم يتم العثور على رابط في المشاركة", Toast.LENGTH_SHORT).show();
+        if (intent == null) return;
+        String action = intent.getAction();
+
+        // Preserve shared-link behavior, while also accepting shared local media files.
+        if (android.content.Intent.ACTION_SEND.equals(action)) {
+            String shared = intent.getStringExtra(android.content.Intent.EXTRA_TEXT);
+            if (shared != null && !shared.trim().isEmpty()) {
+                java.util.regex.Matcher matcher = java.util.regex.Pattern
+                        .compile("(?i)https?://[^\\s<>\\\"']+")
+                        .matcher(shared);
+                if (matcher.find()) {
+                    String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
+                    String normalized = BrowserEngine.normalizeAddress(sharedUrl);
+                    showBrowser();
+                    if (address != null) {
+                        address.setText(normalized);
+                        if (web != null) web.loadUrl(normalized);
+                    }
+                    return;
+                }
+            }
+
+            Uri stream = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
+            if (stream != null) {
+                acceptSharedMedia(java.util.Collections.singletonList(stream));
+                return;
+            }
+        } else if (android.content.Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            java.util.ArrayList<Uri> streams = intent.getParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM);
+            if (streams != null && !streams.isEmpty()) {
+                acceptSharedMedia(streams);
+                return;
+            }
+        }
+    }
+
+    private void acceptSharedMedia(java.util.List<Uri> streams) {
+        localMediaQueue.clear();
+        for (Uri uri : streams) {
+            if (uri == null) continue;
+            try {
+                getContentResolver().takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {
+                // Most ACTION_SEND grants are temporary, so keep using the granted URI directly.
+            }
+            localMediaQueue.add(uri);
+        }
+        if (localMediaQueue.isEmpty()) {
+            Toast.makeText(this, "المشاركة لا تحتوي على ملفات قابلة للفتح", Toast.LENGTH_LONG).show();
             return;
         }
-        String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
-        String normalized = BrowserEngine.normalizeAddress(sharedUrl);
-        showBrowser();
-        if (address != null) {
-            address.setText(normalized);
-            if (web != null) web.loadUrl(normalized);
-        }
+        currentLocalMediaIndex = 0;
+        selectedMediaUri = localMediaQueue.get(0);
+        showHome();
+        Toast.makeText(this, "تم استلام " + localMediaQueue.size() + " ملف؛ جاري تجهيز الإرسال", Toast.LENGTH_SHORT).show();
+        playSelectedLocalMedia();
     }
 
     private int dp(float n) {
