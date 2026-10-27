@@ -36,7 +36,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.NetworkInterface;
+import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -65,6 +71,8 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private boolean loadingHome = false;
     private Uri selectedImageUri;
+    private volatile ServerSocket localMediaServer;
+    private volatile boolean localMediaServerRunning = false;
 
     @Override @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle state) {
@@ -362,6 +370,18 @@ public class MainActivity extends Activity {
             pp.topMargin = dp(12);
             content.addView(preview, pp);
         }
+        TextView send = button("إرسال الصورة إلى التلفزيون", GOLD, BG);
+        LinearLayout.LayoutParams sp = lp(-1, 48); sp.topMargin = dp(10);
+        content.addView(send, sp);
+        send.setEnabled(selectedImageUri != null);
+        send.setAlpha(selectedImageUri != null ? 1f : 0.5f);
+        send.setOnClickListener(v -> {
+            if (selectedImageUri == null) {
+                Toast.makeText(this, "اختار صورة الأول", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            serveSelectedImageAndCast();
+        });
         TextView back = button("الرجوع للرئيسية", PANEL2, WHITE);
         LinearLayout.LayoutParams bp = lp(-1, 44); bp.topMargin = dp(8);
         content.addView(back, bp);
@@ -708,6 +728,97 @@ public class MainActivity extends Activity {
         }catch(Exception e){Toast.makeText(this,"تعذّر بدء التنزيل: "+e.getMessage(),Toast.LENGTH_LONG).show();}
     }
 
+
+    private void serveSelectedImageAndCast() {
+        if (receiverIp == null || receiverIp.trim().isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("إعداد الاستقبال")
+                    .setMessage("احفظ عنوان IP الظاهر في تطبيق AboEzzat Receiver أولاً.")
+                    .setPositiveButton("ضبط الآن", (d,w) -> receiverSettings())
+                    .setNegativeButton("إلغاء", null).show();
+            return;
+        }
+        try {
+            if (localMediaServer == null || localMediaServer.isClosed()) {
+                localMediaServer = new ServerSocket(8082, 8, InetAddress.getByName("0.0.0.0"));
+                localMediaServerRunning = true;
+                new Thread(() -> {
+                    while (localMediaServerRunning && localMediaServer != null && !localMediaServer.isClosed()) {
+                        try {
+                            Socket client = localMediaServer.accept();
+                            new Thread(() -> serveLocalImage(client), "LocalImageClient").start();
+                        } catch (Exception e) {
+                            if (localMediaServerRunning) android.util.Log.w("AboEzzatShare", "Local media server", e);
+                        }
+                    }
+                }, "LocalMediaServer").start();
+            }
+            String phoneIp = findLocalIpv4();
+            if (phoneIp == null) {
+                Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
+                return;
+            }
+            String localUrl = "http://" + phoneIp + ":8082/photo";
+            Toast.makeText(this, "جاري إرسال الصورة إلى التلفزيون…", Toast.LENGTH_SHORT).show();
+            CastingManager.send(receiverIp.trim(), localUrl, (success, message) -> runOnUiThread(() ->
+                    Toast.makeText(this, success ? "تم إرسال رابط الصورة. لو ما ظهرتش، اتأكد إن الجهازين على نفس الشبكة." : message, Toast.LENGTH_LONG).show()));
+        } catch (Exception e) {
+            Toast.makeText(this, "تعذّر تجهيز مشاركة الصورة: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void serveLocalImage(Socket client) {
+        try (Socket socket = client) {
+            socket.setSoTimeout(5000);
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII));
+            String request = reader.readLine();
+            String line;
+            while ((line = reader.readLine()) != null && !line.isEmpty()) { }
+            if (request == null || !request.startsWith("GET /photo ")) {
+                byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
+                socket.getOutputStream().write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: " + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                socket.getOutputStream().write(notFound);
+                return;
+            }
+            Uri uri = selectedImageUri;
+            if (uri == null) return;
+            String mime = getContentResolver().getType(uri);
+            if (mime == null || !mime.startsWith("image/")) mime = "image/jpeg";
+            byte[] bytes;
+            try (InputStream in = getContentResolver().openInputStream(uri); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                if (in == null) throw new java.io.IOException("تعذّر قراءة الصورة");
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+                bytes = out.toByteArray();
+            }
+            OutputStream out = socket.getOutputStream();
+            out.write(("HTTP/1.1 200 OK\r\nContent-Type: " + mime + "\r\nContent-Length: " + bytes.length + "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            out.write(bytes);
+            out.flush();
+        } catch (Exception e) {
+            android.util.Log.w("AboEzzatShare", "Serving local image failed", e);
+        }
+    }
+
+    private String findLocalIpv4() {
+        try {
+            java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                java.util.Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address instanceof Inet4Address && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
+                        String ip = address.getHostAddress();
+                        if (ip != null && !ip.startsWith("10.0.2.")) return ip;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
@@ -724,6 +835,8 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy(){
         if(web!=null){web.stopLoading();web.destroy();web=null;}
+        localMediaServerRunning = false;
+        try { if (localMediaServer != null) localMediaServer.close(); } catch (Exception ignored) { }
         super.onDestroy();
     }
 }
