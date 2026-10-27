@@ -950,11 +950,37 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private boolean isVideoCandidate(String candidate) {
+        if (candidate == null || candidate.trim().isEmpty()) return false;
+        Uri uri = Uri.parse(candidate);
+        String path = uri.getPath();
+        String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
+        if (lowerPath.endsWith(".mp4") || lowerPath.endsWith(".m4v")
+                || lowerPath.endsWith(".webm") || lowerPath.endsWith(".mov")
+                || lowerPath.endsWith(".m3u8") || lowerPath.endsWith(".mpd")) return true;
+        if (lowerPath.endsWith(".mp3") || lowerPath.endsWith(".m4a")
+                || lowerPath.endsWith(".aac") || lowerPath.endsWith(".ogg")
+                || lowerPath.endsWith(".oga") || lowerPath.endsWith(".opus")
+                || lowerPath.endsWith(".wav") || lowerPath.endsWith(".flac")
+                || lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")
+                || lowerPath.endsWith(".png") || lowerPath.endsWith(".webp")
+                || lowerPath.endsWith(".gif") || lowerPath.endsWith(".bmp")
+                || lowerPath.endsWith(".avif")) return false;
+        String lower = candidate.toLowerCase(Locale.ROOT);
+        if (lower.contains("mime=audio") || lower.contains("type=audio")
+                || lower.contains("mime=image") || lower.contains("type=image")) return false;
+        return lower.contains("mime=video") || lower.contains("video_playback")
+                || lower.contains("/videoplayback") || lower.contains("format=mp4")
+                || lower.contains("type=video") || lower.contains("contenttype=video")
+                || lower.contains("content-type=video");
+    }
+
     private void castBestQuality() {
         String best = null;
         int bestScore = -1;
         int bestFormatScore = -1;
         for (String candidate : mediaOrder) {
+            if (!isVideoCandidate(candidate)) continue;
             String path = Uri.parse(candidate).getPath();
             String lower = (path == null ? candidate : path).toLowerCase(Locale.ROOT);
             int formatScore;
@@ -985,6 +1011,7 @@ public class MainActivity extends Activity {
         int bestScore=-1;
         int bestFormatScore=-1;
         for(String candidate:mediaOrder){
+            if(!isVideoCandidate(candidate))continue;
             String path=Uri.parse(candidate).getPath();
             String lower=(path==null?candidate:path).toLowerCase(Locale.ROOT);
             int formatScore;
