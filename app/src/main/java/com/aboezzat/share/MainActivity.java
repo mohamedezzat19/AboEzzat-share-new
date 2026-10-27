@@ -1201,6 +1201,18 @@ public class MainActivity extends Activity {
             }
             DownloadManager dm=(DownloadManager)getSystemService(Context.DOWNLOAD_SERVICE);
             DownloadManager.Request req=new DownloadManager.Request(source);
+            // Reuse the browser session for media URLs that require cookies or a page referrer.
+            try {
+                String cookie = android.webkit.CookieManager.getInstance().getCookie(url);
+                if (cookie != null && !cookie.trim().isEmpty()) req.addRequestHeader("Cookie", cookie);
+            } catch (Exception ignored) {}
+            try {
+                String pageUrl = web == null ? null : web.getUrl();
+                if (pageUrl != null && (pageUrl.startsWith("http://") || pageUrl.startsWith("https://"))) {
+                    req.addRequestHeader("Referer", pageUrl);
+                }
+            } catch (Exception ignored) {}
+            req.addRequestHeader("User-Agent", System.getProperty("http.agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"));
             String fileName=source.getLastPathSegment();
             if(fileName==null||fileName.trim().isEmpty()||".".equals(fileName)||"..".equals(fileName))fileName="media_download";
             fileName=fileName.replaceAll("[^a-zA-Z0-9._-]","_");
