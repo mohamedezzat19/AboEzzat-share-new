@@ -586,32 +586,9 @@ public class MainActivity extends Activity {
     }
 
     private void sendRemoteCommand(String command) {
-        // Receiver's current HTTP protocol only accepts media URLs; it does not parse ?command=.
-        // Avoid reporting a false success for remote buttons that the receiver cannot execute.
+        // The current receiver protocol accepts media URLs only, not remote commands.
+        // Keep this explicit until the receiver itself supports a command endpoint.
         Toast.makeText(this, "الريسيفر الحالي لا يدعم أوامر الريموت بعد؛ إرسال الأمر لن يغيّر التشغيل.", Toast.LENGTH_LONG).show();
-        return;
-        /*
-        String ip = receiverIp == null ? "" : receiverIp.trim();
-        if (ip.isEmpty()) {
-            Toast.makeText(this, "اضبط عنوان IP للريسيفر أولاً", Toast.LENGTH_SHORT).show();
-            receiverSettings();
-            return;
-        }
-        new Thread(() -> {
-            try {
-                String endpoint = ip.startsWith("http") ? ip : "http://" + ip;
-                if (!endpoint.matches(".*:\\d+$")) endpoint += ":8081";
-                java.net.HttpURLConnection connection = (java.net.HttpURLConnection) new java.net.URL(endpoint + "/?command=" + java.net.URLEncoder.encode(command, "UTF-8")).openConnection();
-                connection.setConnectTimeout(2500);
-                connection.setReadTimeout(2500);
-                int code = connection.getResponseCode();
-                connection.disconnect();
-                runOnUiThread(() -> Toast.makeText(this, code == 200 ? "تم إرسال أمر الريموت" : "الريسيفر لم يؤكد أمر الريموت (" + code + ")", Toast.LENGTH_SHORT).show());
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "تعذر إرسال أمر الريموت: " + e.getMessage(), Toast.LENGTH_SHORT).show());
-            }
-        }, "RemoteCommand").start();
-        */
     }
 
     private void showMedia(){
