@@ -74,6 +74,18 @@ public class MainActivity extends Activity {
     private final java.util.ArrayList<Uri> localMediaQueue = new java.util.ArrayList<>();
     private final java.util.ArrayList<Uri> slideshowQueue = new java.util.ArrayList<>();
     private int currentSlideIndex = 0;
+    private final android.os.Handler slideshowHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean slideshowRunning = false;
+    private final Runnable slideshowRunnable = new Runnable() {
+        @Override public void run() {
+            if (!slideshowRunning || slideshowQueue.isEmpty()) return;
+            currentSlideIndex = (currentSlideIndex + 1) % slideshowQueue.size();
+            selectedImageUri = slideshowQueue.get(currentSlideIndex);
+            showPhoneGallery();
+            serveSelectedImageAndCast();
+            slideshowHandler.postDelayed(this, 5000);
+        }
+    };
     private int currentLocalMediaIndex = 0;
     private static final int PICK_LOCAL_MEDIA_REQUEST = 902;
     private volatile ServerSocket localMediaServer;
@@ -392,6 +404,24 @@ public class MainActivity extends Activity {
             }
             serveSelectedImageAndCast();
         });
+        if (slideshowQueue.size() > 1) {
+            TextView slide = button(slideshowRunning ? "إيقاف عرض الشرائح" : "عرض الشرائح تلقائيًا كل 5 ثوانٍ", PANEL2, GOLD);
+            LinearLayout.LayoutParams slp=lp(-1,46); slp.topMargin=dp(8); content.addView(slide,slp);
+            slide.setOnClickListener(v -> {
+                if (slideshowRunning) {
+                    slideshowRunning = false;
+                    slideshowHandler.removeCallbacks(slideshowRunnable);
+                    slide.setText("عرض الشرائح تلقائيًا كل 5 ثوانٍ");
+                } else {
+                    slideshowRunning = true;
+                    currentSlideIndex = 0;
+                    selectedImageUri = slideshowQueue.get(0);
+                    serveSelectedImageAndCast();
+                    slideshowHandler.postDelayed(slideshowRunnable, 5000);
+                    slide.setText("إيقاف عرض الشرائح");
+                }
+            });
+        }
         TextView back = button("الرجوع للرئيسية", PANEL2, WHITE);
         LinearLayout.LayoutParams bp = lp(-1, 44); bp.topMargin = dp(8);
         content.addView(back, bp);
@@ -1114,6 +1144,8 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy(){
+        slideshowRunning = false;
+        slideshowHandler.removeCallbacks(slideshowRunnable);
         if(web!=null){web.stopLoading();web.destroy();web=null;}
         localMediaServerRunning = false;
         try { if (localMediaServer != null) localMediaServer.close(); } catch (Exception ignored) { }
