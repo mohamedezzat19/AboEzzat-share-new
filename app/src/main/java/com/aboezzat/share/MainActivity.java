@@ -820,15 +820,27 @@ public class MainActivity extends Activity {
 
     private void downloadUrl(String url,String mime){
         try{
+            Uri source=Uri.parse(url);
+            if(!("http".equalsIgnoreCase(source.getScheme())||"https".equalsIgnoreCase(source.getScheme()))||source.getHost()==null){
+                Toast.makeText(this,"رابط التنزيل لازم يكون HTTP أو HTTPS صالحًا",Toast.LENGTH_LONG).show();
+                return;
+            }
             DownloadManager dm=(DownloadManager)getSystemService(Context.DOWNLOAD_SERVICE);
-            DownloadManager.Request req=new DownloadManager.Request(Uri.parse(url));
+            DownloadManager.Request req=new DownloadManager.Request(source);
+            String fileName=source.getLastPathSegment();
+            if(fileName==null||fileName.trim().isEmpty()||".".equals(fileName)||"..".equals(fileName))fileName="media_download";
+            fileName=fileName.replaceAll("[^a-zA-Z0-9._-]","_");
+            if(fileName.length()>120)fileName=fileName.substring(fileName.length()-120);
+            if(fileName.isEmpty()||".".equals(fileName)||"..".equals(fileName))fileName="media_download";
             req.setTitle("AboEzzat Share download");
             req.setDescription("تنزيل من المتصفح");
             req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            req.setAllowedOverMetered(true);req.setAllowedOverRoaming(false);
-            req.setDestinationInExternalFilesDir(this,Environment.DIRECTORY_DOWNLOADS,Uri.parse(url).getLastPathSegment()==null?"download":Uri.parse(url).getLastPathSegment().replaceAll("[^a-zA-Z0-9._-]","_"));
+            req.setAllowedOverMetered(true);
+            req.setAllowedOverRoaming(false);
+            req.setDestinationInExternalFilesDir(this,Environment.DIRECTORY_DOWNLOADS,fileName);
             if(mime!=null)req.setMimeType(mime);
-            dm.enqueue(req);Toast.makeText(this,"بدأ التنزيل — هتلاقيه في إشعارات الجهاز",Toast.LENGTH_LONG).show();
+            dm.enqueue(req);
+            Toast.makeText(this,"بدأ التنزيل — هتلاقيه في إشعارات الجهاز",Toast.LENGTH_LONG).show();
         }catch(Exception e){Toast.makeText(this,"تعذّر بدء التنزيل: "+e.getMessage(),Toast.LENGTH_LONG).show();}
     }
 
