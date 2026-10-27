@@ -71,6 +71,9 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private boolean loadingHome = false;
     private Uri selectedImageUri;
+    private final java.util.ArrayList<Uri> localMediaQueue = new java.util.ArrayList<>();
+    private int currentLocalMediaIndex = 0;
+    private static final int PICK_LOCAL_MEDIA_REQUEST = 902;
     private volatile ServerSocket localMediaServer;
     private volatile boolean localMediaServerRunning = false;
 
@@ -353,14 +356,15 @@ public class MainActivity extends Activity {
         TextView note = text("اختار صورة لعرضها هنا. إرسال الملفات المحلية للتلفزيون يحتاج مشاركة الملف عبر اتصال يمكن لجهاز الاستقبال الوصول إليه.", 14, MUTED, false);
         note.setPadding(dp(8), dp(12), dp(8), dp(12));
         content.addView(note, lp(-1, -2));
-        TextView open = button("اختيار صورة", BLUE, WHITE);
+        TextView open = button("اختيار عدة صور", BLUE, WHITE);
         content.addView(open, lp(-1, 48));
         open.setOnClickListener(v -> {
             try {
-                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.setType("image/*");
-                intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
-                startActivityForResult(android.content.Intent.createChooser(intent, "اختار صورة"), PICK_IMAGE_REQUEST);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                startActivityForResult(intent, PICK_IMAGE_REQUEST);
             } catch (Exception e) {
                 Toast.makeText(this, "مفيش تطبيق لاختيار الصور متاح على الجهاز", Toast.LENGTH_LONG).show();
             }
@@ -572,7 +576,18 @@ public class MainActivity extends Activity {
 
     private void showMedia(){
         currentPage="media";resetContent();
-        addSection(content,"مركز الوسائط","اختار مصدرًا مكتشفًا لإرساله إلى جهاز الاستقبال");
+        addSection(content,"مركز الوسائط","اختار ملفات من هاتفك أو أرسل رابطًا اكتشفه المتصفح");
+        TextView pickLocal = button("اختيار فيديوهات أو ملفات صوتية من الهاتف", BLUE, WHITE);
+        content.addView(pickLocal,lp(-1,48));
+        pickLocal.setOnClickListener(v -> openLocalMediaPicker());
+        TextView playlist = button("قائمة التشغيل المحلية (" + localMediaQueue.size() + ")", PANEL2, GOLD);
+        LinearLayout.LayoutParams qlp=lp(-1,44); qlp.topMargin=dp(6); content.addView(playlist,qlp);
+        playlist.setOnClickListener(v -> showLocalPlaylist());
+        if (!localMediaQueue.isEmpty()) {
+            Uri current = localMediaQueue.get(Math.min(currentLocalMediaIndex, localMediaQueue.size()-1));
+            TextView now = text("يعمل حاليًا: " + getDisplayName(current), 13, WHITE, true);
+            now.setPadding(dp(4),dp(8),dp(4),dp(8)); content.addView(now,lp(-1,-2));
+        }
         LinearLayout remote = column();
         remote.setPadding(dp(10),dp(8),dp(10),dp(8));
         remote.setBackground(shape(PANEL2,PANEL,14));
@@ -1016,11 +1031,77 @@ public class MainActivity extends Activity {
         return null;
     }
 
+    private void openLocalMediaPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*"});
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);
+        } catch (Exception e) {
+            Toast.makeText(this, "تعذّر فتح مستعرض الملفات", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String getDisplayName(Uri uri) {
+        String name = uri.getLastPathSegment();
+        try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (index >= 0) name = cursor.getString(index);
+            }
+        } catch (Exception ignored) { }
+        return name == null ? "ملف وسائط" : name;
+    }
+
+    private void showLocalPlaylist() {
+        if (localMediaQueue.isEmpty()) {
+            Toast.makeText(this, "قائمة التشغيل فارغة؛ اختار ملفات من الهاتف أولاً", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] names = new String[localMediaQueue.size()];
+        for (int i=0; i<names.length; i++) names[i] = (i == currentLocalMediaIndex ? "▶ " : "") + (i+1) + ". " + getDisplayName(localMediaQueue.get(i));
+        new AlertDialog.Builder(this).setTitle("قائمة التشغيل ("+names.length+")")
+            .setItems(names, (d, which) -> {
+                currentLocalMediaIndex = which;
+                Toast.makeText(this, "تم اختيار: " + getDisplayName(localMediaQueue.get(which)) + ". الإرسال الفعلي يحتاج ربط مسار الوسائط بالريسيفر.", Toast.LENGTH_LONG).show();
+                showMedia();
+            }).setNegativeButton("إغلاق", null).show();
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            selectedImageUri = data.getData();
-            showPhoneGallery();
+        if (resultCode != RESULT_OK || data == null) return;
+        if (requestCode == PICK_LOCAL_MEDIA_REQUEST) {
+            localMediaQueue.clear();
+            if (data.getClipData() != null) {
+                android.content.ClipData clips = data.getClipData();
+                for (int i=0; i<clips.getItemCount(); i++) {
+                    Uri uri = clips.getItemAt(i).getUri();
+                    localMediaQueue.add(uri);
+                    try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+                }
+            } else if (data.getData() != null) {
+                localMediaQueue.add(data.getData());
+                try { getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+            }
+            currentLocalMediaIndex = 0;
+            showMedia();
+            Toast.makeText(this, "تمت إضافة " + localMediaQueue.size() + " ملف إلى قائمة التشغيل", Toast.LENGTH_SHORT).show();
+        } else if (requestCode == PICK_IMAGE_REQUEST) {
+            slideshowQueue.clear();
+            if (data.getClipData() != null) {
+                android.content.ClipData clips = data.getClipData();
+                for (int i=0; i<clips.getItemCount(); i++) slideshowQueue.add(clips.getItemAt(i).getUri());
+            } else if (data.getData() != null) slideshowQueue.add(data.getData());
+            if (!slideshowQueue.isEmpty()) {
+                currentSlideIndex = 0;
+                selectedImageUri = slideshowQueue.get(0);
+                showPhoneGallery();
+                if (slideshowQueue.size() > 1) Toast.makeText(this, "تم اختيار " + slideshowQueue.size() + " صور. ربط العرض المتتابع بالإرسال للريسيفر خطوة لاحقة.", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
