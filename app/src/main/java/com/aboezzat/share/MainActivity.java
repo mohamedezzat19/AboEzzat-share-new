@@ -787,7 +787,7 @@ public class MainActivity extends Activity {
             card.addView(actions,lp(-1,42));
             cast.setOnClickListener(v->castUrl(url));
             best.setOnClickListener(v->castBestQuality());
-            download.setOnClickListener(v->downloadUrl(url, "application/octet-stream"));
+            download.setOnClickListener(v->downloadUrl(url, null));
             LinearLayout.LayoutParams cp=lp(-1,-2);cp.topMargin=dp(7);list.addView(card,cp);
         }
         if(mediaOrder.isEmpty()){
