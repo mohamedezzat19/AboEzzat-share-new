@@ -317,16 +317,7 @@ public class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     private void createWebView() {
         web=new WebView(this);
-        WebSettings s=web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setDatabaseEnabled(true);
-        s.setLoadsImagesAutomatically(true);
-        s.setSupportZoom(true);
-        s.setBuiltInZoomControls(true);
-        s.setDisplayZoomControls(false);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString());
+        BrowserEngine.configure(web);
         CookieManager.getInstance().setAcceptCookie(true);
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
@@ -374,13 +365,7 @@ public class MainActivity extends Activity {
         if(address==null)return;
         String input=address.getText().toString().trim();
         if(input.isEmpty())return;
-        String url=input;
-        if(!url.matches("(?i)^https?://.*")){
-            if(input.contains(" ")||!input.contains(".")){
-                try{url="https://www.google.com/search?q="+URLEncoder.encode(input,"UTF-8");}
-                catch(Exception ignored){}
-            }else url="https://"+input;
-        }
+        String url=BrowserEngine.normalizeAddress(input);
         saveHistory(url);
         address.setText(url);
         if(web!=null)web.loadUrl(url);
@@ -480,18 +465,7 @@ public class MainActivity extends Activity {
         if(receiverIp.isEmpty()){new AlertDialog.Builder(this).setTitle("إعداد الاستقبال").setMessage("لازم تحفظ عنوان IP الظاهر في تطبيق AboEzzat Receiver أولاً.").setPositiveButton("ضبط الآن",(d,w)->receiverSettings()).setNegativeButton("إلغاء",null).show();return;}
         final String ip=receiverIp;
         Toast.makeText(this,"جاري إرسال الوسائط إلى الشاشة…",Toast.LENGTH_SHORT).show();
-        new Thread(()->{
-            String error=null;
-            try(Socket socket=new Socket()){
-                socket.connect(new java.net.InetSocketAddress(ip,8081),4000);
-                socket.setSoTimeout(5000);
-                String encoded=URLEncoder.encode(url,"UTF-8");
-                String request="GET /?url="+encoded+" HTTP/1.1\r\nHost: "+ip+":8081\r\nConnection: close\r\n\r\n";
-                OutputStream out=socket.getOutputStream();out.write(request.getBytes(StandardCharsets.UTF_8));out.flush();
-            }catch(Exception e){error=e.getMessage();}
-            final String err=error;
-            runOnUiThread(()->Toast.makeText(this,err==null?"تم إرسال الطلب إلى Receiver. لو الرابط مدعوم سيبدأ التشغيل.":"فشل الإرسال: "+err+" — راجع عنوان IP والواي فاي.",Toast.LENGTH_LONG).show());
-        }).start();
+        CastingManager.send(ip, url, (success, message) -> runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()));
     }
 
     private void saveBookmark(){
