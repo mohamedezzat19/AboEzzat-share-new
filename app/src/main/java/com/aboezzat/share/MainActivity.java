@@ -667,11 +667,27 @@ public class MainActivity extends Activity {
     }
 
     private void castCurrent(){
-        String url=web==null?null:web.getUrl();
-        if(url==null||url.isEmpty()){Toast.makeText(this,"افتح صفحة أولاً",Toast.LENGTH_SHORT).show();return;}
+        String pageUrl=web==null?null:web.getUrl();
+        if(pageUrl==null||pageUrl.isEmpty()){Toast.makeText(this,"افتح صفحة أولاً",Toast.LENGTH_SHORT).show();return;}
         String best=null;
-        for(String candidate:mediaOrder){if(candidate.contains(".m3u8")||candidate.contains(".mp4")||candidate.contains(".mpd")||candidate.contains(".webm")){best=candidate;break;}}
-        castUrl(best==null?url:best);
+        int bestScore=-1;
+        int bestFormatScore=-1;
+        for(String candidate:mediaOrder){
+            String path=Uri.parse(candidate).getPath();
+            String lower=(path==null?candidate:path).toLowerCase(Locale.ROOT);
+            int formatScore;
+            if(lower.endsWith(".mp4")||lower.endsWith(".m4v"))formatScore=3;
+            else if(lower.endsWith(".webm")||lower.endsWith(".mov"))formatScore=2;
+            else if(lower.endsWith(".m3u8")||lower.endsWith(".mpd"))formatScore=1;
+            else continue;
+            String quality=MediaDetector.quality(candidate);
+            int score=0;
+            try{score=Integer.parseInt(quality.replace("p",""));}catch(Exception ignored){}
+            if(score>bestScore||(score==bestScore&&formatScore>bestFormatScore)){
+                bestScore=score;bestFormatScore=formatScore;best=candidate;
+            }
+        }
+        castUrl(best==null?pageUrl:best);
     }
 
     private void castUrl(String url){
