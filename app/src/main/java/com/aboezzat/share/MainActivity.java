@@ -584,8 +584,10 @@ public class MainActivity extends Activity {
         String u = (path == null ? url : path).toLowerCase(Locale.ROOT);
         if(u.endsWith(".m3u8"))return "HLS";
         if(u.endsWith(".mpd"))return "DASH";
-        if(u.endsWith(".mp3")||u.endsWith(".m4a")||u.endsWith(".aac")||u.endsWith(".ogg")||u.endsWith(".wav"))return "صوت";
-        return "فيديو";
+        if(u.endsWith(".jpg")||u.endsWith(".jpeg")||u.endsWith(".png")||u.endsWith(".webp")||u.endsWith(".gif")||u.endsWith(".bmp")||u.endsWith(".avif"))return "صورة";
+        if(u.endsWith(".mp3")||u.endsWith(".m4a")||u.endsWith(".aac")||u.endsWith(".ogg")||u.endsWith(".oga")||u.endsWith(".opus")||u.endsWith(".wav")||u.endsWith(".flac")||u.endsWith(".mid")||u.endsWith(".midi"))return "صوت";
+        if(u.endsWith(".mp4")||u.endsWith(".m4v")||u.endsWith(".webm")||u.endsWith(".mov")||u.endsWith(".avi")||u.endsWith(".mkv")||u.endsWith(".3gp")||u.endsWith(".ts"))return "فيديو";
+        return "وسائط";
     }
 
     private void receiverSettings(){
