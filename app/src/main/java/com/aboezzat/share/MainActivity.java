@@ -681,6 +681,17 @@ public class MainActivity extends Activity {
         boolean ok=false;
         String[] exts={".mp4",".m4v",".webm",".mov",".avi",".mkv",".3gp",".ts",".m3u8",".mpd",".mp3",".m4a",".aac",".ogg",".oga",".opus",".wav",".flac",".mid",".midi",".jpg",".jpeg",".png",".webp",".gif",".bmp",".avif"};
         for(String e:exts){if(lower.endsWith(e)){ok=true;break;}}
+        // Some services expose media through extensionless endpoints or signed URLs.
+        // Use known media-specific URL markers without treating every generic request as media.
+        String lowerUrl=url.toLowerCase(Locale.ROOT);
+        if (!ok) {
+            ok = lowerUrl.contains("mime=video") || lowerUrl.contains("mime=audio")
+                    || lowerUrl.contains("video_playback") || lowerUrl.contains("/videoplayback")
+                    || lowerUrl.contains("pull-") || lowerUrl.contains("format=mp4")
+                    || lowerUrl.contains("type=video") || lowerUrl.contains("type=audio")
+                    || lowerUrl.contains("contenttype=video") || lowerUrl.contains("content-type=video")
+                    || lowerUrl.contains("fbcdn.net") && (lowerUrl.contains("video") || lowerUrl.contains("audio"));
+        }
         if(!ok||media.containsKey(url))return;
         runOnUiThread(()->{
             if(media.containsKey(url))return;
