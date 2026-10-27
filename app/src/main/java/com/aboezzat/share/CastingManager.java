@@ -29,7 +29,7 @@ public final class CastingManager {
                 socket.setSoTimeout(4000);
                 String target = "/?url=" + URLEncoder.encode(url, "UTF-8");
                 OutputStream out = socket.getOutputStream();
-                out.write(("GET " + target + " HTTP/1.1\\r\\nHost: " + ip + ":8081\\r\\nConnection: close\\r\\n\\r\\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
