@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
     private boolean loadingHome = false;
     private Uri selectedImageUri;
     private volatile Uri selectedMediaUri;
+    private final java.util.concurrent.ConcurrentHashMap<String, Uri> localMediaSessions = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.ArrayList<Uri> localMediaQueue = new java.util.ArrayList<>();
     private final java.util.ArrayList<Uri> slideshowQueue = new java.util.ArrayList<>();
     private int currentSlideIndex = 0;
@@ -1290,7 +1291,24 @@ public class MainActivity extends Activity {
 
             boolean isPhoto = request.startsWith("GET /photo.jpg ");
             if (!isPhoto && request.startsWith("GET /photo.jpg?")) isPhoto = true;
-            boolean isMedia = request.startsWith("GET /media ");
+            boolean isMedia = request.startsWith("GET /media ") || request.startsWith("GET /media?");
+            String mediaSessionId = null;
+            if (isMedia) {
+                try {
+                    int pathStart = request.indexOf("GET ") + 4;
+                    int pathEnd = request.indexOf(' ', pathStart);
+                    String path = request.substring(pathStart, pathEnd);
+                    int queryStart = path.indexOf('?');
+                    if (queryStart >= 0) {
+                        for (String param : path.substring(queryStart + 1).split("&")) {
+                            if (param.startsWith("id=")) {
+                                mediaSessionId = java.net.URLDecoder.decode(param.substring(3), "UTF-8");
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) { mediaSessionId = null; }
+            }
             int requestedSlideIndex = -1;
             if (isPhoto && slideshowQueue.size() > 1) {
                 try {
@@ -1319,8 +1337,10 @@ public class MainActivity extends Activity {
                 return;
             }
 
-            // Capture the URI once; a playlist change must not switch the file mid-response.
-            final Uri uri = isMedia ? selectedMediaUri
+            // Capture one URI per request. Media URLs carry a session id so later playlist
+            // changes cannot make subsequent range requests read a different file.
+            final Uri uri = isMedia
+                    ? (mediaSessionId == null ? selectedMediaUri : localMediaSessions.get(mediaSessionId))
                     : (requestedSlideIndex >= 0 && requestedSlideIndex < slideshowQueue.size()
                         ? slideshowQueue.get(requestedSlideIndex) : selectedImageUri);
             if (uri == null) {
@@ -1492,6 +1512,10 @@ public class MainActivity extends Activity {
         selectedMediaUri = localMediaQueue.get(Math.max(0, Math.min(currentLocalMediaIndex, localMediaQueue.size()-1)));
         final Uri mediaToPlay = selectedMediaUri;
         final String mediaName = getDisplayName(mediaToPlay);
+        final String mediaSessionId = java.util.UUID.randomUUID().toString();
+        // Keep a bounded set of sessions for seek/range requests from the receiver.
+        if (localMediaSessions.size() >= 20) localMediaSessions.clear();
+        localMediaSessions.put(mediaSessionId, mediaToPlay);
         try {
             ensureLocalMediaServer();
             String phoneIp = findLocalIpv4();
@@ -1499,7 +1523,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
                 return;
             }
-            String url = "http://" + phoneIp + ":8082/media";
+            String url = "http://" + phoneIp + ":8082/media?id=" + mediaSessionId;
             CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() -> {
                 receiverConnected = success;
                 refreshConnectionLabel();
