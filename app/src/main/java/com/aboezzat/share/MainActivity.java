@@ -774,14 +774,17 @@ public class MainActivity extends Activity {
         LinearLayout r2 = row();
         TextView rw = button("⏪ -10 ث",PANEL,WHITE);
         TextView ff = button("+10 ث ⏩",PANEL,WHITE);
+        TextView stop = button("■ إيقاف",PANEL,WHITE);
         r2.addView(rw,new LinearLayout.LayoutParams(0,dp(42),1));
         r2.addView(ff,new LinearLayout.LayoutParams(0,dp(42),1));
+        r2.addView(stop,new LinearLayout.LayoutParams(0,dp(42),1));
         remote.addView(r2,lp(-1,dp(44)));
         prev.setOnClickListener(v -> sendRemoteCommand("prev"));
         play.setOnClickListener(v -> sendRemoteCommand("play_pause"));
         next.setOnClickListener(v -> sendRemoteCommand("next"));
         rw.setOnClickListener(v -> sendRemoteCommand("rw"));
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
+        stop.setOnClickListener(v -> sendRemoteCommand("stop"));
         content.addView(remote,lp(-1,-2));
         TextView info=button("عرض المصادر المكتشفة ("+mediaOrder.size()+")",PANEL2,GOLD);
         LinearLayout.LayoutParams ip=lp(-1,44);ip.topMargin=dp(6);content.addView(info,ip);
