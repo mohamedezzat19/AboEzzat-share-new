@@ -55,7 +55,7 @@ public final class CastingManager {
                     callback.onResult(false, "عنوان الريسيفر غير صالح");
                     return;
                 }
-                if (!("play_pause".equals(command) || "rw".equals(command) || "ff".equals(command) || "stop".equals(command))) {
+                if (!("play_pause".equals(command) || "rw".equals(command) || "ff".equals(command) || "stop".equals(command) || "volume_up".equals(command) || "volume_down".equals(command) || "mute".equals(command))) {
                     callback.onResult(false, "أمر الريموت غير مدعوم");
                     return;
                 }
