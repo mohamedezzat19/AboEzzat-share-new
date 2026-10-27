@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         buildShell();
+        setContentView(root);
         showHome();
     }
 
