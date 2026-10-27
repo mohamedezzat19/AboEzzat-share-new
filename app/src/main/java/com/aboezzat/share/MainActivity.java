@@ -288,12 +288,13 @@ public class MainActivity extends Activity {
     }
 
     private void showToolsMenu() {
-        String[] items = {"إعداد جهاز الاستقبال", "مركز الوسائط", "معرض الصور", "قائمة التشغيل", "تنزيل الصفحة الحالية"};
+        String[] items = {"إعداد جهاز الاستقبال", "مركز الوسائط", "معرض الصور", "قائمة التشغيل", "الوسائط المرسلة مؤخرًا", "تنزيل الصفحة الحالية"};
         new AlertDialog.Builder(this).setTitle("أدوات AboEzzat Share").setItems(items, (dialog, which) -> {
             if (which == 0) receiverSettings();
             else if (which == 1) showMedia();
             else if (which == 2) showPhoneGallery();
             else if (which == 3) showLibrary();
+            else if (which == 4) showRecentCastDialog();
             else downloadCurrent();
         }).show();
     }
@@ -1067,9 +1068,51 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private void rememberCastUrl(String url) {
+        try {
+            JSONArray old = new JSONArray(prefs.getString("recent_cast_urls", "[]"));
+            JSONArray updated = new JSONArray();
+            updated.put(url);
+            for (int i = 0; i < old.length() && updated.length() < 20; i++) {
+                String previous = old.optString(i);
+                if (!url.equals(previous)) updated.put(previous);
+            }
+            prefs.edit().putString("recent_cast_urls", updated.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    private void showRecentCastDialog() {
+        JSONArray recent;
+        try {
+            recent = new JSONArray(prefs.getString("recent_cast_urls", "[]"));
+        } catch (Exception e) {
+            recent = new JSONArray();
+        }
+        if (recent.length() == 0) {
+            new AlertDialog.Builder(this).setTitle("الوسائط المرسلة مؤخرًا")
+                    .setMessage("لسه ما بعتش روابط وسائط من التطبيق.")
+                    .setPositiveButton("حسنًا", null).show();
+            return;
+        }
+        String[] labels = new String[recent.length()];
+        String[] urls = new String[recent.length()];
+        for (int i = 0; i < recent.length(); i++) {
+            urls[i] = recent.optString(i);
+            labels[i] = urls[i];
+        }
+        new AlertDialog.Builder(this).setTitle("الوسائط المرسلة مؤخرًا")
+                .setItems(labels, (dialog, which) -> castUrl(urls[which]))
+                .setNeutralButton("مسح السجل", (dialog, which) -> {
+                    prefs.edit().remove("recent_cast_urls").apply();
+                    Toast.makeText(this, "تم مسح سجل الوسائط المرسلة", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("إغلاق", null).show();
+    }
+
     private void castUrl(String url){
         if(receiverIp.isEmpty()){new AlertDialog.Builder(this).setTitle("إعداد الاستقبال").setMessage("لازم تحفظ عنوان IP الظاهر في تطبيق AboEzzat Receiver أولاً.").setPositiveButton("ضبط الآن",(d,w)->receiverSettings()).setNegativeButton("إلغاء",null).show();return;}
         final String ip=receiverIp;
+        rememberCastUrl(url);
         Toast.makeText(this,"جاري إرسال الوسائط إلى الشاشة…",Toast.LENGTH_SHORT).show();
         CastingManager.send(ip, url, (success, message) -> runOnUiThread(() -> {
             receiverConnected = success;
