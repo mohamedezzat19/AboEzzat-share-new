@@ -429,6 +429,7 @@ public class MainActivity extends Activity {
                 intent.setType("image/*");
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
                 startActivityForResult(intent, PICK_IMAGE_REQUEST);
             } catch (Exception e) {
                 Toast.makeText(this, "مفيش تطبيق لاختيار الصور متاح على الجهاز", Toast.LENGTH_LONG).show();
@@ -1449,13 +1450,25 @@ public class MainActivity extends Activity {
             slideshowQueue.clear();
             if (data.getClipData() != null) {
                 android.content.ClipData clips = data.getClipData();
-                for (int i=0; i<clips.getItemCount(); i++) slideshowQueue.add(clips.getItemAt(i).getUri());
-            } else if (data.getData() != null) slideshowQueue.add(data.getData());
+                for (int i=0; i<clips.getItemCount(); i++) {
+                    Uri uri = clips.getItemAt(i).getUri();
+                    if (uri != null) {
+                        slideshowQueue.add(uri);
+                        try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+                        catch (Exception ignored) { /* Some providers grant temporary-only access. */ }
+                    }
+                }
+            } else if (data.getData() != null) {
+                Uri uri = data.getData();
+                slideshowQueue.add(uri);
+                try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
+                catch (Exception ignored) { /* Some providers grant temporary-only access. */ }
+            }
             if (!slideshowQueue.isEmpty()) {
                 currentSlideIndex = 0;
                 selectedImageUri = slideshowQueue.get(0);
                 showPhoneGallery();
-                if (slideshowQueue.size() > 1) Toast.makeText(this, "تم اختيار " + slideshowQueue.size() + " صور. ربط العرض المتتابع بالإرسال للريسيفر خطوة لاحقة.", Toast.LENGTH_LONG).show();
+                if (slideshowQueue.size() > 1) Toast.makeText(this, "تم اختيار " + slideshowQueue.size() + " صور. تقدر تبدأ عرض الشرائح تلقائيًا من نفس الصفحة.", Toast.LENGTH_LONG).show();
             }
         }
     }
