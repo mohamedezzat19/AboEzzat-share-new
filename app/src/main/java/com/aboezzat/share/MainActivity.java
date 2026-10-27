@@ -1020,7 +1020,8 @@ public class MainActivity extends Activity {
             String line;
             while ((line = reader.readLine()) != null && !line.isEmpty()) { }
             boolean isPhoto = request != null && request.startsWith("GET /photo.jpg ");
-            boolean isMedia = request != null && request.startsWith("GET /media ");\n            if (!isPhoto && !isMedia) {
+            boolean isMedia = request != null && request.startsWith("GET /media ");
+            if (!isPhoto && !isMedia) {
                 byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
                 socket.getOutputStream().write(("HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: " + notFound.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
                 socket.getOutputStream().write(notFound);
