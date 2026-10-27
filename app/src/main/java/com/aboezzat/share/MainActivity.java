@@ -586,6 +586,11 @@ public class MainActivity extends Activity {
     }
 
     private void sendRemoteCommand(String command) {
+        // Receiver's current HTTP protocol only accepts media URLs; it does not parse ?command=.
+        // Avoid reporting a false success for remote buttons that the receiver cannot execute.
+        Toast.makeText(this, "الريسيفر الحالي لا يدعم أوامر الريموت بعد؛ إرسال الأمر لن يغيّر التشغيل.", Toast.LENGTH_LONG).show();
+        return;
+        /*
         String ip = receiverIp == null ? "" : receiverIp.trim();
         if (ip.isEmpty()) {
             Toast.makeText(this, "اضبط عنوان IP للريسيفر أولاً", Toast.LENGTH_SHORT).show();
@@ -606,6 +611,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> Toast.makeText(this, "تعذر إرسال أمر الريموت: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
         }, "RemoteCommand").start();
+        */
     }
 
     private void showMedia(){
