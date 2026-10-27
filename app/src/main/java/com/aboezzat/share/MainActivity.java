@@ -74,6 +74,33 @@ public class MainActivity extends Activity {
         buildShell();
         setContentView(root);
         showHome();
+        handleSharedIntent(getIntent());
+    }
+
+    @Override protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleSharedIntent(intent);
+    }
+
+    private void handleSharedIntent(android.content.Intent intent) {
+        if (intent == null || !android.content.Intent.ACTION_SEND.equals(intent.getAction())) return;
+        String shared = intent.getStringExtra(android.content.Intent.EXTRA_TEXT);
+        if (shared == null || shared.trim().isEmpty()) return;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(?i)https?://[^\\s<>\\\"']+")
+                .matcher(shared);
+        if (!matcher.find()) {
+            Toast.makeText(this, "لم يتم العثور على رابط في المشاركة", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
+        String normalized = BrowserEngine.normalizeAddress(sharedUrl);
+        showBrowser();
+        if (address != null) {
+            address.setText(normalized);
+            if (web != null) web.loadUrl(normalized);
+        }
     }
 
     private int dp(float n) {
