@@ -1173,6 +1173,7 @@ public class MainActivity extends Activity {
             }
 
             boolean isPhoto = request.startsWith("GET /photo.jpg ");
+            if (!isPhoto && request.startsWith("GET /photo.jpg?")) isPhoto = true;
             boolean isMedia = request.startsWith("GET /media ");
             int requestedSlideIndex = -1;
             if (isPhoto && slideshowQueue.size() > 1) {
