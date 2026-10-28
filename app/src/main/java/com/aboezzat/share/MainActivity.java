@@ -227,7 +227,7 @@ public class MainActivity extends Activity {
         if (web == null) createWebView();
         Toast.makeText(this, "جاري فتح الرابط بمتصفح Share واستخدام جلسة تسجيل الدخول المحفوظة…", Toast.LENGTH_LONG).show();
         web.loadUrl(url);
-        receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(url, generation, 0), 1200L);
+        receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(url, generation, 0), 250L);
     }
 
     private void resolveSharedVideoFromBrowser(String pageUrl, int generation, int attempt) {
@@ -240,6 +240,7 @@ public class MainActivity extends Activity {
                 String mediaUrl = parsed == null ? "" : String.valueOf(parsed);
                 if (!mediaUrl.isEmpty() && !"null".equals(mediaUrl)
                         && !mediaUrl.startsWith("blob:") && !mediaUrl.startsWith("data:")
+                        && BrowserEngine.isWebUrl(mediaUrl)
                         && isVideoCandidate(mediaUrl) && !mediaUrl.equals(pageUrl)) {
                     currentPlayingVideoUrl = mediaUrl;
                     Toast.makeText(this, "تم العثور على رابط الفيديو من جلسة المتصفح؛ جاري إرساله للشاشة…", Toast.LENGTH_LONG).show();
@@ -247,11 +248,15 @@ public class MainActivity extends Activity {
                     return;
                 }
             } catch (Exception ignored) { }
-            if (attempt < 18) {
-                receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 1000L);
+            // Give Share's authenticated browser up to about five seconds to expose the actual stream.
+            // Never send the platform page URL to Receiver as a fallback: Receiver should receive
+            // a direct media URL and play it with ExoPlayer, not open a second WebView/extractor.
+            if (attempt < 16) {
+                receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 300L);
             } else {
-                Toast.makeText(this, "لم يظهر رابط فيديو مباشر داخل المتصفح؛ سأرسل رابط الصفحة للريسيفر كخطة بديلة.", Toast.LENGTH_LONG).show();
-                sendPlatformLinkToReceiver(pageUrl);
+                Toast.makeText(this,
+                        "ماقدرتش ألتقط رابط الفيديو المباشر خلال 5 ثوانٍ. سيب الصفحة تكمّل التحميل أو شغّل الفيديو داخل Share؛ لم يتم إرسال رابط الصفحة للشاشة.",
+                        Toast.LENGTH_LONG).show();
             }
         });
     }
