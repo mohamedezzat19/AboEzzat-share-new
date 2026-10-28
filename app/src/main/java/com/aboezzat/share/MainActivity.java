@@ -669,6 +669,14 @@ public class MainActivity extends Activity {
                 else request.deny();
             } catch (Exception ignored) { }
             if (!granted) Toast.makeText(this, "لازم تسمح بالمايك لاستخدام البحث الصوتي", Toast.LENGTH_LONG).show();
+        } else if (requestCode == REQUEST_NOTIFICATIONS) {
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (!granted) {
+                Toast.makeText(this,
+                        "إشعارات تقدم الاستخراج متوقفة. افتح إعدادات التطبيق وفعّل الإشعارات للسماح بظهورها في لوحة إشعارات أندرويد.",
+                        Toast.LENGTH_LONG).show();
+            }
         }
     }
 
