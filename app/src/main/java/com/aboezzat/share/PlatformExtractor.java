@@ -54,12 +54,29 @@ final class PlatformExtractor {
                         JSONObject result = new JSONObject(response.body().string());
                         String status = result.optString("status", "").toLowerCase(Locale.ROOT);
                         String candidate = result.optString("url", "");
-                        if (("redirect".equals(status) || "tunnel".equals(status))
+                        if ("picker".equals(status)) {
+                            org.json.JSONArray items = result.optJSONArray("picker");
+                            if (items != null) {
+                                for (int i = 0; i < items.length(); i++) {
+                                    JSONObject item = items.optJSONObject(i);
+                                    if (item == null) continue;
+                                    String type = item.optString("type", "").toLowerCase(Locale.ROOT);
+                                    String itemUrl = item.optString("url", "");
+                                    if (("video".equals(type) || "audio".equals(type))
+                                            && isHttpUrl(itemUrl) && !itemUrl.equals(pageUrl)) {
+                                        candidate = itemUrl;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (("redirect".equals(status) || "tunnel".equals(status)
+                                || "picker".equals(status))
                                 && isHttpUrl(candidate) && !candidate.equals(pageUrl)) {
                             found = candidate;
-                            message = "تم العثور على رابط من محرك الاستخراج.";
+                            message = "تم العثور على رابط وسائط من محرك الاستخراج (" + status + ").";
                         } else {
-                            message = "المحرك لم يُرجع redirect/tunnel صالحًا (الحالة: "
+                            message = "المحرك لم يُرجع رابط وسائط صالحًا (الحالة: "
                                     + (status.isEmpty() ? "غير معروفة" : status) + ").";
                         }
                     }
