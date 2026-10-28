@@ -25,7 +25,7 @@ public final class MediaDetector {
             .connectTimeout(6, TimeUnit.SECONDS).readTimeout(8, TimeUnit.SECONDS).build();
 
     private static final Pattern URL_PATTERN = Pattern.compile(
-            "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m3u8|mpd|webm|m4v|mov|mp3|m4a|aac|ogg|wav)(?:\\?[^\\s\\\"'<>]*)?)");
+            "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|ts|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpe?g|png|webp|gif|bmp|avif)(?:\\?[^\\s\\\"'<>]*)?)");
     private static final Pattern MEDIA_EXTENSION = Pattern.compile(
             "(?i)\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|ts|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|mid|midi|jpe?g|png|webp|gif|bmp|avif)$");
 
