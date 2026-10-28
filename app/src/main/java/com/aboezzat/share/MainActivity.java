@@ -1376,6 +1376,14 @@ public class MainActivity extends Activity {
             @Override public void onPermissionRequest(android.webkit.PermissionRequest request) {
                 runOnUiThread(() -> requestBrowserMicrophonePermission(request));
             }
+            @Override public void onPermissionRequestCanceled(android.webkit.PermissionRequest request) {
+                runOnUiThread(() -> {
+                    if (pendingWebPermissionRequest == request) {
+                        pendingWebPermissionRequest = null;
+                        Log.i("AboEzzatBrowser", "Website canceled its microphone permission request");
+                    }
+                });
+            }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (browserFileCallback != null) {
                     browserFileCallback.onReceiveValue(null);
@@ -1446,6 +1454,14 @@ public class MainActivity extends Activity {
                     }
                     @Override public void onPermissionRequest(android.webkit.PermissionRequest request) {
                         runOnUiThread(() -> requestBrowserMicrophonePermission(request));
+                    }
+                    @Override public void onPermissionRequestCanceled(android.webkit.PermissionRequest request) {
+                        runOnUiThread(() -> {
+                            if (pendingWebPermissionRequest == request) {
+                                pendingWebPermissionRequest = null;
+                                Log.i("AboEzzatBrowser", "Popup website canceled its microphone permission request");
+                            }
+                        });
                     }
                 });
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
