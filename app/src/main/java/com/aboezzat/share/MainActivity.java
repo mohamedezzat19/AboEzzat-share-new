@@ -1513,7 +1513,7 @@ public class MainActivity extends Activity {
                         castActionButton.setTextColor(GOLD);
                         castActionButton.setBackground(shape(PANEL2, GOLD, 50));
                         castActionButton.setContentDescription("تم العثور على فيديو قابل للإرسال");
-                        AlphaAnimation pulse = new AlphaAnimation(1.0f, 0.45f);
+                Object parsed = new org.json.JSONTokener(value == null ? "\\\"\\\"" : value).nextValue();
                         pulse.setDuration(700);
                         pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
                         pulse.setRepeatCount(2);
