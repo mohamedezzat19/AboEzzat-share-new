@@ -258,7 +258,7 @@ public class MainActivity extends Activity {
         web.evaluateJavascript(js, value -> {
             if (generation != authenticatedResolveGeneration || isFinishing()) return;
             try {
-                Object parsed = new org.json.JSONTokener(value == null ? "\\"\\"" : value).nextValue();
+                Object parsed = new org.json.JSONTokener(value == null ? "\"[]\"" : value).nextValue();
                 String listJson = parsed == null ? "[]" : String.valueOf(parsed);
                 JSONArray candidates = new JSONArray(listJson);
                 for (int i = 0; i < candidates.length(); i++) {
