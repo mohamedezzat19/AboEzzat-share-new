@@ -1270,7 +1270,7 @@ public class MainActivity extends Activity {
                 "var out=[];var videos=document.querySelectorAll('video');" +
                 "for(var j=0;j<videos.length;j++){var v=videos[j];var u=v.currentSrc||v.src;" +
                 "if(u&&/^https?:/i.test(u)&&out.indexOf(u)<0)out.push(u);}" +
-                "var meta=document.querySelector('meta[property=\\\"og:video\\\"],meta[property=\\\"og:video:secure_url\\\"]');" +
+                "var meta=document.querySelector(\"meta[property='og:video'],meta[property='og:video:secure_url']\");" +
                 "if(meta&&meta.content&&/^https?:/i.test(meta.content)&&out.indexOf(meta.content)<0)out.push(meta.content);" +
                 "return JSON.stringify(out);}catch(e){return '[]';}})()";
         view.evaluateJavascript(js, value -> {
