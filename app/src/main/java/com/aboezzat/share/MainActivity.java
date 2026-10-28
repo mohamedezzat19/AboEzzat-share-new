@@ -1323,15 +1323,38 @@ public class MainActivity extends Activity {
             String fileName=source.getLastPathSegment();
             if(fileName==null||fileName.trim().isEmpty()||".".equals(fileName)||"..".equals(fileName))fileName="media_download";
             fileName=fileName.replaceAll("[^a-zA-Z0-9._-]","_");
-            if(fileName.length()>120)fileName=fileName.substring(fileName.length()-120);
+            if(fileName.length()>100)fileName=fileName.substring(fileName.length()-100);
             if(fileName.isEmpty()||".".equals(fileName)||"..".equals(fileName))fileName="media_download";
+            // Avoid DownloadManager replacing an earlier file with the same name.
+            int dot = fileName.lastIndexOf('.');
+            String stamp = "_" + System.currentTimeMillis();
+            fileName = dot > 0 ? fileName.substring(0, dot) + stamp + fileName.substring(dot) : fileName + stamp;
             req.setTitle("AboEzzat Share download");
             req.setDescription("تنزيل من المتصفح");
             req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             req.setAllowedOverMetered(true);
             req.setAllowedOverRoaming(false);
             req.setDestinationInExternalFilesDir(this,Environment.DIRECTORY_DOWNLOADS,fileName);
-            if(mime!=null)req.setMimeType(mime);
+            String resolvedMime = mime;
+            if (resolvedMime == null || resolvedMime.trim().isEmpty() || "application/octet-stream".equalsIgnoreCase(resolvedMime)) {
+                String path = source.getPath();
+                String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
+                if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) resolvedMime = "video/mp4";
+                else if (lower.endsWith(".webm")) resolvedMime = "video/webm";
+                else if (lower.endsWith(".m3u8")) resolvedMime = "application/vnd.apple.mpegurl";
+                else if (lower.endsWith(".mpd")) resolvedMime = "application/dash+xml";
+                else if (lower.endsWith(".mp3")) resolvedMime = "audio/mpeg";
+                else if (lower.endsWith(".m4a")) resolvedMime = "audio/mp4";
+                else if (lower.endsWith(".aac")) resolvedMime = "audio/aac";
+                else if (lower.endsWith(".ogg")) resolvedMime = "audio/ogg";
+                else if (lower.endsWith(".wav")) resolvedMime = "audio/wav";
+                else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) resolvedMime = "image/jpeg";
+                else if (lower.endsWith(".png")) resolvedMime = "image/png";
+                else if (lower.endsWith(".webp")) resolvedMime = "image/webp";
+                else if (lower.endsWith(".gif")) resolvedMime = "image/gif";
+                else resolvedMime = "application/octet-stream";
+            }
+            req.setMimeType(resolvedMime);
             dm.enqueue(req);
             Toast.makeText(this,"بدأ التنزيل — هتلاقيه في إشعارات الجهاز",Toast.LENGTH_LONG).show();
         }catch(Exception e){Toast.makeText(this,"تعذّر بدء التنزيل: "+e.getMessage(),Toast.LENGTH_LONG).show();}
