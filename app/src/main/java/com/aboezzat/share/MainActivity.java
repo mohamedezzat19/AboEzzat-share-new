@@ -143,8 +143,27 @@ public class MainActivity extends Activity {
         if (intent == null) return;
         String action = intent.getAction();
 
-        // Preserve shared-link behavior, while also accepting shared local media files.
-        if (android.content.Intent.ACTION_SEND.equals(action)) {
+        // Accept links opened from other apps as well as shared text/files.
+        if (android.content.Intent.ACTION_VIEW.equals(action)) {
+            Uri data = intent.getData();
+            if (data == null) return;
+
+            String scheme = data.getScheme();
+            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                String sharedUrl = BrowserEngine.normalizeAddress(data.toString());
+                showBrowser();
+                if (address != null) {
+                    address.setText(sharedUrl);
+                    if (web != null) web.loadUrl(sharedUrl);
+                }
+                return;
+            }
+
+            if ("content".equalsIgnoreCase(scheme) || "file".equalsIgnoreCase(scheme)) {
+                acceptSharedMedia(java.util.Collections.singletonList(data));
+                return;
+            }
+        } else if (android.content.Intent.ACTION_SEND.equals(action)) {
             String shared = intent.getStringExtra(android.content.Intent.EXTRA_TEXT);
             if (shared != null && !shared.trim().isEmpty()) {
                 java.util.regex.Matcher matcher = java.util.regex.Pattern
