@@ -231,6 +231,11 @@ public class MainActivity extends Activity {
             return;
         }
         final int generation = ++authenticatedResolveGeneration;
+        receiverMonitorHandler.removeCallbacks(autoCastDetectedMediaRunnable);
+        pendingAutoCastPageUrl = "";
+        media.clear();
+        mediaOrder.clear();
+        selectedTrackUrls.clear();
         showBrowser();
         if (address != null) address.setText(url);
         if (web == null) createWebView();
