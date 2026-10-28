@@ -181,13 +181,14 @@ public class MainActivity extends Activity {
                 return;
             }
         } else if (android.content.Intent.ACTION_SEND.equals(action)) {
-            String shared = intent.getStringExtra(android.content.Intent.EXTRA_TEXT);
+            CharSequence sharedText = intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
+            String shared = sharedText == null ? null : sharedText.toString();
             if (shared != null && !shared.trim().isEmpty()) {
                 java.util.regex.Matcher matcher = java.util.regex.Pattern
                         .compile("(?i)https?://[^\\s<>\\\"']+")
                         .matcher(shared);
                 if (matcher.find()) {
-                    String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
+                    String sharedUrl = matcher.group().replaceAll("[),.?!;،؛؟\\]}]+$", "");
                     String normalized = BrowserEngine.normalizeAddress(sharedUrl);
                     // A shared URL is treated as a playback request first; Receiver resolves
                     // direct media when the public page exposes a playable stream.
@@ -3079,6 +3080,9 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy(){
+        // Invalidate pending authenticated WebView URL-resolution retries before
+        // destroying tabs so late JavaScript callbacks cannot act on stale pages.
+        authenticatedResolveGeneration++;
         receiverMonitorHandler.removeCallbacks(receiverMonitorRunnable);
         slideshowRunning = false;
         slideshowHandler.removeCallbacks(slideshowRunnable);
