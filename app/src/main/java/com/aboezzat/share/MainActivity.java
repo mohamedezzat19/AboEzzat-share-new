@@ -2001,7 +2001,20 @@ public class MainActivity extends Activity {
                 currentLocalMediaIndex = which;
                 playSelectedLocalMedia();
                 showMedia();
-            }).setNegativeButton("إغلاق", null).show();
+            })
+            .setNeutralButton("مسح القائمة", (d, which) -> new AlertDialog.Builder(this)
+                .setTitle("مسح قائمة التشغيل؟")
+                .setMessage("سيتم حذف الملفات من قائمة التطبيق فقط، ولن تُحذف الملفات الأصلية من الهاتف.")
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("مسح", (confirm, selected) -> {
+                    localMediaQueue.clear();
+                    currentLocalMediaIndex = 0;
+                    selectedMediaUri = null;
+                    prefs.edit().remove("local_media_queue").putInt("local_media_index", 0).apply();
+                    showMedia();
+                    Toast.makeText(this, "تم مسح قائمة التشغيل", Toast.LENGTH_SHORT).show();
+                }).show())
+            .setNegativeButton("إغلاق", null).show();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
