@@ -2474,7 +2474,10 @@ public class MainActivity extends Activity {
                     req.addRequestHeader("Referer", pageUrl);
                 }
             } catch (Exception ignored) {}
-            req.addRequestHeader("User-Agent", System.getProperty("http.agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36"));
+            String downloadUserAgent = null;
+            try { if (web != null) downloadUserAgent = web.getSettings().getUserAgentString(); } catch (Exception ignored) {}
+            if (downloadUserAgent == null || downloadUserAgent.trim().isEmpty()) downloadUserAgent = System.getProperty("http.agent", "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36");
+            req.addRequestHeader("User-Agent", downloadUserAgent);
             String fileName=source.getLastPathSegment();
             if(fileName==null||fileName.trim().isEmpty()||".".equals(fileName)||"..".equals(fileName))fileName="media_download";
             fileName=fileName.replaceAll("[^a-zA-Z0-9._-]","_");
