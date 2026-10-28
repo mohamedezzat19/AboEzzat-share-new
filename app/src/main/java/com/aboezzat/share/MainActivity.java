@@ -1342,6 +1342,8 @@ public class MainActivity extends Activity {
                         createWebView();
                         ensureBrowserTabRegistered();
                     } else {
+                        // Removing a crashed background tab shifts every later tab index left.
+                        if (crashedIndex < activeBrowserTab) activeBrowserTab--;
                         activeBrowserTab = Math.max(0, Math.min(activeBrowserTab, browserTabs.size() - 1));
                         web = browserTabs.get(activeBrowserTab);
                     }
