@@ -496,7 +496,6 @@ public class MainActivity extends Activity {
             {"🔥", "المواقع الأكثر زيارة", "popular"},
             {"📥", "التنزيلات", "downloads"},
             {"💾", "نسخة احتياطية واستعادة", "backup"},
-            {"⚙️", "أذونات التطبيق", "settings"},
             {"🚪", "خروج", "exit"}
         };
         for (String[] entry : entries) {
@@ -1915,19 +1914,23 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "لم يتم العثور على عنوان IP صالح", Toast.LENGTH_LONG).show();
                 return;
             }
-            String[] choices = valid.toArray(new String[0]);
+            // One picker only: each row identifies the Receiver and its IP.
+            String[] choices = new String[valid.size()];
+            for (int i = 0; i < valid.size(); i++) {
+                choices[i] = "AboEzzat Receiver  •  " + valid.get(i);
+            }
             new AlertDialog.Builder(this)
-                    .setTitle("جهاز الاستقبال — اختر عنوان IP")
+                    .setTitle("جهاز الاستقبال — اختر الجهاز")
                     .setItems(choices, (dialog, which) -> {
-                        String selectedIp = choices[which];
+                        String selectedIp = valid.get(which);
                         receiverIp = selectedIp;
                         receiverConnected = true;
                         prefs.edit().putString("receiver_ip", selectedIp).apply();
                         refreshConnectionLabel();
-                        Toast.makeText(this, "تم حفظ جهاز الاستقبال: " + selectedIp, Toast.LENGTH_LONG).show();
                     })
                     .setNeutralButton("إعادة البحث", (dialog, which) -> showReceiverPicker())
-                    .setNegativeButton("إدخال IP يدويًا", (dialog, which) -> receiverSettings())
+                    .setNegativeButton("إلغاء", null)
+                    .setPositiveButton("إدخال IP يدويًا", (dialog, which) -> receiverSettings())
                     .show();
         }));
     }
@@ -2014,7 +2017,7 @@ public class MainActivity extends Activity {
     private void refreshConnectionLabel(){
         if (connectionLabel == null) return;
         if (receiverIp == null || receiverIp.isEmpty()) {
-            connectionLabel.setText("● لا يوجد جهاز محدد — افتح إعدادات الاستقبال لاختيار Receiver");
+            connectionLabel.setText("● لا يوجد جهاز محدد — اضغط «جهاز الاستقبال» لاختيار شاشة");
         } else {
             connectionLabel.setText((receiverConnected ? "● الريسيفر متاح: " : "● الجهاز المختار (إعادة المحاولة على نفس العنوان): ") + receiverIp + ":8081");
         }
