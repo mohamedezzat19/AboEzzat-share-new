@@ -244,6 +244,7 @@ public class MainActivity extends Activity {
         media.clear();
         mediaOrder.clear();
         selectedTrackUrls.clear();
+        currentPlayingVideoUrl = "";
         showBrowser();
         if (address != null) address.setText(url);
         if (web == null) createWebView();
@@ -281,7 +282,30 @@ public class MainActivity extends Activity {
                     }
                 }
             } catch (Exception ignored) { }
-            // Poll the authenticated page briefly for a direct stream. Never send the page URL itself.
+            // The WebView request interceptor may already have captured a CDN stream
+            // even when JavaScript cannot see it in the DOM/performance resource list.
+            String captured = currentPlayingVideoUrl;
+            if (captured == null || captured.isEmpty() || !isVideoCandidate(captured)
+                    || captured.equals(pageUrl) || captured.startsWith("blob:")
+                    || captured.startsWith("data:")) {
+                captured = null;
+                for (int i = mediaOrder.size() - 1; i >= 0; i--) {
+                    String candidate = mediaOrder.get(i);
+                    if (isVideoCandidate(candidate) && !candidate.equals(pageUrl)
+                            && !candidate.startsWith("blob:") && !candidate.startsWith("data:")) {
+                        captured = candidate;
+                        break;
+                    }
+                }
+            }
+            if (captured != null && !captured.isEmpty()) {
+                currentPlayingVideoUrl = captured;
+                Toast.makeText(this, "تم التقاط رابط البث من طلبات الفيديو؛ جاري إرساله للشاشة…", Toast.LENGTH_LONG).show();
+                castUrl(captured);
+                return;
+            }
+            // Poll the authenticated page for longer because social players can load streams late.
+            // Never send the page URL itself.
             if (attempt < 40) {
                 receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 500L);
             } else {
@@ -2438,9 +2462,14 @@ public class MainActivity extends Activity {
                 || lowerHost.contains("byteoversea") || lowerHost.contains("ibytedtos")
                 || lowerHost.contains("muscdn") || lowerHost.contains("fbcdn.net")
                 || lowerHost.contains("fbsbx.com") || lowerHost.contains("cdninstagram.com");
-        return socialCdn && (lower.contains("video") || lower.contains("playback")
+        boolean knownVideoPath = lower.contains("/v/t42.") || lower.contains("/v/t39.")
+                || lower.contains("/v/t16.") || lower.contains("/ext_tw_video/")
+                || lower.contains("/amplify_video/") || lower.contains("/tweet_video/");
+        return (socialCdn && (lower.contains("video") || lower.contains("playback")
                 || lower.contains("bytevc") || lower.contains("avc1") || lower.contains("hevc")
-                || lower.contains("dash") || lower.contains("v/t16") || lower.contains("v/t39"));
+                || lower.contains("dash") || lower.contains("v/t16") || lower.contains("v/t39")
+                || knownVideoPath))
+                || ("video.twimg.com".equals(lowerHost) && knownVideoPath);
     }
 
     private void castBestQuality() {
