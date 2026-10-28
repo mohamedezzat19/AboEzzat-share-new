@@ -487,7 +487,6 @@ public class MainActivity extends Activity {
             {"🔥", "المواقع الأكثر زيارة", "popular"},
             {"📥", "التنزيلات", "downloads"},
             {"📡", "إعداد جهاز الاستقبال (TV IP)", "receiver"},
-            {"🌙", "الوضع المظلم", "dark"},
             {"💾", "نسخة احتياطية واستعادة", "backup"},
             {"⚙️", "الإعدادات", "settings"},
             {"🚪", "خروج", "exit"}
@@ -559,11 +558,11 @@ public class MainActivity extends Activity {
         else if ("recent".equals(key)) showRecentCastDialog();
         else if ("playlist".equals(key)) showLocalPlaylist();
         else if ("saved_media".equals(key)) showSavedMedia();
-        else if ("bookmarks".equals(key) || "history".equals(key)) showLibrary();
+        else if ("bookmarks".equals(key)) showLibrary("bookmarks");
+        else if ("history".equals(key)) showLibrary("history");
         else if ("popular".equals(key)) showPopularSites();
         else if ("downloads".equals(key)) openDownloads();
         else if ("receiver".equals(key) || "settings".equals(key)) receiverSettings();
-        else if ("dark".equals(key)) Toast.makeText(this, "الوضع الداكن مفعل بالفعل", Toast.LENGTH_SHORT).show();
         else if ("backup".equals(key)) showBackupOptions();
         else if ("exit".equals(key)) finish();
     }
@@ -1937,14 +1936,35 @@ public class MainActivity extends Activity {
         }catch(Exception ignored){}
     }
 
-    private void showLibrary(){
-        header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
-        currentPage="library";resetContent();
-        addSection(content,"مكتبتك","المواقع المحفوظة وآخر الصفحات");
-        addUrlCollection(content,"☆ المفضلة","bookmarks");
-        addUrlCollection(content,"◷ سجل التصفح","history");
-        TextView clear=button("مسح سجل التصفح",PANEL2,MUTED);LinearLayout.LayoutParams p=lp(-1,44);p.topMargin=dp(12);content.addView(clear,p);
-        clear.setOnClickListener(v->{prefs.edit().remove("history").apply();showLibrary();Toast.makeText(this,"تم مسح السجل",Toast.LENGTH_SHORT).show();});
+    private void showLibrary() {
+        showLibrary(null);
+    }
+
+    private void showLibrary(String focusKey) {
+        header.setVisibility(View.VISIBLE);
+        bottom.setVisibility(View.VISIBLE);
+        currentPage = "library";
+        resetContent();
+
+        boolean showBookmarks = focusKey == null || "bookmarks".equals(focusKey);
+        boolean showHistory = focusKey == null || "history".equals(focusKey);
+        String title = "bookmarks".equals(focusKey) ? "العلامات المرجعية"
+                : "history".equals(focusKey) ? "سجل التصفح" : "مكتبتك";
+        addSection(content, title, "افتح أي عنصر للرجوع إليه، واضغط مطولًا لحذفه");
+
+        if (showBookmarks) addUrlCollection(content, "☆ المفضلة", "bookmarks");
+        if (showHistory) {
+            addUrlCollection(content, "◷ سجل التصفح", "history");
+            TextView clear = button("مسح سجل التصفح", PANEL2, MUTED);
+            LinearLayout.LayoutParams p = lp(-1, 44);
+            p.topMargin = dp(12);
+            content.addView(clear, p);
+            clear.setOnClickListener(v -> {
+                prefs.edit().remove("history").apply();
+                showLibrary("history".equals(focusKey) ? "history" : null);
+                Toast.makeText(this, "تم مسح السجل", Toast.LENGTH_SHORT).show();
+            });
+        }
     }
 
     private void addUrlCollection(LinearLayout parent,String title,String key){
