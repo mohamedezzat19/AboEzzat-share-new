@@ -50,6 +50,8 @@ import java.net.NetworkInterface;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.URLEncoder;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
