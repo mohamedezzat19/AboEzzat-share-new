@@ -1484,17 +1484,18 @@ public class MainActivity extends Activity {
                     web = browserTabs.get(activeBrowserTab);
                     showBrowser();
 
-                    for (int i = 0; i < savedUrls.size(); i++) {
-                        final WebView freshTab = browserTabs.get(i);
-                        final String restoreUrl = savedUrls.get(i);
-                        if (!restoreUrl.isEmpty()) {
-                            receiverMonitorHandler.postDelayed(() -> {
-                                if (!isFinishing() && browserTabs.contains(freshTab)
-                                        && BrowserEngine.isWebUrl(restoreUrl)) {
-                                    try { freshTab.loadUrl(restoreUrl); } catch (Exception ignored) { }
-                                }
-                            }, 350L + (i * 100L));
-                        }
+                    // Renderer termination is often caused by memory pressure. Reopening every
+                    // heavy page at once can immediately trigger another crash. Keep the other
+                    // tabs available as fresh tabs, but restore only the page the user was viewing.
+                    final WebView activeFreshTab = browserTabs.get(restoreIndex);
+                    final String activeRestoreUrl = savedUrls.get(restoreIndex);
+                    if (!activeRestoreUrl.isEmpty()) {
+                        receiverMonitorHandler.postDelayed(() -> {
+                            if (!isFinishing() && browserTabs.contains(activeFreshTab)
+                                    && BrowserEngine.isWebUrl(activeRestoreUrl)) {
+                                try { activeFreshTab.loadUrl(activeRestoreUrl); } catch (Exception ignored) { }
+                            }
+                        }, 500L);
                     }
                     Toast.makeText(MainActivity.this,
                             "تعطّل محرك الويب؛ أُعيد إنشاء التبويبات ومحاولة استعادة الصفحات",
