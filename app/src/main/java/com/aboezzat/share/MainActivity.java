@@ -1798,6 +1798,11 @@ public class MainActivity extends Activity {
                             String detail = "محاولة استخراج رقم " + Math.max(1, attempt)
                                     + " من 3 — " + stage + " — عملية واحدة قيد التقدم";
                             updateExtractionNotification("جاري استخراج الفيديو", detail, true);
+                        } else if ("direct_playback".equals(stage)) {
+                            sawStatus = true;
+                            updateExtractionNotification("تم إرسال الفيديو", "الرابط مباشر؛ الريسيفر يتولى تشغيله دون حاجة لاستخراج إضافي.", false);
+                            extractionTracking = false;
+                            return;
                         } else if ("resolved".equals(stage)) {
                             sawStatus = true;
                             updateExtractionNotification("تم استخراج الفيديو", "الريسيفر استخرج رابط الوسائط وبدأ محاولة التشغيل.", false);
