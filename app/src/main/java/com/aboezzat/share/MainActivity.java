@@ -64,7 +64,10 @@ public class MainActivity extends Activity {
     private static final int PICK_BROWSER_FILE_REQUEST = 903;
     private ValueCallback<Uri[]> browserFileCallback;
     private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
-    private FrameLayout contentFrame;
+    private FrameLayout contentFrame, shellOverlay, drawerPanel;
+    private View drawerScrim;
+    private float drawerTouchStartX, drawerTouchStartY;
+    private boolean drawerGestureTracking = false;
     private EditText address;
     private WebView web;
     private TextView pageTitle, connectionLabel, mediaLabel, castActionButton;
@@ -116,7 +119,7 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         buildShell();
-        setContentView(root);
+        setContentView(shellOverlay);
         showHome();
         handleSharedIntent(getIntent());
         receiverMonitorHandler.post(receiverMonitorRunnable);
@@ -228,6 +231,8 @@ public class MainActivity extends Activity {
     }
 
     private void buildShell() {
+        shellOverlay = new FrameLayout(this);
+        shellOverlay.setBackgroundColor(BG);
         root = column();
         root.setBackgroundColor(BG);
         header = column();
@@ -265,6 +270,9 @@ public class MainActivity extends Activity {
         nav("▣\nالوسائط", "media");
         nav("☆\nالمكتبة", "library");
         refreshConnectionLabel();
+        shellOverlay.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        buildSideDrawer();
+        installDrawerGestures();
     }
 
     private TextView button(String label, int color, int fg) {
@@ -289,16 +297,147 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void buildSideDrawer() {
+        drawerScrim = new View(this);
+        drawerScrim.setBackgroundColor(0x99000000);
+        drawerScrim.setVisibility(View.GONE);
+        drawerScrim.setOnClickListener(v -> closeSideDrawer());
+        shellOverlay.addView(drawerScrim, new FrameLayout.LayoutParams(-1, -1));
+
+        drawerPanel = column();
+        drawerPanel.setPadding(dp(16), dp(22), dp(16), dp(18));
+        drawerPanel.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.rgb(20, 29, 49), Color.rgb(12, 18, 33)}));
+        drawerPanel.setElevation(dp(20));
+        drawerPanel.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        FrameLayout.LayoutParams drawerLp = new FrameLayout.LayoutParams(dp(300), -1, Gravity.RIGHT | Gravity.TOP);
+        shellOverlay.addView(drawerPanel, drawerLp);
+        drawerPanel.setTranslationX(dp(310));
+
+        LinearLayout brand = row();
+        TextView mark = text("▶", 24, GOLD, true);
+        mark.setGravity(Gravity.CENTER);
+        mark.setBackground(shape(PANEL2, GOLD, 14));
+        brand.addView(mark, lp(48, 48));
+        LinearLayout brandText = column();
+        brandText.setPadding(dp(10), 0, 0, 0);
+        brandText.addView(text("ABO EZZAT SHARE", 17, WHITE, true), lp(-1, 27));
+        brandText.addView(text("القائمة الرئيسية", 11, MUTED, false), lp(-1, 22));
+        brand.addView(brandText, new LinearLayout.LayoutParams(0, -2, 1));
+        drawerPanel.addView(brand, lp(-1, 52));
+
+        TextView ip = text("📡  جهاز الاستقبال: " + (receiverIp == null || receiverIp.isEmpty() ? "غير محدد" : receiverIp), 12, GOLD, true);
+        ip.setPadding(dp(10), dp(12), dp(10), dp(12));
+        ip.setBackground(shape(PANEL, PANEL2, 12));
+        LinearLayout.LayoutParams ipp = lp(-1, -2); ipp.topMargin = dp(12); ipp.bottomMargin = dp(12);
+        drawerPanel.addView(ip, ipp);
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout items = column();
+        String[][] entries = {
+            {"🌐", "المتصفح وقناص الفيديو", "browser"},
+            {"📁", "وسائط الهاتف", "phone_media"},
+            {"📺", "تشغيل IPTV", "iptv"},
+            {"🕒", "الوسائط الأخيرة", "recent"},
+            {"📑", "قائمة التشغيل", "playlist"},
+            {"⭐", "العلامات المرجعية", "bookmarks"},
+            {"📜", "سجل التصفح", "history"},
+            {"🔥", "المواقع الأكثر زيارة", "popular"},
+            {"📥", "التنزيلات", "downloads"},
+            {"📡", "إعداد جهاز الاستقبال (TV IP)", "receiver"},
+            {"🌙", "الوضع المظلم", "dark"},
+            {"💾", "نسخة احتياطية واستعادة", "backup"},
+            {"⚙️", "الإعدادات", "settings"},
+            {"🚪", "خروج", "exit"}
+        };
+        for (String[] entry : entries) {
+            LinearLayout item = row();
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(12), dp(4), dp(12), dp(4));
+            item.setBackground(shape(PANEL, PANEL2, 12));
+            TextView icon = text(entry[0], 21, GOLD, true);
+            icon.setGravity(Gravity.CENTER);
+            item.addView(icon, lp(38, 44));
+            TextView title = text(entry[1], 13, "exit".equals(entry[2]) ? Color.rgb(255, 100, 100) : WHITE, true);
+            title.setGravity(Gravity.CENTER_VERTICAL);
+            item.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+            LinearLayout.LayoutParams itemLp = lp(-1, 48);
+            itemLp.bottomMargin = dp(5);
+            items.addView(item, itemLp);
+            item.setOnClickListener(v -> handleDrawerItem(entry[2]));
+        }
+        scroll.addView(items);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(-1, 0, 1);
+        scrollLp.topMargin = dp(4);
+        drawerPanel.addView(scroll, scrollLp);
+    }
+
+    private void openSideDrawer() {
+        if (drawerPanel == null || drawerScrim == null || drawerScrim.getVisibility() == View.VISIBLE) return;
+        drawerScrim.setVisibility(View.VISIBLE);
+        drawerPanel.animate().translationX(0).setDuration(220).start();
+    }
+
+    private void closeSideDrawer() {
+        if (drawerPanel == null || drawerScrim == null || drawerScrim.getVisibility() != View.VISIBLE) return;
+        drawerPanel.animate().translationX(dp(310)).setDuration(180).withEndAction(() -> {
+            if (drawerScrim != null) drawerScrim.setVisibility(View.GONE);
+        }).start();
+    }
+
+    private void installDrawerGestures() {
+        View.OnTouchListener listener = (v, event) -> {
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                drawerTouchStartX = event.getRawX();
+                drawerTouchStartY = event.getRawY();
+                drawerGestureTracking = drawerTouchStartX > getResources().getDisplayMetrics().widthPixels - dp(36)
+                        || (drawerScrim != null && drawerScrim.getVisibility() == View.VISIBLE);
+                return false;
+            }
+            if (event.getAction() == android.view.MotionEvent.ACTION_UP && drawerGestureTracking) {
+                float dx = event.getRawX() - drawerTouchStartX;
+                float dy = event.getRawY() - drawerTouchStartY;
+                if (Math.abs(dx) > dp(70) && Math.abs(dx) > Math.abs(dy) * 1.25f) {
+                    if (dx < 0) openSideDrawer(); else closeSideDrawer();
+                }
+                drawerGestureTracking = false;
+            }
+            return false;
+        };
+        contentFrame.setOnTouchListener(listener);
+        header.setOnTouchListener(listener);
+        shellOverlay.setOnTouchListener(listener);
+    }
+
+    private void handleDrawerItem(String key) {
+        closeSideDrawer();
+        if ("browser".equals(key)) showBrowser();
+        else if ("phone_media".equals(key)) showPhoneGallery();
+        else if ("iptv".equals(key)) showIptvDialog();
+        else if ("recent".equals(key)) showRecentCastDialog();
+        else if ("playlist".equals(key)) showLibrary();
+        else if ("bookmarks".equals(key) || "history".equals(key)) showLibrary();
+        else if ("popular".equals(key)) showBrowser();
+        else if ("downloads".equals(key)) openDownloads();
+        else if ("receiver".equals(key) || "settings".equals(key)) receiverSettings();
+        else if ("dark".equals(key)) Toast.makeText(this, "الوضع الداكن مفعل بالفعل", Toast.LENGTH_SHORT).show();
+        else if ("backup".equals(key)) new AlertDialog.Builder(this).setTitle("النسخ الاحتياطي").setMessage("المفضلة وسجل التصفح محفوظان محليًا داخل التطبيق.").setPositiveButton("حسنًا", null).show();
+        else if ("exit".equals(key)) finish();
+    }
+
+    private void showIptvDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("http:// أو https:// رابط قناة IPTV");
+        new AlertDialog.Builder(this).setTitle("تشغيل IPTV").setMessage("أدخل رابط بث مباشر يدعمه جهاز الاستقبال.")
+                .setView(input).setPositiveButton("إرسال للتلفزيون", (d, w) -> {
+                    String url = input.getText().toString().trim();
+                    if (BrowserEngine.isWebUrl(url)) castUrl(url);
+                    else Toast.makeText(this, "أدخل رابطًا صحيحًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
+                }).setNegativeButton("إلغاء", null).show();
+    }
+
     private void showToolsMenu() {
-        String[] items = {"إعداد جهاز الاستقبال", "مركز الوسائط", "معرض الصور", "قائمة التشغيل", "الوسائط المرسلة مؤخرًا", "تنزيل الصفحة الحالية"};
-        new AlertDialog.Builder(this).setTitle("أدوات AboEzzat Share").setItems(items, (dialog, which) -> {
-            if (which == 0) receiverSettings();
-            else if (which == 1) showMedia();
-            else if (which == 2) showPhoneGallery();
-            else if (which == 3) showLibrary();
-            else if (which == 4) showRecentCastDialog();
-            else downloadCurrent();
-        }).show();
+        openSideDrawer();
     }
 
     private void resetContent() {
