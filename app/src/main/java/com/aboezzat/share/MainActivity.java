@@ -88,6 +88,9 @@ public class MainActivity extends Activity {
     private boolean drawerGestureTracking = false;
     private EditText address;
     private WebView web;
+    private final ArrayList<WebView> browserTabs = new ArrayList<>();
+    private final ArrayList<String> browserTabTitles = new ArrayList<>();
+    private int activeBrowserTab = -1;
     private TextView pageTitle, connectionLabel, mediaLabel, castActionButton;
     private final LinkedHashMap<String,String> media = new LinkedHashMap<>();
     private final ArrayList<String> mediaOrder = new ArrayList<>();
@@ -993,6 +996,7 @@ public class MainActivity extends Activity {
         currentPage="browser";
         resetContent();
         if(web==null) createWebView();
+        ensureBrowserTabRegistered();
         browserTools=column();
         LinearLayout addressRow=row();
         address=new EditText(this);
@@ -1025,6 +1029,8 @@ public class MainActivity extends Activity {
         addSmallControl(controls,"↻",()->web.reload());
         addSmallControl(controls,"⌂",()->showHome());
         addSmallControl(controls,"☆",()->saveBookmark());
+        addSmallControl(controls,"▣",()->showBrowserTabsDialog());
+        addSmallControl(controls,"＋",()->openNewBrowserTab());
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
         pageTitle.setVisibility(View.GONE);
@@ -1047,6 +1053,74 @@ public class MainActivity extends Activity {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
+    private void ensureBrowserTabRegistered() {
+        if (web == null) return;
+        int existing = browserTabs.indexOf(web);
+        if (existing >= 0) {
+            activeBrowserTab = existing;
+            return;
+        }
+        browserTabs.add(web);
+        browserTabTitles.add("تبويب " + browserTabs.size());
+        activeBrowserTab = browserTabs.size() - 1;
+    }
+
+    private void openNewBrowserTab() {
+        if (web != null) ensureBrowserTabRegistered();
+        resetContent();
+        createWebView();
+        ensureBrowserTabRegistered();
+        showBrowser();
+        if (address != null) address.setText("");
+    }
+
+    private void switchBrowserTab(int index) {
+        if (index < 0 || index >= browserTabs.size()) return;
+        activeBrowserTab = index;
+        web = browserTabs.get(index);
+        showBrowser();
+    }
+
+    private void showBrowserTabsDialog() {
+        if (web != null) ensureBrowserTabRegistered();
+        if (browserTabs.isEmpty()) {
+            openNewBrowserTab();
+            return;
+        }
+        String[] labels = new String[browserTabs.size()];
+        for (int i = 0; i < browserTabs.size(); i++) {
+            WebView tab = browserTabs.get(i);
+            String title = i < browserTabTitles.size() ? browserTabTitles.get(i) : "";
+            if (tab.getUrl() != null && !tab.getUrl().trim().isEmpty() && !"about:blank".equals(tab.getUrl())) {
+                labels[i] = (i == activeBrowserTab ? "● " : "") + (title == null || title.trim().isEmpty() ? tab.getUrl() : title);
+            } else {
+                labels[i] = (i == activeBrowserTab ? "● " : "") + "تبويب جديد " + (i + 1);
+            }
+        }
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("علامات التبويب المفتوحة (" + browserTabs.size() + ")")
+                .setItems(labels, (d, which) -> switchBrowserTab(which))
+                .setPositiveButton("＋ تبويب جديد", (d, which) -> openNewBrowserTab());
+        if (browserTabs.size() > 1) {
+            dialog.setNegativeButton("إغلاق التبويب الحالي", (d, which) -> closeCurrentBrowserTab());
+        }
+        dialog.setNeutralButton("إلغاء", null).show();
+    }
+
+    private void closeCurrentBrowserTab() {
+        if (browserTabs.size() <= 1) {
+            Toast.makeText(this, "لازم تسيب تبويب واحد مفتوح على الأقل", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int index = Math.max(0, Math.min(activeBrowserTab, browserTabs.size() - 1));
+        WebView removed = browserTabs.remove(index);
+        if (index < browserTabTitles.size()) browserTabTitles.remove(index);
+        try { removed.stopLoading(); removed.destroy(); } catch (Exception ignored) { }
+        activeBrowserTab = Math.max(0, index - 1);
+        web = browserTabs.get(activeBrowserTab);
+        showBrowser();
+    }
+
     private void createWebView() {
         web=new WebView(this);
         BrowserEngine.configure(web);
@@ -1170,12 +1244,19 @@ public class MainActivity extends Activity {
                 return super.shouldInterceptRequest(view,request);
             }
             @Override public void onPageFinished(WebView view,String url){
-                if(address!=null && "browser".equals(currentPage)) address.setText(url);
+                if (view == web) {
+                    if(address!=null && "browser".equals(currentPage)) address.setText(url);
+                    int tabIndex = browserTabs.indexOf(view);
+                    if (tabIndex >= 0) {
+                        String title = view.getTitle();
+                        browserTabTitles.set(tabIndex, title == null || title.trim().isEmpty() ? url : title);
+                    }
+                }
                 try { CookieManager.getInstance().flush(); } catch (Exception ignored) { }
                 saveHistory(url);
                 // Restore the legacy browser's lightweight media sniffing and YouTube ad-skip helper.
                 scanPageMediaAndSkipAds(view);
-                refreshCurrentVideoIndicator();
+                if (view == web) refreshCurrentVideoIndicator();
             }
         });
         web.setDownloadListener((url,ua,disposition,mime,length)->downloadUrl(url,mime));
@@ -2693,7 +2774,18 @@ public class MainActivity extends Activity {
         slideshowRunning = false;
         slideshowHandler.removeCallbacks(slideshowRunnable);
         if (browserFileCallback != null) { browserFileCallback.onReceiveValue(null); browserFileCallback = null; }
-        if(web!=null){web.stopLoading();web.destroy();web=null;}
+        if (!browserTabs.isEmpty()) {
+            for (WebView tab : new ArrayList<>(browserTabs)) {
+                try { tab.stopLoading(); tab.destroy(); } catch (Exception ignored) { }
+            }
+            browserTabs.clear();
+            browserTabTitles.clear();
+            web = null;
+        } else if(web!=null) {
+            web.stopLoading();
+            web.destroy();
+            web=null;
+        }
         localMediaServerRunning = false;
         try { if (localMediaServer != null) localMediaServer.close(); } catch (Exception ignored) { }
         super.onDestroy();
