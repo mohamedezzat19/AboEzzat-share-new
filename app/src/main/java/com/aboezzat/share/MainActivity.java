@@ -417,12 +417,46 @@ public class MainActivity extends Activity {
         else if ("recent".equals(key)) showRecentCastDialog();
         else if ("playlist".equals(key)) showLocalPlaylist();
         else if ("bookmarks".equals(key) || "history".equals(key)) showLibrary();
-        else if ("popular".equals(key)) showBrowser();
+        else if ("popular".equals(key)) showPopularSites();
         else if ("downloads".equals(key)) openDownloads();
         else if ("receiver".equals(key) || "settings".equals(key)) receiverSettings();
         else if ("dark".equals(key)) Toast.makeText(this, "الوضع الداكن مفعل بالفعل", Toast.LENGTH_SHORT).show();
         else if ("backup".equals(key)) new AlertDialog.Builder(this).setTitle("النسخ الاحتياطي").setMessage("المفضلة وسجل التصفح محفوظان محليًا داخل التطبيق.").setPositiveButton("حسنًا", null).show();
         else if ("exit".equals(key)) finish();
+    }
+
+    private void showPopularSites() {
+        java.util.LinkedHashMap<String, Integer> counts = new java.util.LinkedHashMap<>();
+        JSONArray history;
+        try { history = new JSONArray(prefs.getString("history", "[]")); }
+        catch (Exception e) { history = new JSONArray(); }
+        for (int i = 0; i < history.length(); i++) {
+            String url = history.optString(i, "");
+            if (!BrowserEngine.isWebUrl(url)) continue;
+            String host = Uri.parse(url).getHost();
+            if (host == null || host.trim().isEmpty()) continue;
+            host = host.toLowerCase(Locale.ROOT);
+            Integer oldCount = counts.get(host);
+            counts.put(host, oldCount == null ? 1 : oldCount + 1);
+        }
+        java.util.ArrayList<java.util.Map.Entry<String, Integer>> sorted = new java.util.ArrayList<>(counts.entrySet());
+        java.util.Collections.sort(sorted, (a, b) -> b.getValue().compareTo(a.getValue()));
+        if (sorted.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("المواقع الأكثر زيارة")
+                    .setMessage("لسه مفيش سجل تصفح كفاية لعرض المواقع الأكثر زيارة.")
+                    .setPositiveButton("فتح المتصفح", (d, w) -> showBrowser())
+                    .setNegativeButton("إغلاق", null).show();
+            return;
+        }
+        String[] labels = new String[sorted.size()];
+        for (int i = 0; i < sorted.size(); i++)
+            labels[i] = (i + 1) + ". " + sorted.get(i).getKey() + " — " + sorted.get(i).getValue() + " زيارة";
+        new AlertDialog.Builder(this).setTitle("المواقع الأكثر زيارة")
+                .setItems(labels, (d, which) -> {
+                    showBrowser();
+                    address.setText("https://" + sorted.get(which).getKey());
+                    loadAddress();
+                }).setNegativeButton("إغلاق", null).show();
     }
 
     private void showIptvDialog() {
