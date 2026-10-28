@@ -1020,8 +1020,8 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams gp=lp(34,42);gp.setMargins(dp(3),0,0,0);addressRow.addView(go,gp);
         browserTools.addView(addressRow);
         LinearLayout controls=row();
-        addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();});
-        addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();});
+        addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();else Toast.makeText(this,"مفيش صفحة سابقة",Toast.LENGTH_SHORT).show();});
+        addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();else Toast.makeText(this,"مفيش صفحة تالية",Toast.LENGTH_SHORT).show();});
         addSmallControl(controls,"↻",()->web.reload());
         addSmallControl(controls,"⌂",()->showHome());
         addSmallControl(controls,"☆",()->saveBookmark());
