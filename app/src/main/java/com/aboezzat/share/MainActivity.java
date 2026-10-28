@@ -1110,6 +1110,9 @@ public class MainActivity extends Activity {
             @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
                 final WebView popupWeb = new WebView(MainActivity.this);
                 WebSettings popupSettings = popupWeb.getSettings();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    popupSettings.setSafeBrowsingEnabled(true);
+                }
                 popupSettings.setJavaScriptEnabled(true);
                 popupSettings.setDomStorageEnabled(true);
                 popupSettings.setDatabaseEnabled(true);
