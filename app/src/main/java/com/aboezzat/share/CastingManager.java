@@ -53,6 +53,21 @@ public final class CastingManager {
 
     public static void send(String ip, String url, Callback callback) {
         IO.execute(() -> {
+            try {
+                if (url == null || url.trim().isEmpty()) {
+                    callback.onResult(false, "الرابط فارغ");
+                    return;
+                }
+                android.net.Uri parsed = android.net.Uri.parse(url.trim());
+                String scheme = parsed.getScheme();
+                if (parsed.getHost() == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                    callback.onResult(false, "لا يمكن إرسال هذا النوع من الروابط؛ استخدم رابط HTTP أو HTTPS صالحًا");
+                    return;
+                }
+            } catch (Exception invalidUrl) {
+                callback.onResult(false, "الرابط غير صالح");
+                return;
+            }
             try (Socket socket = new Socket()) {
                 socket.connect(new java.net.InetSocketAddress(ip, 8081), 3500);
                 socket.setSoTimeout(4000);
