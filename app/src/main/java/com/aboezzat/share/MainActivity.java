@@ -882,17 +882,23 @@ public class MainActivity extends Activity {
         });
     }
 
+    private LinearLayout.LayoutParams remoteButtonParams() {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(34), 1f);
+        p.setMargins(dp(2), dp(1), dp(2), dp(1));
+        return p;
+    }
+
     private void sendRemoteCommand(String command) {
-        if ("prev".equals(command) || "next".equals(command)) {
-            Toast.makeText(this, "السابق والتالي يحتاجان قائمة تشغيل على الريسيفر، وهي غير مدعومة حاليًا.", Toast.LENGTH_LONG).show();
-            return;
-        }
         if (receiverIp == null || receiverIp.trim().isEmpty()) {
             Toast.makeText(this, "حدّد عنوان IP للريسيفر أولًا من إعدادات الاستقبال.", Toast.LENGTH_LONG).show();
             return;
         }
         CastingManager.sendCommand(receiverIp.trim(), command, (success, message) ->
-                runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show()));
+                runOnUiThread(() -> {
+                    if (!success) {
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                    }
+                }));
     }
 
     private void showMedia(){
@@ -932,39 +938,33 @@ public class MainActivity extends Activity {
             now.setPadding(dp(4),dp(8),dp(4),dp(8)); content.addView(now,lp(-1,-2));
         }
         LinearLayout remote = column();
-        remote.setPadding(dp(10),dp(8),dp(10),dp(8));
+        remote.setPadding(dp(6),dp(5),dp(6),dp(5));
         remote.setBackground(shape(PANEL2,PANEL,14));
-        remote.addView(text("ريموت التشغيل",15,WHITE,true),lp(-1,28));
+        remote.addView(text("ريموت التشغيل",14,WHITE,true),lp(-1,dp(24)));
         LinearLayout r1 = row();
-        TextView prev = button("⏮ السابق",PANEL,WHITE);
-        TextView play = button("▶ / ⏸",BLUE,WHITE);
-        TextView next = button("التالي ⏭",PANEL,WHITE);
-        r1.addView(prev,new LinearLayout.LayoutParams(0,dp(42),1));
-        r1.addView(play,new LinearLayout.LayoutParams(0,dp(42),1));
-        r1.addView(next,new LinearLayout.LayoutParams(0,dp(42),1));
-        remote.addView(r1,lp(-1,dp(44)));
+        TextView rw = button("⏪ 10 ث",PANEL,WHITE);
+        TextView play = button("▶  /  ⏸",BLUE,WHITE);
+        TextView ff = button("10 ث ⏩",PANEL,WHITE);
+        r1.addView(rw,remoteButtonParams());
+        r1.addView(play,remoteButtonParams());
+        r1.addView(ff,remoteButtonParams());
+        remote.addView(r1,lp(-1,dp(38)));
         LinearLayout r2 = row();
-        TextView rw = button("⏪ -10 ث",PANEL,WHITE);
-        TextView ff = button("+10 ث ⏩",PANEL,WHITE);
+        TextView volumeDown = button("− صوت",PANEL,WHITE);
+        TextView mute = button("🔇 كتم",PANEL2,GOLD);
+        TextView volumeUp = button("+ صوت",PANEL,WHITE);
         TextView stop = button("■ إيقاف",PANEL,WHITE);
-        r2.addView(rw,new LinearLayout.LayoutParams(0,dp(42),1));
-        r2.addView(ff,new LinearLayout.LayoutParams(0,dp(42),1));
-        r2.addView(stop,new LinearLayout.LayoutParams(0,dp(42),1));
-        remote.addView(r2,lp(-1,dp(44)));
-        LinearLayout r3 = row();
-        TextView volumeDown = button("خفض الصوت",PANEL,WHITE);
-        TextView mute = button("كتم / تشغيل الصوت",PANEL2,GOLD);
-        TextView volumeUp = button("رفع الصوت",PANEL,WHITE);
-        r3.addView(volumeDown,new LinearLayout.LayoutParams(0,dp(42),1));
-        r3.addView(mute,new LinearLayout.LayoutParams(0,dp(42),1));
-        r3.addView(volumeUp,new LinearLayout.LayoutParams(0,dp(42),1));
-        remote.addView(r3,lp(-1,dp(44)));
+        r2.addView(volumeDown,remoteButtonParams());
+        r2.addView(mute,remoteButtonParams());
+        r2.addView(volumeUp,remoteButtonParams());
+        r2.addView(stop,remoteButtonParams());
+        LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(38));
+        remoteRowParams.topMargin=dp(3);
+        remote.addView(r2,remoteRowParams);
         volumeDown.setOnClickListener(v -> sendRemoteCommand("volume_down"));
         mute.setOnClickListener(v -> sendRemoteCommand("mute"));
         volumeUp.setOnClickListener(v -> sendRemoteCommand("volume_up"));
-        prev.setOnClickListener(v -> sendRemoteCommand("prev"));
         play.setOnClickListener(v -> sendRemoteCommand("play_pause"));
-        next.setOnClickListener(v -> sendRemoteCommand("next"));
         rw.setOnClickListener(v -> sendRemoteCommand("rw"));
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
         stop.setOnClickListener(v -> sendRemoteCommand("stop"));
