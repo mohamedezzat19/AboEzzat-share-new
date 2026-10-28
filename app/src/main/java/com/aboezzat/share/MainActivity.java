@@ -780,11 +780,12 @@ public class MainActivity extends Activity {
             android.webkit.PermissionRequest request = pendingWebPermissionRequest;
             pendingWebPermissionRequest = null;
             boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            try {
-                if (granted) request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                else request.deny();
-            } catch (Exception ignored) { }
-            if (!granted) Toast.makeText(this, "لازم تسمح بالمايك لاستخدام البحث الصوتي", Toast.LENGTH_LONG).show();
+            if (granted) {
+                confirmWebsiteMicrophonePermission(request);
+            } else {
+                try { request.deny(); } catch (Exception ignored) { }
+                Toast.makeText(this, "لازم تسمح بالمايك من أندرويد لاستخدام البحث الصوتي", Toast.LENGTH_LONG).show();
+            }
         } else if (requestCode == REQUEST_NOTIFICATIONS) {
             boolean granted = grantResults.length > 0
                     && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -1300,9 +1301,16 @@ public class MainActivity extends Activity {
     private void createWebView() {
         web=new WebView(this);
         BrowserEngine.configure(web);
+        SharedPreferences browserPrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        WebSettings browserSettings = web.getSettings();
+        browserSettings.setJavaScriptEnabled(browserPrefs.getBoolean("browser_javascript", true));
+        boolean acceptCookies = browserPrefs.getBoolean("browser_cookies", true);
         CookieManager cookies = CookieManager.getInstance();
-        cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(web, true);
+        cookies.setAcceptCookie(acceptCookies);
+        cookies.setAcceptThirdPartyCookies(web, acceptCookies);
+        if (browserPrefs.getBoolean("browser_desktop_mode", false)) {
+            browserSettings.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        }
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
             @Override public void onShowCustomView(View view, CustomViewCallback callback) {
@@ -2067,6 +2075,21 @@ public class MainActivity extends Activity {
             }).setNegativeButton("إلغاء",null).show();
     }
 
+    private void confirmWebsiteMicrophonePermission(android.webkit.PermissionRequest request) {
+        if (request == null) return;
+        final String host = request.getOrigin() == null ? "الموقع الحالي" : request.getOrigin().getHost();
+        new AlertDialog.Builder(this)
+                .setTitle("السماح للصفحة باستخدام المايك")
+                .setMessage("صفحة " + host + " بتطلب الميكروفون. وافق فقط لو أنت بدأت البحث أو التسجيل الصوتي.")
+                .setPositiveButton("السماح", (d, w) -> {
+                    try { request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE}); }
+                    catch (Exception e) { Toast.makeText(this, "تعذّر منح إذن المايك؛ أعد تحميل الصفحة وحاول مجددًا", Toast.LENGTH_LONG).show(); }
+                })
+                .setNegativeButton("رفض", (d, w) -> { try { request.deny(); } catch (Exception ignored) { } })
+                .setOnCancelListener(d -> { try { request.deny(); } catch (Exception ignored) { } })
+                .show();
+    }
+
     private void requestBrowserMicrophonePermission(android.webkit.PermissionRequest request) {
         if (request == null) return;
         boolean wantsAudio = false;
@@ -2087,19 +2110,7 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
             return;
         }
-        new AlertDialog.Builder(this)
-                .setTitle("السماح باستخدام المايك")
-                .setMessage("الموقع " + request.getOrigin().getHost()
-                        + " بيطلب استخدام المايك. اسمح فقط لو أنت بدأت البحث أو التسجيل الصوتي بنفسك.")
-                .setPositiveButton("السماح", (d, w) -> {
-                    try { request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE}); }
-                    catch (Exception e) { Toast.makeText(this, "تعذّر منح إذن المايك؛ جرّب إعادة تحميل الصفحة", Toast.LENGTH_LONG).show(); }
-                })
-                .setNegativeButton("رفض", (d, w) -> {
-                    try { request.deny(); } catch (Exception ignored) { }
-                })
-                .setOnCancelListener(d -> { try { request.deny(); } catch (Exception ignored) { } })
-                .show();
+        confirmWebsiteMicrophonePermission(request);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
