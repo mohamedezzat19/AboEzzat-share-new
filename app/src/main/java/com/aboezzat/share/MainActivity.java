@@ -151,6 +151,10 @@ public class MainActivity extends Activity {
             String scheme = data.getScheme();
             if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
                 String sharedUrl = BrowserEngine.normalizeAddress(data.toString());
+                if (isYouTubeUrl(sharedUrl)) {
+                    castUrl(sharedUrl);
+                    return;
+                }
                 showBrowser();
                 if (address != null) {
                     address.setText(sharedUrl);
@@ -172,6 +176,10 @@ public class MainActivity extends Activity {
                 if (matcher.find()) {
                     String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
                     String normalized = BrowserEngine.normalizeAddress(sharedUrl);
+                    if (isYouTubeUrl(normalized)) {
+                        castUrl(normalized);
+                        return;
+                    }
                     showBrowser();
                     if (address != null) {
                         address.setText(normalized);
@@ -192,6 +200,23 @@ public class MainActivity extends Activity {
                 acceptSharedMedia(streams);
                 return;
             }
+        }
+    }
+
+    private boolean isYouTubeUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String host = uri.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("youtu.be")
+                    || host.equals("youtube.com")
+                    || host.endsWith(".youtube.com")
+                    || host.equals("youtube-nocookie.com")
+                    || host.endsWith(".youtube-nocookie.com");
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
