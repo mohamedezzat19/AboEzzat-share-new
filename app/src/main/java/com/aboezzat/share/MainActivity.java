@@ -2910,8 +2910,9 @@ public class MainActivity extends Activity {
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            // Allow the Android document picker to show any file type.
+            // Show the Android document picker for supported media while allowing mixed multi-select.
             intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*", "image/*"});
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);
@@ -2958,8 +2959,9 @@ public class MainActivity extends Activity {
             CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() -> {
                 receiverConnected = success;
                 refreshConnectionLabel();
-                Toast.makeText(this, success ? "تم إرسال " + mediaName + " للريسيفر" : message, Toast.LENGTH_LONG).show();
-                if (!success) discoverReceiverInBackground();
+                Toast.makeText(this, success ? "تم إرسال " + mediaName + " للريسيفر" : (message + "\nالجهاز المحدد محفوظ؛ لو عايز تبحث عن جهاز آخر افتح «جهاز الاستقبال» بنفسك."), Toast.LENGTH_LONG).show();
+                // Do not silently switch to another Receiver after a transient send failure.
+                // The user explicitly controls when a new discovery scan is requested.
             }));
         } catch (Exception e) {
             Toast.makeText(this, "تعذّر تجهيز الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
