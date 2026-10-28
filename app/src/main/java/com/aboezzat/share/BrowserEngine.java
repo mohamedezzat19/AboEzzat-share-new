@@ -15,6 +15,12 @@ public final class BrowserEngine {
             s.setSafeBrowsingEnabled(true);
         }
         s.setJavaScriptEnabled(true);
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(true);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            s.setAllowFileAccessFromFileURLs(false);
+            s.setAllowUniversalAccessFromFileURLs(false);
+        }
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setLoadsImagesAutomatically(true);
