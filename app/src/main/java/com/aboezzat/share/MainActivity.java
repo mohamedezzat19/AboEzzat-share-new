@@ -1311,6 +1311,8 @@ public class MainActivity extends Activity {
         if (browserPrefs.getBoolean("browser_desktop_mode", false)) {
             browserSettings.setUserAgentString("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
+        browserSettings.setMediaPlaybackRequiresUserGesture(
+                !browserPrefs.getBoolean("browser_autoplay", true));
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
             @Override public void onShowCustomView(View view, CustomViewCallback callback) {
@@ -2122,12 +2124,14 @@ public class MainActivity extends Activity {
         boolean cookies = CookieManager.getInstance().acceptCookie();
         boolean desktop = web != null && web.getSettings().getUserAgentString() != null
                 && web.getSettings().getUserAgentString().toLowerCase(Locale.ROOT).contains("x11");
+        boolean autoplay = web != null && !web.getSettings().getMediaPlaybackRequiresUserGesture();
         String[] items = {
                 (micGranted ? "🎙 المايك: إذن أندرويد مسموح" : "🎙 المايك: فتح/طلب الإذن"),
                 "🎙 إرشادات إذن المايك للمواقع",
                 "JavaScript: " + (javaScript ? "مفعّل" : "متوقف"),
                 "ملفات تعريف الارتباط Cookies: " + (cookies ? "مفعّلة" : "متوقفة"),
                 "وضع سطح المكتب: " + (desktop ? "مفعّل" : "متوقف"),
+                "تشغيل الفيديو والصوت تلقائيًا: " + (autoplay ? "مفعّل" : "يتطلب ضغط تشغيل"),
                 "مسح ذاكرة الصفحات المؤقتة",
                 "مسح ملفات تعريف الارتباط وتسجيلات المواقع",
                 "إعدادات أذونات Android للتطبيق"
@@ -2175,10 +2179,16 @@ public class MainActivity extends Activity {
                         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("browser_desktop_mode", enableDesktop).apply();
                         Toast.makeText(this, "تم تحديث وضع سطح المكتب؛ أعد تحميل الصفحة", Toast.LENGTH_LONG).show();
                     } else if (which == 5) {
+                        boolean enabled = !autoplay;
+                        for (WebView tab : browserTabs) if (tab != null) tab.getSettings().setMediaPlaybackRequiresUserGesture(!enabled);
+                        if (web != null) web.getSettings().setMediaPlaybackRequiresUserGesture(!enabled);
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("browser_autoplay", enabled).apply();
+                        Toast.makeText(this, "تم تحديث التشغيل التلقائي للوسائط", Toast.LENGTH_SHORT).show();
+                    } else if (which == 6) {
                         for (WebView tab : browserTabs) if (tab != null) tab.clearCache(true);
                         if (web != null) web.clearCache(true);
                         Toast.makeText(this, "تم مسح ذاكرة الصفحات المؤقتة", Toast.LENGTH_SHORT).show();
-                    } else if (which == 6) {
+                    } else if (which == 7) {
                         new AlertDialog.Builder(this).setTitle("مسح بيانات المواقع")
                                 .setMessage("سيتم حذف Cookies وبيانات تسجيل الدخول للمواقع من المتصفح.")
                                 .setPositiveButton("مسح", (d, w) -> {
@@ -2187,7 +2197,7 @@ public class MainActivity extends Activity {
                                     for (WebView tab : browserTabs) if (tab != null) tab.clearHistory();
                                     Toast.makeText(this, "تم مسح Cookies وسجل التصفح", Toast.LENGTH_LONG).show();
                                 }).setNegativeButton("إلغاء", null).show();
-                    } else if (which == 7) {
+                    } else if (which == 8) {
                         openAppPermissionSettings();
                     }
                 }).setNegativeButton("إغلاق", null).show();
