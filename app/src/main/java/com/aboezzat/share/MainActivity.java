@@ -2463,6 +2463,14 @@ public class MainActivity extends Activity {
                 Toast.makeText(this,"رابط التنزيل لازم يكون HTTP أو HTTPS صالحًا",Toast.LENGTH_LONG).show();
                 return;
             }
+            String sourcePath = source.getPath();
+            String lowerSourcePath = sourcePath == null ? "" : sourcePath.toLowerCase(Locale.ROOT);
+            if (lowerSourcePath.endsWith(".m3u8") || lowerSourcePath.endsWith(".mpd")) {
+                Toast.makeText(this,
+                        "ده رابط قائمة بث متجزّئ مش ملف فيديو كامل؛ استخدم «إرسال» لتشغيله على التلفزيون.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
             DownloadManager dm=(DownloadManager)getSystemService(Context.DOWNLOAD_SERVICE);
             DownloadManager.Request req=new DownloadManager.Request(source);
             // Reuse the browser session for media URLs that require cookies or a page referrer.
