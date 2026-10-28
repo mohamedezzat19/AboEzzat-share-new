@@ -63,6 +63,11 @@ public class MainActivity extends Activity {
     private static final int PICK_IMAGE_REQUEST = 901;
     private static final int PICK_BROWSER_FILE_REQUEST = 903;
     private ValueCallback<Uri[]> browserFileCallback;
+    private View fullscreenVideoView;
+    private WebChromeClient.CustomViewCallback fullscreenVideoCallback;
+    private int orientationBeforeFullscreen = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    private static final int REQUEST_MICROPHONE = 904;
+    private android.webkit.PermissionRequest pendingWebPermissionRequest;
     private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
     private FrameLayout contentFrame, shellOverlay;
     private LinearLayout drawerPanel;
@@ -475,6 +480,35 @@ public class MainActivity extends Activity {
         openSideDrawer();
     }
 
+    private void exitVideoFullscreen() {
+        if (fullscreenVideoView == null) return;
+        try { shellOverlay.removeView(fullscreenVideoView); } catch (Exception ignored) { }
+        fullscreenVideoView = null;
+        if (fullscreenVideoCallback != null) {
+            try { fullscreenVideoCallback.onCustomViewHidden(); } catch (Exception ignored) { }
+            fullscreenVideoCallback = null;
+        }
+        setRequestedOrientation(orientationBeforeFullscreen);
+        header.setVisibility(View.VISIBLE);
+        bottom.setVisibility(View.VISIBLE);
+        content.setVisibility(View.VISIBLE);
+        getWindow().getDecorView().setSystemUiVisibility(0);
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_MICROPHONE && pendingWebPermissionRequest != null) {
+            android.webkit.PermissionRequest request = pendingWebPermissionRequest;
+            pendingWebPermissionRequest = null;
+            boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            try {
+                if (granted) request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                else request.deny();
+            } catch (Exception ignored) { }
+            if (!granted) Toast.makeText(this, "لازم تسمح بالمايك لاستخدام البحث الصوتي", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void resetContent() {
         content.removeAllViews();
         content.setPadding(dp(16),dp(4),dp(16),dp(10));
@@ -708,7 +742,8 @@ public class MainActivity extends Activity {
         addSmallControl(controls,"☆",()->saveBookmark());
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
-        content.addView(pageTitle,lp(-1,24));
+        pageTitle.setVisibility(View.GONE);
+        content.addView(pageTitle,lp(-1,0));
         if(web.getParent()!=null) ((android.view.ViewGroup)web.getParent()).removeView(web);
         content.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         // Keep browser navigation controls, but move video capture into the compact TV icon beside the URL.
@@ -733,6 +768,38 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptCookie(true);
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (fullscreenVideoView != null) { callback.onCustomViewHidden(); return; }
+                fullscreenVideoView = view;
+                fullscreenVideoCallback = callback;
+                orientationBeforeFullscreen = getRequestedOrientation();
+                setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+                header.setVisibility(View.GONE);
+                bottom.setVisibility(View.GONE);
+                content.setVisibility(View.GONE);
+                shellOverlay.addView(view, new FrameLayout.LayoutParams(-1, -1));
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+            }
+            @Override public void onHideCustomView() { exitVideoFullscreen(); }
+            @Override public void onPermissionRequest(android.webkit.PermissionRequest request) {
+                runOnUiThread(() -> {
+                    boolean wantsAudio = false;
+                    for (String resource : request.getResources()) {
+                        if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+                    }
+                    if (!wantsAudio) { request.deny(); return; }
+                    if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        pendingWebPermissionRequest = request;
+                        requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
+                    } else {
+                        request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                    }
+                });
+            }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (browserFileCallback != null) {
                     browserFileCallback.onReceiveValue(null);
@@ -2119,6 +2186,7 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed(){
+        if (fullscreenVideoView != null) { exitVideoFullscreen(); return; }
         if("browser".equals(currentPage)&&web!=null&&web.canGoBack()){web.goBack();return;}
         if(!"home".equals(currentPage)){showHome();return;}
         super.onBackPressed();
