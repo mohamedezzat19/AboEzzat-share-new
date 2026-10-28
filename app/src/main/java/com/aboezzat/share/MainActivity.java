@@ -1508,6 +1508,7 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
+            autoSelectDetectedTrack(url);
             if(mediaLabel!=null)mediaLabel.setText("المصادر المكتشفة: "+mediaOrder.size());
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
             if(castActionButton!=null) {
@@ -1738,6 +1739,26 @@ public class MainActivity extends Activity {
         bp.topMargin = dp(12);
         content.addView(back, bp);
         back.setOnClickListener(v -> showMedia());
+    }
+
+    private boolean isAudioTrackCandidate(String url) {
+        if (url == null || url.trim().isEmpty()) return false;
+        String lower = url.toLowerCase(Locale.ROOT);
+        return "صوت".equals(mediaType(url)) || lower.contains("mime=audio")
+                || lower.contains("type=audio") || lower.contains("audio_playback")
+                || lower.contains("dash_ln_heaac");
+    }
+
+    // Match the legacy browser behavior: preselect one video and one separate audio track when found.
+    private void autoSelectDetectedTrack(String url) {
+        boolean hasVideo = false;
+        boolean hasAudio = false;
+        for (String selected : selectedTrackUrls.keySet()) {
+            if (isVideoCandidate(selected)) hasVideo = true;
+            if (isAudioTrackCandidate(selected)) hasAudio = true;
+        }
+        if (!hasVideo && isVideoCandidate(url)) selectedTrackUrls.put(url, true);
+        if (!hasAudio && isAudioTrackCandidate(url)) selectedTrackUrls.put(url, true);
     }
 
     private void sendSelectedMediaTracks() {
