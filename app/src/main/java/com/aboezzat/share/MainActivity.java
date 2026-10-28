@@ -481,15 +481,11 @@ public class MainActivity extends Activity {
         brand.addView(brandText, new LinearLayout.LayoutParams(0, -2, 1));
         drawerPanel.addView(brand, lp(-1, 52));
 
-        TextView ip = text("📡  جهاز الاستقبال: " + (receiverIp == null || receiverIp.isEmpty() ? "غير محدد" : receiverIp), 12, GOLD, true);
-        ip.setPadding(dp(10), dp(12), dp(10), dp(12));
-        ip.setBackground(shape(PANEL, PANEL2, 12));
-        LinearLayout.LayoutParams ipp = lp(-1, -2); ipp.topMargin = dp(12); ipp.bottomMargin = dp(12);
-        drawerPanel.addView(ip, ipp);
         ScrollView scroll = new ScrollView(this);
         LinearLayout items = column();
         String[][] entries = {
             {"🌐", "المتصفح وقناص الفيديو", "browser"},
+            {"📡", "جهاز الاستقبال", "receiver"},
             {"📁", "وسائط الهاتف", "phone_media"},
             {"📺", "تشغيل IPTV", "iptv"},
             {"🕒", "الوسائط الأخيرة", "recent"},
@@ -499,7 +495,6 @@ public class MainActivity extends Activity {
             {"📜", "سجل التصفح", "history"},
             {"🔥", "المواقع الأكثر زيارة", "popular"},
             {"📥", "التنزيلات", "downloads"},
-            {"📡", "إعداد جهاز الاستقبال (TV IP)", "receiver"},
             {"💾", "نسخة احتياطية واستعادة", "backup"},
             {"⚙️", "أذونات التطبيق", "settings"},
             {"🚪", "خروج", "exit"}
@@ -569,7 +564,7 @@ public class MainActivity extends Activity {
     private void handleDrawerItem(String key) {
         closeSideDrawer();
         if ("browser".equals(key)) showBrowser();
-        else if ("phone_media".equals(key)) showPhoneGallery();
+        else if ("phone_media".equals(key)) openLocalMediaPicker();
         else if ("iptv".equals(key)) showIptvDialog();
         else if ("recent".equals(key)) showRecentCastDialog();
         else if ("playlist".equals(key)) showLocalPlaylist();
@@ -578,7 +573,7 @@ public class MainActivity extends Activity {
         else if ("history".equals(key)) showLibrary("history");
         else if ("popular".equals(key)) showPopularSites();
         else if ("downloads".equals(key)) openDownloads();
-        else if ("receiver".equals(key)) receiverSettings();
+        else if ("receiver".equals(key)) showReceiverPicker();
         else if ("settings".equals(key)) openAppPermissionSettings();
         else if ("backup".equals(key)) showBackupOptions();
         else if ("exit".equals(key)) finish();
@@ -966,28 +961,7 @@ public class MainActivity extends Activity {
             });
         }
 
-        LinearLayout.LayoutParams gap2 = lp(-1, 12); page.addView(new View(this), gap2);
-        addSection(page, "أقسام التطبيق", "كل أدواتك في كروت واضحة");
-        LinearLayout r1 = row();
-        addCard(r1, "◎", "المتصفح", "تصفح وابحث وأرسل", () -> showBrowser());
-        addCard(r1, "▣", "وسائط الهاتف", "الفيديوهات والملفات", () -> showMedia());
-        page.addView(r1, lp(-1, -2));
-        LinearLayout r2 = row();
-        addCard(r2, "▧", "معرض الصور", "عرض الصور والملفات", () -> showPhoneGallery());
-        addCard(r2, "♫", "قائمة التشغيل", "ملفات الصوت والفيديو المختارة", () -> showLocalPlaylist());
-        page.addView(r2, lp(-1, -2));
-        LinearLayout r3 = row();
-        addCard(r3, "⇩", "التنزيلات", "فتح ملفات التنزيل", () -> openDownloads());
-        addCard(r3, "⚙", "إعداد الاستقبال", "عنوان IP والمنفذ", () -> receiverSettings());
-        page.addView(r3, lp(-1, -2));
-        LinearLayout r4 = row();
-        addCard(r4, "◷", "الوسائط الأخيرة", "إعادة إرسال رابط سابق", () -> showRecentCastDialog());
-        addCard(r4, "▤", "بث IPTV", "إضافة رابط بث مباشر", () -> showIptvUrlDialog());
-        page.addView(r4, lp(-1, -2));
-        LinearLayout r5 = row();
-        addCard(r5, "★", "الوسائط المحفوظة", "روابط محفوظة للإرسال والتنزيل", () -> showSavedMedia());
-        addCard(r5, "☆", "المفضلة والسجل", "المواقع والصفحات السابقة", () -> showLibrary());
-        page.addView(r5, lp(-1, -2));
+        // These tools already live in the sidebar; avoid duplicate home cards.
         page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
         scroll.addView(page);
         content.addView(scroll, lp(-1, -1));
@@ -1918,6 +1892,46 @@ public class MainActivity extends Activity {
         return "وسائط";
     }
 
+    private void showReceiverPicker() {
+        Toast.makeText(this, "جاري البحث عن أجهزة الاستقبال على الشبكة…", Toast.LENGTH_SHORT).show();
+        CastingManager.discover(this, devices -> runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (devices == null || devices.isEmpty()) {
+                new AlertDialog.Builder(this)
+                        .setTitle("لم يتم العثور على جهاز")
+                        .setMessage("تأكد أن تطبيق AboEzzat Receiver مفتوح وأن الهاتف والتلفزيون على شبكة Wi-Fi نفسها.")
+                        .setPositiveButton("إعادة البحث", (d, w) -> showReceiverPicker())
+                        .setNeutralButton("إدخال IP يدويًا", (d, w) -> receiverSettings())
+                        .setNegativeButton("إلغاء", null)
+                        .show();
+                return;
+            }
+            java.util.ArrayList<String> valid = new java.util.ArrayList<>();
+            for (String device : devices) {
+                String ip = normalizeReceiverIp(device);
+                if (ip != null && !valid.contains(ip)) valid.add(ip);
+            }
+            if (valid.isEmpty()) {
+                Toast.makeText(this, "لم يتم العثور على عنوان IP صالح", Toast.LENGTH_LONG).show();
+                return;
+            }
+            String[] choices = valid.toArray(new String[0]);
+            new AlertDialog.Builder(this)
+                    .setTitle("جهاز الاستقبال — اختر عنوان IP")
+                    .setItems(choices, (dialog, which) -> {
+                        String selectedIp = choices[which];
+                        receiverIp = selectedIp;
+                        receiverConnected = true;
+                        prefs.edit().putString("receiver_ip", selectedIp).apply();
+                        refreshConnectionLabel();
+                        Toast.makeText(this, "تم حفظ جهاز الاستقبال: " + selectedIp, Toast.LENGTH_LONG).show();
+                    })
+                    .setNeutralButton("إعادة البحث", (dialog, which) -> showReceiverPicker())
+                    .setNegativeButton("إدخال IP يدويًا", (dialog, which) -> receiverSettings())
+                    .show();
+        }));
+    }
+
     private void receiverSettings(){
         EditText input=new EditText(this);
         input.setSingleLine(true);input.setHint("مثال: 192.168.1.20");
@@ -1937,8 +1951,7 @@ public class MainActivity extends Activity {
                     discover.setText("تم العثور على " + devices.size() + " جهاز — اختر يدويًا");
                     String[] choices = devices.toArray(new String[0]);
                     new AlertDialog.Builder(this)
-                        .setTitle("اختار جهاز AboEzzat Receiver")
-                        .setMessage("اختيار الجهاز يحفظ عنوانه ويثبّت الإرسال عليه. تأكد أن الجهازين على نفس شبكة Wi-Fi.")
+                        .setTitle("اختار جهاز الاستقبال")
                         .setItems(choices, (dialog, which) -> {
                             String selectedIp = normalizeReceiverIp(choices[which]);
                             if (selectedIp == null) {
@@ -1959,9 +1972,6 @@ public class MainActivity extends Activity {
             }));
         });
         box.addView(input,lp(-1,52));
-        TextView permissions = button("إدارة أذونات التطبيق في إعدادات أندرويد", PANEL2, WHITE);
-        box.addView(permissions, lp(-1, 46));
-        permissions.setOnClickListener(v -> openAppPermissionSettings());
         new AlertDialog.Builder(this).setTitle("إعداد جهاز الاستقبال").setView(box)
             .setPositiveButton("حفظ", (d,w)->{
                 String normalized = normalizeReceiverIp(input.getText().toString());
@@ -2897,8 +2907,8 @@ public class MainActivity extends Activity {
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
+            // Allow the Android document picker to show any file type.
             intent.setType("*/*");
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*"});
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);
