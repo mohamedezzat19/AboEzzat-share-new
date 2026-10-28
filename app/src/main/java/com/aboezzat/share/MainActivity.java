@@ -44,6 +44,7 @@ import org.json.JSONObject;
 import java.io.OutputStream;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.NetworkInterface;
@@ -1324,7 +1325,11 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
-                detectMedia(request.getUrl().toString());
+                String requestUrl = request.getUrl().toString();
+                if (isKnownAdRequest(requestUrl)) {
+                    return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
+                }
+                detectMedia(requestUrl);
                 return super.shouldInterceptRequest(view,request);
             }
             @Override public void onPageFinished(WebView view,String url){
@@ -1423,6 +1428,34 @@ public class MainActivity extends Activity {
      * It only records HTTP(S) video sources exposed by the page; it does not try
      * to bypass DRM, login checks, or protected blob streams.
      */
+    private boolean isKnownAdRequest(String requestUrl) {
+        if (requestUrl == null || requestUrl.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(requestUrl);
+            String host = uri.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            String[] adDomains = {
+                    "doubleclick.net", "adservice.google.com", "googlesyndication.com",
+                    "adcolony.com", "criteo.com", "adnxs.com", "outbrain.com",
+                    "taboola.com", "popads.net", "popcash.net", "propellerads.com",
+                    "exoclick.com", "smartadserver.com", "scorecardresearch.com",
+                    "zedo.com", "adroll.com", "pubmatic.com", "rubiconproject.com"
+            };
+            for (String domain : adDomains) {
+                if (host.equals(domain) || host.endsWith("." + domain)) return true;
+            }
+            String path = uri.getPath();
+            String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
+            return (host.equals("pagead2.googlesyndication.com")
+                    || host.equals("googleads.g.doubleclick.net")
+                    || host.equals("www.googleadservices.com"))
+                    && (lowerPath.contains("pagead") || lowerPath.contains("ads"));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void scanPageMediaAndSkipAds(WebView view) {
         if (view == null) return;
         String js = "(function(){try{" +
