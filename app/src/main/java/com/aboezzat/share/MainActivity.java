@@ -246,25 +246,34 @@ public class MainActivity extends Activity {
 
     private void resolveSharedVideoFromBrowser(String pageUrl, int generation, int attempt) {
         if (generation != authenticatedResolveGeneration || web == null || isFinishing()) return;
-        final String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);})||vs.find(function(x){return x.readyState>=2&&(x.currentSrc||x.src);});return v?(v.currentSrc||v.src||''):'';})()";
+        final String js = "(function(){"
+                + "var out=[];function add(u){if(u&&typeof u==='string'&&/^https?:\\/\\//i.test(u)&&out.indexOf(u)<0)out.push(u);}"
+                + "var vs=[].slice.call(document.querySelectorAll('video'));"
+                + "vs.sort(function(a,b){return (Number(!a.paused&& !a.ended)*2+a.readyState)-(Number(!b.paused&&!b.ended)*2+b.readyState);}).reverse();"
+                + "vs.forEach(function(v){add(v.currentSrc);add(v.src);[].slice.call(v.querySelectorAll('source')).forEach(function(s){add(s.src);});});"
+                + "var rs=performance.getEntriesByType('resource')||[];"
+                + "for(var i=rs.length-1;i>=0&&out.length<40;i--){var u=rs[i].name||'';"
+                + "if(/\\.(mp4|m4v|webm|mov|m3u8|mpd)([?#]|$)/i.test(u)||/videoplayback|video_playback|mime=video|type=video|contenttype=video|bytevc|\\bavc1\\b|hevc|\\bdash\\b/i.test(u))add(u);}"
+                + "return JSON.stringify(out.slice(0,40));})()";
         web.evaluateJavascript(js, value -> {
             if (generation != authenticatedResolveGeneration || isFinishing()) return;
             try {
-                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
-                String mediaUrl = parsed == null ? "" : String.valueOf(parsed);
-                if (!mediaUrl.isEmpty() && !"null".equals(mediaUrl)
-                        && !mediaUrl.startsWith("blob:") && !mediaUrl.startsWith("data:")
-                        && BrowserEngine.isWebUrl(mediaUrl)
-                        && isVideoCandidate(mediaUrl) && !mediaUrl.equals(pageUrl)) {
-                    currentPlayingVideoUrl = mediaUrl;
-                    Toast.makeText(this, "تم العثور على رابط الفيديو من جلسة المتصفح؛ جاري إرساله للشاشة…", Toast.LENGTH_LONG).show();
-                    castUrl(mediaUrl);
-                    return;
+                Object parsed = new org.json.JSONTokener(value == null ? "\\"\\"" : value).nextValue();
+                String listJson = parsed == null ? "[]" : String.valueOf(parsed);
+                JSONArray candidates = new JSONArray(listJson);
+                for (int i = 0; i < candidates.length(); i++) {
+                    String mediaUrl = candidates.optString(i, "");
+                    if (!mediaUrl.isEmpty() && !mediaUrl.equals(pageUrl)
+                            && !mediaUrl.startsWith("blob:") && !mediaUrl.startsWith("data:")
+                            && BrowserEngine.isWebUrl(mediaUrl) && isVideoCandidate(mediaUrl)) {
+                        currentPlayingVideoUrl = mediaUrl;
+                        Toast.makeText(this, "تم العثور على رابط فيديو من موارد الصفحة؛ جاري إرساله للشاشة…", Toast.LENGTH_LONG).show();
+                        castUrl(mediaUrl);
+                        return;
+                    }
                 }
             } catch (Exception ignored) { }
-            // Give Share's authenticated browser up to about five seconds to expose the actual stream.
-            // Never send the platform page URL to Receiver as a fallback: Receiver should receive
-            // a direct media URL and play it with ExoPlayer, not open a second WebView/extractor.
+            // Poll the authenticated page briefly for a direct stream. Never send the page URL itself.
             if (attempt < 16) {
                 receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 300L);
             } else {
@@ -277,25 +286,11 @@ public class MainActivity extends Activity {
         if (generation != authenticatedResolveGeneration || isFinishing()) return;
         String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
         if (configuredApi.isEmpty()) {
-            EditText apiInput = new EditText(this);
-            apiInput.setSingleLine(true);
-            apiInput.setHint("https://عنوان-خادم-الاستخراج");
-            new AlertDialog.Builder(this)
-                    .setTitle("إعداد محرك استخراج إضافي")
-                    .setMessage("المحرك المحلي لم يعثر على رابط مباشر. أدخل عنوان Cobalt API مستضافًا لديك أو خادمًا لديك إذن باستخدامه. لن نستخدم خادمًا عامًا دون تصريح.")
-                    .setView(apiInput)
-                    .setPositiveButton("حفظ وتجربة", (dialog, which) -> {
-                        String base = apiInput.getText() == null ? "" : apiInput.getText().toString().trim();
-                        if (!(base.startsWith("https://") || base.startsWith("http://"))) {
-                            Toast.makeText(this, "أدخل عنوان API صحيحًا يبدأ بـ https:// أو http://", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        prefs.edit().putString("extractor_api_base", base).apply();
-                        runRemoteExtraction(pageUrl, generation, base);
-                    })
-                    .setNegativeButton("ليس الآن", (dialog, which) ->
-                            Toast.makeText(this, "لم يتم إرسال رابط صفحة الموقع إلى الريسيفر. يمكنك إعداد محرك إضافي لاحقًا.", Toast.LENGTH_LONG).show())
-                    .show();
+            // Cobalt is optional: do not interrupt every share with a server-setup dialog.
+            // Keep the local WebView extraction path usable without any third-party endpoint.
+            Toast.makeText(this,
+                    "لم يظهر رابط بث مباشر في الصفحة. محرك الخادم الإضافي غير مُعدّ؛ لم يتم إرسال رابط صفحة الموقع للريسيفر.",
+                    Toast.LENGTH_LONG).show();
             return;
         }
         runRemoteExtraction(pageUrl, generation, configuredApi);
