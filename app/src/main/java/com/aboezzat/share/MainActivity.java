@@ -623,6 +623,10 @@ public class MainActivity extends Activity {
         addCard(r4, "◷", "الوسائط الأخيرة", "إعادة إرسال رابط سابق", () -> showRecentCastDialog());
         addCard(r4, "▤", "بث IPTV", "إضافة رابط بث مباشر", () -> showIptvUrlDialog());
         page.addView(r4, lp(-1, -2));
+        LinearLayout r5 = row();
+        addCard(r5, "★", "الوسائط المحفوظة", "روابط محفوظة للإرسال والتنزيل", () -> showSavedMedia());
+        addCard(r5, "☆", "المفضلة والسجل", "المواقع والصفحات السابقة", () -> showLibrary());
+        page.addView(r5, lp(-1, -2));
         page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
         scroll.addView(page);
         content.addView(scroll, lp(-1, -1));
