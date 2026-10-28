@@ -1536,7 +1536,18 @@ public class MainActivity extends Activity {
                     return;
                 }
             }
-            runOnUiThread(() -> discoveryInProgress = false);
+            runOnUiThread(() -> {
+                discoveryInProgress = false;
+                // A discovery callback may contain stale or malformed candidates.
+                // Never leave a pending cast silently stranded after all candidates fail
+                // the Receiver's protocol-level ping verification.
+                if (pendingPlatformUrl != null) {
+                    pendingPlatformUrl = null;
+                    Toast.makeText(this,
+                            "تم العثور على عناوين غير مؤكدة لكن لم يستجب أيٌّ منها كريسيفر AboEzzat. تأكد من نفس شبكة Wi-Fi وأن تطبيق Receiver يعمل.",
+                            Toast.LENGTH_LONG).show();
+                }
+            });
         });
     }
 
