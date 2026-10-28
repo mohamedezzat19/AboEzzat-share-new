@@ -78,6 +78,9 @@ public class MainActivity extends Activity {
     private int orientationBeforeFullscreen = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private static final int REQUEST_MICROPHONE = 904;
     private static final int REQUEST_NOTIFICATIONS = 907;
+    private static final int REQUEST_NATIVE_VOICE = 908;
+    private android.speech.SpeechRecognizer nativeSpeechRecognizer;
+    private EditText pendingVoiceTarget;
     private static final String EXTRACTION_CHANNEL = "aboezzat_extraction_progress";
     private static final int EXTRACTION_NOTIFICATION_ID = 4708;
     private volatile boolean extractionTracking = false;
@@ -804,7 +807,16 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_MICROPHONE) {
+        if (requestCode == REQUEST_NATIVE_VOICE) {
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                startNativeVoiceRecognition();
+            } else {
+                pendingVoiceTarget = null;
+                Toast.makeText(this, "اسمح للميكروفون من إعدادات أندرويد لاستخدام البحث الصوتي داخل التطبيق.", Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == REQUEST_MICROPHONE) {
             android.webkit.PermissionRequest request = pendingWebPermissionRequest;
             pendingWebPermissionRequest = null;
             boolean granted = grantResults.length > 0
@@ -967,6 +979,11 @@ public class MainActivity extends Activity {
         homeSearch.setPadding(dp(7), 0, dp(7), 0);
         homeSearch.setBackgroundColor(Color.TRANSPARENT);
         searchBar.addView(homeSearch, new LinearLayout.LayoutParams(0, dp(46), 1));
+
+        TextView voiceSearch = button("🎙", PANEL2, GOLD);
+        voiceSearch.setContentDescription("البحث الصوتي");
+        searchBar.addView(voiceSearch, lp(40, 40));
+        voiceSearch.setOnClickListener(v -> beginNativeVoiceSearch(homeSearch));
 
         TextView clearSearch = button("×", PANEL2, MUTED);
         clearSearch.setContentDescription("مسح البحث");
@@ -1233,6 +1250,11 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams cap=lp(34,34);cap.setMargins(0,0,dp(5),0);addressRow.addView(capture,cap);
         capture.setOnClickListener(v -> captureCurrentPlayingVideo());
         addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
+        TextView voice=button("🎙",PANEL2,GOLD);
+        voice.setContentDescription("البحث الصوتي باستخدام الميكروفون");
+        LinearLayout.LayoutParams voiceParams=lp(34,34);voiceParams.setMargins(0,0,dp(4),0);
+        addressRow.addView(voice,voiceParams);
+        voice.setOnClickListener(v -> beginNativeVoiceSearch(address));
         TextView clear=button("×",PANEL2,WHITE);
         clear.setContentDescription("مسح عنوان الرابط");
         LinearLayout.LayoutParams clp=lp(32,42);clp.setMargins(dp(3),0,0,0);addressRow.addView(clear,clp);
@@ -2210,6 +2232,87 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(ip);
             }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private void beginNativeVoiceSearch(EditText target) {
+        if (target == null) return;
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(this, "خدمة التعرف على الكلام غير متاحة على الجهاز. ثبّت أو فعّل تطبيق Google.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        pendingVoiceTarget = target;
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_NATIVE_VOICE);
+            return;
+        }
+        startNativeVoiceRecognition();
+    }
+
+    private void startNativeVoiceRecognition() {
+        final EditText target = pendingVoiceTarget;
+        if (target == null || isFinishing()) return;
+        try {
+            if (nativeSpeechRecognizer != null) {
+                try { nativeSpeechRecognizer.destroy(); } catch (Exception ignored) { }
+                nativeSpeechRecognizer = null;
+            }
+            nativeSpeechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+            nativeSpeechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+                @Override public void onReadyForSpeech(android.os.Bundle params) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "اتكلم دلوقتي…", Toast.LENGTH_SHORT).show());
+                }
+                @Override public void onBeginningOfSpeech() { }
+                @Override public void onRmsChanged(float rmsdB) { }
+                @Override public void onBufferReceived(byte[] buffer) { }
+                @Override public void onEndOfSpeech() { }
+                @Override public void onError(int error) {
+                    runOnUiThread(() -> {
+                        String message = error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
+                                ? "إذن الميكروفون غير متاح. راجع أذونات التطبيق."
+                                : error == android.speech.SpeechRecognizer.ERROR_NO_MATCH
+                                || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                                ? "لم أسمع كلمات واضحة. اضغط الميكروفون وحاول مرة أخرى."
+                                : "تعذّر تشغيل البحث الصوتي. تأكد من الإنترنت وتفعيل خدمة Google للصوت.";
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                        releaseNativeSpeechRecognizer();
+                    });
+                }
+                @Override public void onResults(android.os.Bundle results) {
+                    java.util.ArrayList<String> matches = results == null ? null
+                            : results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    if (matches != null && !matches.isEmpty() && pendingVoiceTarget == target) {
+                        target.setText(matches.get(0));
+                        target.setSelection(target.length());
+                        target.requestFocus();
+                        Toast.makeText(MainActivity.this, "تم تحويل كلامك إلى نص. اضغط بحث للمتابعة.", Toast.LENGTH_SHORT).show();
+                    }
+                    releaseNativeSpeechRecognizer();
+                }
+                @Override public void onPartialResults(android.os.Bundle partialResults) { }
+                @Override public void onEvent(int eventType, android.os.Bundle params) { }
+            });
+            android.content.Intent intent = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag());
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault().toLanguageTag());
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
+            nativeSpeechRecognizer.startListening(intent);
+        } catch (Exception e) {
+            Log.e("AboEzzatVoice", "Unable to start native voice search", e);
+            releaseNativeSpeechRecognizer();
+            Toast.makeText(this, "تعذّر بدء البحث الصوتي. تأكد من تفعيل خدمة التعرف على الكلام.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void releaseNativeSpeechRecognizer() {
+        if (nativeSpeechRecognizer != null) {
+            try { nativeSpeechRecognizer.cancel(); } catch (Exception ignored) { }
+            try { nativeSpeechRecognizer.destroy(); } catch (Exception ignored) { }
+            nativeSpeechRecognizer = null;
+        }
     }
 
     private String microphoneOriginKey(android.webkit.PermissionRequest request) {
