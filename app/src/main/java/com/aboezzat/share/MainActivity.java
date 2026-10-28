@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
     private TextView pageTitle, connectionLabel, mediaLabel, castActionButton;
     private final LinkedHashMap<String,String> media = new LinkedHashMap<>();
     private final ArrayList<String> mediaOrder = new ArrayList<>();
+    private final LinkedHashMap<String, Boolean> selectedTrackUrls = new LinkedHashMap<>();
     private String currentPage = "home";
     private String receiverIp = "";
     private boolean receiverConnected = false;
@@ -1618,6 +1619,11 @@ public class MainActivity extends Activity {
             scroll.setVisibility(show ? View.VISIBLE : View.GONE);
             info.setText((show ? "إخفاء المصادر المكتشفة (" : "عرض المصادر المكتشفة (") + mediaOrder.size() + ")");
         });
+        TextView mergeTracks = button("دمج مسار فيديو وصوت مختارين", PANEL2, GOLD);
+        LinearLayout.LayoutParams mergeParams = lp(-1, 42);
+        mergeParams.topMargin = dp(5);
+        content.addView(mergeTracks, mergeParams);
+        mergeTracks.setOnClickListener(v -> sendSelectedMediaTracks());
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
@@ -1634,6 +1640,19 @@ public class MainActivity extends Activity {
             cast.setOnClickListener(v->castUrl(url));
             best.setOnClickListener(v->castBestQuality());
             download.setOnClickListener(v->downloadUrl(url, null));
+            TextView selectTrack = button(selectedTrackUrls.containsKey(url) ? "✓ محدد لمسارات التشغيل" : "اختيار كمسار فيديو/صوت", PANEL2, WHITE);
+            LinearLayout.LayoutParams selectParams = lp(-1, 36);
+            selectParams.topMargin = dp(4);
+            card.addView(selectTrack, selectParams);
+            selectTrack.setOnClickListener(v -> {
+                if (selectedTrackUrls.containsKey(url)) {
+                    selectedTrackUrls.remove(url);
+                    selectTrack.setText("اختيار كمسار فيديو/صوت");
+                } else {
+                    selectedTrackUrls.put(url, true);
+                    selectTrack.setText("✓ محدد لمسارات التشغيل");
+                }
+            });
             TextView save=button(isInSavedMedia(url) ? "✓ محفوظ" : "＋ حفظ الرابط",PANEL2,GOLD);
             LinearLayout.LayoutParams saveP=lp(-1,38);saveP.topMargin=dp(5);card.addView(save,saveP);
             save.setOnClickListener(v -> { saveMediaUrl(url); showMedia(); });
@@ -1719,6 +1738,49 @@ public class MainActivity extends Activity {
         bp.topMargin = dp(12);
         content.addView(back, bp);
         back.setOnClickListener(v -> showMedia());
+    }
+
+    private void sendSelectedMediaTracks() {
+        String videoUrl = null;
+        String audioUrl = null;
+        for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
+            if (!Boolean.TRUE.equals(selectedTrackUrls.get(url))) continue;
+            String lower = url.toLowerCase(Locale.ROOT);
+            boolean audioTrack = "صوت".equals(mediaType(url))
+                    || lower.contains("mime=audio") || lower.contains("type=audio")
+                    || lower.contains("audio_playback") || lower.contains("dash_ln_heaac");
+            if (audioTrack && audioUrl == null) audioUrl = url;
+            else if (isVideoCandidate(url) && videoUrl == null) videoUrl = url;
+        }
+        if (videoUrl == null) {
+            Toast.makeText(this, "اختار مسار فيديو أولًا، ويمكنك تحديد مسار صوت إضافي معه", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (audioUrl == null) {
+            castUrl(videoUrl);
+            return;
+        }
+        if (receiverIp.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("إعداد الاستقبال")
+                    .setMessage("لازم تكتشف جهاز AboEzzat Receiver أو تضبط عنوانه قبل دمج المسارات.")
+                    .setPositiveButton("ضبط الآن", (d, w) -> receiverSettings())
+                    .setNegativeButton("إلغاء", null).show();
+            return;
+        }
+        final String ip = receiverIp;
+        Toast.makeText(this, "جاري إرسال مساري الفيديو والصوت معًا…", Toast.LENGTH_SHORT).show();
+        CastingManager.sendTracks(ip, videoUrl, audioUrl, (success, message) -> runOnUiThread(() -> {
+            receiverConnected = success;
+            refreshConnectionLabel();
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            if (success) {
+                rememberCastUrl(videoUrl);
+                rememberCastUrl(audioUrl);
+                trackReceiverExtraction(ip);
+            } else {
+                discoverReceiverInBackground();
+            }
+        }));
     }
 
     private String mediaType(String url){
