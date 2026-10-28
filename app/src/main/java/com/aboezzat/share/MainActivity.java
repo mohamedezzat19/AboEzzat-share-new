@@ -1173,7 +1173,8 @@ public class MainActivity extends Activity {
                 if(address!=null && "browser".equals(currentPage)) address.setText(url);
                 try { CookieManager.getInstance().flush(); } catch (Exception ignored) { }
                 saveHistory(url);
-                // Do not scan every video/image URL on the page. The TV button targets only the active player.
+                // Restore the legacy browser's lightweight media sniffing and YouTube ad-skip helper.
+                scanPageMediaAndSkipAds(view);
                 refreshCurrentVideoIndicator();
             }
         });
@@ -1250,6 +1251,39 @@ public class MainActivity extends Activity {
         saveHistory(url);
         address.setText(url);
         if(web!=null)web.loadUrl(url);
+    }
+
+    /**
+     * Restores the old browser's passive media scan and YouTube skip-ad helper.
+     * It only records HTTP(S) video sources exposed by the page; it does not try
+     * to bypass DRM, login checks, or protected blob streams.
+     */
+    private void scanPageMediaAndSkipAds(WebView view) {
+        if (view == null) return;
+        String js = "(function(){try{" +
+                "if(!window.__aboezzatAdSkipTimer){" +
+                "window.__aboezzatAdSkipTimer=setInterval(function(){try{" +
+                "var selectors=['.ytp-ad-skip-button','.ytp-ad-skip-button-modern','.ytp-skip-ad-button','.ytp-ad-skip-button-slot','.ytp-ad-overlay-close-button'];" +
+                "for(var s=0;s<selectors.length;s++){var nodes=document.querySelectorAll(selectors[s]);" +
+                "for(var i=0;i<nodes.length;i++){var n=nodes[i];if(n&&n.offsetParent!==null&&!n.disabled){n.click();}}}" +
+                "}catch(e){}},700);}" +
+                "var out=[];var videos=document.querySelectorAll('video');" +
+                "for(var j=0;j<videos.length;j++){var v=videos[j];var u=v.currentSrc||v.src;" +
+                "if(u&&/^https?:/i.test(u)&&out.indexOf(u)<0)out.push(u);}" +
+                "var meta=document.querySelector('meta[property=\\\"og:video\\\"],meta[property=\\\"og:video:secure_url\\\"]');" +
+                "if(meta&&meta.content&&/^https?:/i.test(meta.content)&&out.indexOf(meta.content)<0)out.push(meta.content);" +
+                "return JSON.stringify(out);}catch(e){return '[]';}})()";
+        view.evaluateJavascript(js, value -> {
+            try {
+                Object decoded = new org.json.JSONTokener(value == null ? "\"[]\"" : value).nextValue();
+                if (!(decoded instanceof String)) return;
+                org.json.JSONArray urls = new org.json.JSONArray((String) decoded);
+                for (int i = 0; i < urls.length(); i++) {
+                    String url = urls.optString(i, "");
+                    if (isVideoCandidate(url)) detectMedia(url);
+                }
+            } catch (Exception ignored) { }
+        });
     }
 
     private synchronized void detectMedia(String url){
