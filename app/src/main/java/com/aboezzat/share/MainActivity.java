@@ -2469,13 +2469,19 @@ public class MainActivity extends Activity {
                 || lowerHost.contains("byteoversea") || lowerHost.contains("ibytedtos")
                 || lowerHost.contains("muscdn") || lowerHost.contains("fbcdn.net")
                 || lowerHost.contains("fbsbx.com") || lowerHost.contains("cdninstagram.com");
+        // CDN links from Meta/X often have no file extension. Recognize their
+        // known video path families, while excluding image/audio URLs above.
         boolean knownVideoPath = lower.contains("/v/t42.") || lower.contains("/v/t39.")
-                || lower.contains("/v/t16.") || lower.contains("/ext_tw_video/")
-                || lower.contains("/amplify_video/") || lower.contains("/tweet_video/");
-        return (socialCdn && (lower.contains("video") || lower.contains("playback")
+                || lower.contains("/v/t16.") || lower.contains("/v/t15.")
+                || lower.contains("/ext_tw_video/") || lower.contains("/amplify_video/")
+                || lower.contains("/tweet_video/") || lower.contains("/video/t/");
+        boolean hasVideoMarker = lower.contains("video") || lower.contains("playback")
                 || lower.contains("bytevc") || lower.contains("avc1") || lower.contains("hevc")
                 || lower.contains("dash") || lower.contains("v/t16") || lower.contains("v/t39")
-                || knownVideoPath))
+                || lower.contains("v/t42") || lower.contains("v/t15") || knownVideoPath;
+        // Facebook's signed CDN paths commonly use /v/t15, /v/t39 or /v/t42;
+        // Instagram/TikTok/X use their own video path/codec markers.
+        return (socialCdn && hasVideoMarker)
                 || ("video.twimg.com".equals(lowerHost) && knownVideoPath);
     }
 
