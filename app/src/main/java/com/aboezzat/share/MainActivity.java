@@ -205,8 +205,52 @@ public class MainActivity extends Activity {
         }
     }
 
+    private int authenticatedResolveGeneration = 0;
+
     private void sendPlatformLinkToScreen(String url) {
-        // Always discover the live receiver for shared social links; never trust a saved IP.
+        // First open shared links inside Share's persistent WebView so the user's own
+        // platform login session can resolve media URLs before the Receiver fallback.
+        if (!BrowserEngine.isWebUrl(url)) {
+            sendPlatformLinkToReceiver(url);
+            return;
+        }
+        final int generation = ++authenticatedResolveGeneration;
+        showBrowser();
+        if (address != null) address.setText(url);
+        if (web == null) createWebView();
+        Toast.makeText(this, "جاري فتح الرابط بمتصفح Share واستخدام جلسة تسجيل الدخول المحفوظة…", Toast.LENGTH_LONG).show();
+        web.loadUrl(url);
+        receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(url, generation, 0), 1200L);
+    }
+
+    private void resolveSharedVideoFromBrowser(String pageUrl, int generation, int attempt) {
+        if (generation != authenticatedResolveGeneration || web == null || isFinishing()) return;
+        final String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);})||vs.find(function(x){return x.readyState>=2&&(x.currentSrc||x.src);});return v?(v.currentSrc||v.src||''):'';})()";
+        web.evaluateJavascript(js, value -> {
+            if (generation != authenticatedResolveGeneration || isFinishing()) return;
+            try {
+                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                String mediaUrl = parsed == null ? "" : String.valueOf(parsed);
+                if (!mediaUrl.isEmpty() && !"null".equals(mediaUrl)
+                        && !mediaUrl.startsWith("blob:") && !mediaUrl.startsWith("data:")
+                        && isVideoCandidate(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                    currentPlayingVideoUrl = mediaUrl;
+                    Toast.makeText(this, "تم العثور على رابط الفيديو من جلسة المتصفح؛ جاري إرساله للشاشة…", Toast.LENGTH_LONG).show();
+                    castUrl(mediaUrl);
+                    return;
+                }
+            } catch (Exception ignored) { }
+            if (attempt < 18) {
+                receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 1000L);
+            } else {
+                Toast.makeText(this, "لم يظهر رابط فيديو مباشر داخل المتصفح؛ سأرسل رابط الصفحة للريسيفر كخطة بديلة.", Toast.LENGTH_LONG).show();
+                sendPlatformLinkToReceiver(pageUrl);
+            }
+        });
+    }
+
+    private void sendPlatformLinkToReceiver(String url) {
+        // Always discover the live receiver; never trust a saved or stale IP.
         pendingPlatformUrl = url;
         Toast.makeText(this, "جاري العثور على عنوان الريسيفر الحالي وإرسال الفيديو…", Toast.LENGTH_LONG).show();
         discoverReceiverInBackground();
@@ -999,7 +1043,9 @@ public class MainActivity extends Activity {
     private void createWebView() {
         web=new WebView(this);
         BrowserEngine.configure(web);
-        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setAcceptThirdPartyCookies(web, true);
         web.setBackgroundColor(BG);
         web.setWebChromeClient(new WebChromeClient(){
             @Override public void onShowCustomView(View view, CustomViewCallback callback) {
@@ -1109,6 +1155,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onPageFinished(WebView view,String url){
                 if(address!=null && "browser".equals(currentPage)) address.setText(url);
+                try { CookieManager.getInstance().flush(); } catch (Exception ignored) { }
                 saveHistory(url);
                 // Do not scan every video/image URL on the page. The TV button targets only the active player.
                 refreshCurrentVideoIndicator();
