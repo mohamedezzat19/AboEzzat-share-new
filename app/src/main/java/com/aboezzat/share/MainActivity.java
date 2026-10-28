@@ -1304,6 +1304,12 @@ public class MainActivity extends Activity {
                         String scheme = uri != null ? uri.getScheme() : null;
                         return scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
                     }
+                    @Override public boolean onRenderProcessGone(WebView child, android.webkit.RenderProcessGoneDetail detail) {
+                        try { child.destroy(); } catch (Exception ignored) { }
+                        if (!isFinishing() && dialog.isShowing()) dialog.dismiss();
+                        Toast.makeText(MainActivity.this, "تم إغلاق نافذة الويب بعد تعطلها", Toast.LENGTH_SHORT).show();
+                        return true;
+                    }
                 });
                 popupWeb.setWebChromeClient(new WebChromeClient() {
                     @Override public void onCloseWindow(WebView window) {
@@ -1323,6 +1329,28 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
                 Uri u=request.getUrl();
                 if("http".equals(u.getScheme())||"https".equals(u.getScheme())) return false;
+                return true;
+            }
+            @Override public boolean onRenderProcessGone(WebView crashedView, android.webkit.RenderProcessGoneDetail detail) {
+                int crashedIndex = browserTabs.indexOf(crashedView);
+                if (crashedIndex >= 0) {
+                    browserTabs.remove(crashedIndex);
+                    if (crashedIndex < browserTabTitles.size()) browserTabTitles.remove(crashedIndex);
+                    if (crashedView == web) web = null;
+                    try { crashedView.destroy(); } catch (Exception ignored) { }
+                    if (browserTabs.isEmpty()) {
+                        createWebView();
+                        ensureBrowserTabRegistered();
+                    } else {
+                        activeBrowserTab = Math.max(0, Math.min(activeBrowserTab, browserTabs.size() - 1));
+                        web = browserTabs.get(activeBrowserTab);
+                    }
+                    showBrowser();
+                    Toast.makeText(MainActivity.this, "تعطّلت عملية عرض صفحة الويب؛ تم استعادة المتصفح", Toast.LENGTH_LONG).show();
+                    return true;
+                }
+                try { crashedView.destroy(); } catch (Exception ignored) { }
+                Toast.makeText(MainActivity.this, "تعذّر عرض هذه الصفحة وتم إغلاقها", Toast.LENGTH_SHORT).show();
                 return true;
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
