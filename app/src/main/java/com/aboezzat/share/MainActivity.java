@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
     private String receiverIp = "";
     private boolean receiverConnected = false;
     private boolean discoveryInProgress = false;
+    private int receiverMonitorCycles = 0;
     private final android.os.Handler receiverMonitorHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable receiverMonitorRunnable = new Runnable() {
         @Override public void run() {
@@ -1452,7 +1453,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 receiverIp=normalized;
-                prefs.edit().putString("receiver_ip",receiverIp).apply();refreshConnectionLabel();
+                refreshConnectionLabel();
                 Toast.makeText(this, "تم حفظ عنوان الاستقبال: " + receiverIp,Toast.LENGTH_SHORT).show();
             }).setNeutralButton("اختبار الاتصال",(d,w)->{
                 String ip = normalizeReceiverIp(input.getText().toString());
@@ -1498,8 +1499,11 @@ public class MainActivity extends Activity {
             final boolean connected = ok;
             runOnUiThread(() -> {
                 receiverConnected = connected;
+                if (!connected) receiverIp = "";
                 refreshConnectionLabel();
-                if (!connected) discoverReceiverInBackground();
+                if (!connected || (++receiverMonitorCycles % 4 == 0)) {
+                    discoverReceiverInBackground();
+                }
             });
         }, "ReceiverConnectionMonitor").start();
     }
@@ -1522,7 +1526,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         receiverIp = verifiedIp;
                         receiverConnected = true;
-                        prefs.edit().putString("receiver_ip", receiverIp).apply();
+                        
                         refreshConnectionLabel();
                         discoveryInProgress = false;
                     });
@@ -1543,7 +1547,7 @@ public class MainActivity extends Activity {
                 if (result) {
                     receiverConnected = true;
                     receiverIp = ip;
-                    prefs.edit().putString("receiver_ip", receiverIp).apply();
+                    
                     refreshConnectionLabel();
                 }
                 Toast.makeText(this,result?"تم التحقق من عنوان الريسيفر الحالي":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ 8081.",Toast.LENGTH_LONG).show();
