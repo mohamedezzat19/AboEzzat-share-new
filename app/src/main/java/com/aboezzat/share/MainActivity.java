@@ -1768,14 +1768,16 @@ public class MainActivity extends Activity {
             return;
         }
         final String ip = receiverIp;
+        final String selectedVideoUrl = videoUrl;
+        final String selectedAudioUrl = audioUrl;
         Toast.makeText(this, "جاري إرسال مساري الفيديو والصوت معًا…", Toast.LENGTH_SHORT).show();
-        CastingManager.sendTracks(ip, videoUrl, audioUrl, (success, message) -> runOnUiThread(() -> {
+        CastingManager.sendTracks(ip, selectedVideoUrl, selectedAudioUrl, (success, message) -> runOnUiThread(() -> {
             receiverConnected = success;
             refreshConnectionLabel();
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             if (success) {
-                rememberCastUrl(videoUrl);
-                rememberCastUrl(audioUrl);
+                rememberCastUrl(selectedVideoUrl);
+                rememberCastUrl(selectedAudioUrl);
                 trackReceiverExtraction(ip);
             } else {
                 discoverReceiverInBackground();
