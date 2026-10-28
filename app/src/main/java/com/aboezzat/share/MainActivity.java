@@ -154,15 +154,9 @@ public class MainActivity extends Activity {
             String scheme = data.getScheme();
             if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
                 String sharedUrl = BrowserEngine.normalizeAddress(data.toString());
-                if (isDirectPlatformUrl(sharedUrl)) {
-                    sendPlatformLinkToScreen(sharedUrl);
-                    return;
-                }
-                showBrowser();
-                if (address != null) {
-                    address.setText(sharedUrl);
-                    if (web != null) web.loadUrl(sharedUrl);
-                }
+                // For externally opened links, try screen playback first rather than launching
+                // the embedded browser. The Receiver reports when no direct stream can be resolved.
+                sendPlatformLinkToScreen(sharedUrl);
                 return;
             }
 
