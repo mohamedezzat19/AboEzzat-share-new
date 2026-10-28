@@ -257,9 +257,13 @@ public class MainActivity extends Activity {
     }
 
     private void sendPlatformLinkToReceiver(String url) {
-        // Always discover the live receiver; never trust a saved or stale IP.
+        // Prefer the receiver explicitly selected by the user. Only discover when none is saved.
+        if (receiverIp != null && !receiverIp.trim().isEmpty()) {
+            castUrl(url);
+            return;
+        }
         pendingPlatformUrl = url;
-        Toast.makeText(this, "جاري العثور على عنوان الريسيفر الحالي وإرسال الفيديو…", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "جاري العثور على عنوان الريسيفر وإرسال الفيديو…", Toast.LENGTH_LONG).show();
         discoverReceiverInBackground();
     }
 
@@ -1897,7 +1901,7 @@ public class MainActivity extends Activity {
                 rememberCastUrl(selectedVideoUrl);
                 rememberCastUrl(selectedAudioUrl);
                 trackReceiverExtraction(ip);
-            } else {
+            } else if (receiverIp == null || receiverIp.trim().isEmpty()) {
                 discoverReceiverInBackground();
             }
         }));
@@ -2356,7 +2360,7 @@ public class MainActivity extends Activity {
             refreshConnectionLabel();
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             if (success) trackReceiverExtraction(ip);
-            if (!success) discoverReceiverInBackground();
+            if (!success && (receiverIp == null || receiverIp.trim().isEmpty())) discoverReceiverInBackground();
         }));
     }
 
