@@ -88,6 +88,49 @@ public final class CastingManager {
         });
     }
 
+    public static void sendTracks(String ip, String videoUrl, String audioUrl, Callback callback) {
+        final String video = videoUrl == null ? "" : videoUrl.trim();
+        final String audio = audioUrl == null ? "" : audioUrl.trim();
+        IO.execute(() -> {
+            if (ip == null || !ip.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")) {
+                callback.onResult(false, "عنوان الريسيفر غير صالح");
+                return;
+            }
+            if (!isHttpUrl(video) || !isHttpUrl(audio)) {
+                callback.onResult(false, "لازم تختار رابط فيديو ورابط صوت مباشرين صالحين");
+                return;
+            }
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(ip, 8081), 3500);
+                socket.setSoTimeout(4000);
+                String target = "/?video=" + URLEncoder.encode(video, "UTF-8")
+                        + "&audio=" + URLEncoder.encode(audio, "UTF-8");
+                OutputStream out = socket.getOutputStream();
+                out.write(("GET " + target + " HTTP/1.1\\r\\nHost: " + ip
+                        + ":8081\\r\\nConnection: close\\r\\n\\r\\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                String status = reader.readLine();
+                boolean ok = status != null && status.matches("HTTP/1\\\\.[01] 200(?: .*)?");
+                callback.onResult(ok, ok ? "تم إرسال مساري الفيديو والصوت للريسيفر" : "الريسيفر لم يؤكد إرسال المسارين");
+            } catch (Exception e) {
+                callback.onResult(false, "تعذّر إرسال المسارين: " + e.getMessage());
+            }
+        });
+    }
+
+    private static boolean isHttpUrl(String value) {
+        if (value == null || value.isEmpty()) return false;
+        try {
+            android.net.Uri uri = android.net.Uri.parse(value);
+            String scheme = uri.getScheme();
+            return uri.getHost() != null
+                    && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     public static void sendCommand(String ip, String command, Callback callback) {
         IO.execute(() -> {
             try {
