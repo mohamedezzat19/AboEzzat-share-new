@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><title>AboEzzat Cloud Admin</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#eef2ff;background:#0b1020}*{box-sizing:border-box}body{margin:0}header{padding:22px max(18px,calc((100% - 1100px)/2));background:#121a30;border-bottom:1px solid #293653}h1{margin:0 0 6px;font-size:clamp(22px,4vw,32px)}p{color:#aab7d4;line-height:1.6}.wrap{max-width:1100px;margin:auto;padding:20px}.panel{background:#121a30;border:1px solid #293653;border-radius:16px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.stat{padding:14px;border-radius:12px;background:#1a2540}.stat strong{display:block;font-size:26px;margin-top:6px}label{display:block;color:#c6d2ec;margin:12px 0 6px}input,select,button,textarea{font:inherit;border-radius:9px;border:1px solid #3b4c70;background:#0d1427;color:#eef2ff;padding:11px;width:100%}button{cursor:pointer;background:#315ee7;border:0;font-weight:650;margin-top:12px}button.secondary{background:#26334f}button:disabled{opacity:.5;cursor:not-allowed}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:160px}.muted{font-size:13px;color:#93a4c7}.status{padding:10px;border-radius:9px;background:#1a2540;white-space:pre-wrap;overflow-wrap:anywhere}.danger{border-right:4px solid #e7a33b}.hidden{display:none}table{width:100%;border-collapse:collapse}td,th{text-align:right;padding:10px;border-bottom:1px solid #293653;overflow-wrap:anywhere}code{color:#b8ccff}@media(max-width:600px){.wrap{padding:12px}.panel{padding:13px}}
+</style>
+</head>
+<body>
+<header><h1>☁️ AboEzzat Cloud Admin</h1><p>إدارة Share وReceiver من خارج المنزل — الأجهزة، التحكم، التشخيص، التحديثات، السجل والأمان.</p></header>
+<main class="wrap">
+<section class="panel danger"><strong>تنبيه إعداد مهم</strong><p>هذه لوحة حقيقية تعتمد على Firebase بعد إعداد مشروعك. لن تظهر الأجهزة ولن تُرسل أوامر قبل وضع إعدادات Firebase الصحيحة وتفعيل Authentication وRealtime Database ونشر القواعد. لا تفتح المنفذ المحلي 8081 على الإنترنت.</p></section>
+<section class="panel" id="setup"><h2>1. إعداد الاتصال</h2><p>أنشئ Firebase Web App، ثم ضع إعدادات التطبيق العامة أدناه. لا تضع service-account key أو أي سر إداري في هذه الصفحة.</p>
+<label for="apiKey">API key</label><input id="apiKey" autocomplete="off" placeholder="Firebase web apiKey">
+<label for="authDomain">Auth domain</label><input id="authDomain" autocomplete="off" placeholder="your-project.firebaseapp.com">
+<label for="databaseURL">Realtime Database URL</label><input id="databaseURL" autocomplete="off" placeholder="https://your-project-default-rtdb.region.firebasedatabase.app">
+<label for="projectId">Project ID</label><input id="projectId" autocomplete="off" placeholder="your-project-id">
+<label for="appId">App ID</label><input id="appId" autocomplete="off" placeholder="1:...:web:...">
+<p class="muted">الإعداد محفوظ في ذاكرة الصفحة فقط لهذه الجلسة، ولا يُرسل إلى أي جهة غير Firebase.</p>
+<button id="connect">الاتصال بـ Firebase</button><div id="setupStatus" class="status" role="status" aria-live="polite">غير متصل</div>
+</section>
+<section id="auth" class="panel hidden"><h2>2. تسجيل الدخول</h2><div class="row"><div><label for="email">البريد الإلكتروني</label><input id="email" type="email" autocomplete="username"></div><div><label for="password">كلمة المرور</label><input id="password" type="password" autocomplete="current-password"></div></div><div class="row"><button id="signIn">تسجيل الدخول</button><button id="register" class="secondary">إنشاء حساب</button><button id="signOut" class="secondary">خروج</button></div><div id="authStatus" class="status" role="status" aria-live="polite">سجّل الدخول للوصول إلى بيانات حسابك فقط.</div></section>
+<section id="dashboard" class="hidden">
+<div class="grid"><div class="stat">الأجهزة المسجلة<strong id="deviceCount">—</strong></div><div class="stat">متصلة حديثًا<strong id="onlineCount">—</strong></div><div class="stat">الأوامر المسجلة<strong id="commandCount">—</strong></div><div class="stat">الأحداث<strong id="eventCount">—</strong></div></div>
+<section class="panel"><h2>الأجهزة (Devices)</h2><p class="muted">تُحسب حالة الاتصال من lastSeen خلال آخر 90 ثانية. يلزم أن يرسل Receiver نبضات سحابية حتى تظهر الأجهزة.</p><div style="overflow:auto"><table><thead><tr><th>المعرّف</th><th>الاسم</th><th>الإصدار</th><th>الحالة</th><th>آخر ظهور</th></tr></thead><tbody id="devicesBody"><tr><td colspan="5">بانتظار البيانات…</td></tr></tbody></table></div></section>
+<section class="panel"><h2>التحكم عن بُعد (Remote)</h2><p>أرسل أمرًا إلى جهاز مسجل في حسابك. هذه اللوحة تكتب طابور أوامر؛ التنفيذ الفعلي يحتاج تكامل Receiver السحابي.</p><label for="deviceSelect">الجهاز</label><select id="deviceSelect"><option value="">لا توجد أجهزة</option></select><label for="commandType">الأمر</label><select id="commandType"><option value="pause">إيقاف مؤقت</option><option value="resume">استئناف</option><option value="stop">إيقاف</option><option value="play_url">تشغيل رابط HTTPS</option><option value="volume">مستوى الصوت</option><option value="seek">تقديم/ترجيع بالثواني</option></select><div id="payloadWrap" class="hidden"><label for="payload">القيمة</label><input id="payload" placeholder="HTTPS URL أو قيمة الأمر"></div><button id="sendCommand">إضافة الأمر إلى الطابور</button><div id="commandStatus" class="status" role="status" aria-live="polite"></div></section>
+<section class="panel"><h2>التشخيص (Diagnostics)</h2><p>أحدث الأحداث المرسلة إلى حسابك. تجنّب تسجيل روابط خاصة أو رموز وصول.</p><div id="eventsBody" class="status">لا توجد أحداث بعد.</div></section>
+<section class="panel"><h2>التحديثات (Updates)</h2><p>عرض إصدار التطبيق وحده لا يثبت توفر تحديث. يمكن إضافة بيانات الإصدار هنا لاحقًا، ويجب أن يؤكد المستخدم التثبيت عبر آلية Android الرسمية.</p><div id="updatesBody" class="status">بانتظار بيانات الأجهزة.</div></section>
+<section class="panel"><h2>السجل والأمان</h2><p>الأوامر والأحداث مرتبطة بمسار المستخدم المصادق عليه. القواعد يجب نشرها واختبارها عبر Firebase Emulator قبل الاستخدام الحقيقي.</p><div id="securityStatus" class="status">غير متصل</div></section>
+</section>
+<p class="muted">AboEzzat Admin • لا تعرض بيانات الدخول أو مفاتيح الإدارة في لقطات الشاشة أو السجلات.</p>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+let app,auth,db,mod,deviceData={},unsubscribers=[],currentUid=null;
+const setStatus=(id,msg)=>$(id).textContent=msg;
+const clean=val=>String(val??"").replace(/[<>]/g,"").slice(0,180);
+function cfg(){return {apiKey:$("apiKey").value.trim(),authDomain:$("authDomain").value.trim(),databaseURL:$("databaseURL").value.trim(),projectId:$("projectId").value.trim(),appId:$("appId").value.trim()};}
+function validConfig(c){return Object.values(c).every(Boolean)&&/^https:\/\//i.test(c.databaseURL)&&!c.apiKey.includes("YOUR_");}
+function clearListeners(){unsubscribers.forEach(fn=>{try{fn()}catch{}});unsubscribers=[];}
+$("connect").addEventListener("click",async()=>{
+ try{
+  const c=cfg();if(!validConfig(c))throw Error("أكمل كل حقول Firebase وتأكد من صحة Database URL.");
+  $("connect").disabled=true;setStatus("setupStatus","جارٍ الاتصال…");
+  mod=await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js");
+  const authMod=await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js");
+  const dbMod=await import("https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js");
+  app=mod.getApps().find(a=>a.name==="aboezzat-admin")||mod.initializeApp(c,"aboezzat-admin");
+  auth=authMod.getAuth(app);db=dbMod.getDatabase(app);
+  window.__aboezzatAuth=auth;window.__aboezzatDb=db;
+  Object.assign(window,{__authMod:authMod,__dbMod:dbMod});
+  $("auth").classList.remove("hidden");setStatus("setupStatus","تم تحميل Firebase SDK. سجّل الدخول للتحقق من صلاحية الاتصال.");
+  authMod.onAuthStateChanged(auth,user=>{clearListeners();currentUid=user?.uid||null;if(user){$("dashboard").classList.remove("hidden");setStatus("authStatus","تم تسجيل الدخول: "+clean(user.email||user.uid));setStatus("securityStatus","UID: "+clean(user.uid)+"\nبيانات الحساب معزولة بالقواعد المنشورة.");subscribeData(user.uid,dbMod);}else{$("dashboard").classList.add("hidden");setStatus("authStatus","سجّل الدخول للوصول إلى بيانات حسابك فقط.");}});
+ }catch(e){setStatus("setupStatus","تعذّر الاتصال: "+clean(e.message));}finally{$("connect").disabled=false;}
+});
+$("signIn").addEventListener("click",async()=>{try{await window.__authMod.signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);setStatus("authStatus","تم تسجيل الدخول.");}catch(e){setStatus("authStatus","فشل تسجيل الدخول: "+clean(e.message));}});
+$("register").addEventListener("click",async()=>{try{await window.__authMod.createUserWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);setStatus("authStatus","تم إنشاء الحساب. راجع إعدادات Firebase لتفعيل التحقق من البريد عند الحاجة.");}catch(e){setStatus("authStatus","تعذّر إنشاء الحساب: "+clean(e.message));}});
+$("signOut").addEventListener("click",async()=>{if(auth)await window.__authMod.signOut(auth);});
+function subscribeData(uid,m){
+ const {ref,onValue,query,limitToLast}=m;
+ const devicesRef=ref(db,"users/"+uid+"/devices"),commandsRef=query(ref(db,"users/"+uid+"/commands"),limitToLast(50)),eventsRef=query(ref(db,"users/"+uid+"/events"),limitToLast(30));
+ unsubscribers.push(onValue(devicesRef,snap=>{deviceData=snap.val()||{};renderDevices();}));
+ unsubscribers.push(onValue(commandsRef,snap=>{$("commandCount").textContent=Object.keys(snap.val()||{}).length;}));
+ unsubscribers.push(onValue(eventsRef,snap=>{const v=snap.val()||{};const rows=Object.entries(v).sort((a,b)=>(b[1]?.createdAt||0)-(a[1]?.createdAt||0));$("eventCount").textContent=rows.length;$("eventsBody").textContent=rows.slice(0,15).map(([id,e])=>new Date(Number(e.createdAt)||0).toLocaleString()+" · "+clean(e.type||"event")+" · "+clean(e.message||e.status||id)).join("\n")||"لا توجد أحداث بعد.";}));
+}
+function renderDevices(){
+ const entries=Object.entries(deviceData),now=Date.now();$("deviceCount").textContent=entries.length;
+ const online=entries.filter(([,d])=>now-(Number(d?.lastSeen)||0)<90000).length;$("onlineCount").textContent=online;
+ $("devicesBody").innerHTML="";$("deviceSelect").innerHTML="";
+ if(!entries.length){$("devicesBody").innerHTML='<tr><td colspan="5">لا توجد أجهزة مسجلة بعد.</td></tr>';$("deviceSelect").add(new Option("لا توجد أجهزة",""));$("updatesBody").textContent="لا توجد بيانات إصدار بعد.";return;}
+ for(const [id,d0] of entries){const d=d0||{},seen=Number(d.lastSeen)||0,isOnline=now-seen<90000;const tr=document.createElement("tr");[clean(id),clean(d.name||"Receiver"),clean(d.appVersion||"غير معروف"),isOnline?"متصل":"غير متصل",seen?new Date(seen).toLocaleString():"لم يظهر بعد"].forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.appendChild(td)});$("devicesBody").appendChild(tr);$("deviceSelect").add(new Option(clean(d.name||id)+" · "+(isOnline?"متصل":"غير متصل"),id));}
+ $("updatesBody").textContent=entries.map(([id,d])=>clean(d.name||id)+": "+clean(d.appVersion||"إصدار غير معروف")).join("\n");
+}
+$("commandType").addEventListener("change",()=>{$("payloadWrap").classList.toggle("hidden",!["play_url","volume","seek"].includes($("commandType").value));$("payload").placeholder=$("commandType").value==="play_url"?"https://example.com/video.mp4":"قيمة الأمر";});
+$("sendCommand").addEventListener("click",async()=>{
+ try{
+  if(!currentUid)throw Error("سجّل الدخول أولًا.");const deviceId=$("deviceSelect").value;if(!deviceId)throw Error("اختر جهازًا مسجلًا.");
+  const type=$("commandType").value;let payload=null;
+  if(["play_url","volume","seek"].includes(type)){const raw=$("payload").value.trim();if(!raw)throw Error("أدخل قيمة الأمر.");if(type==="play_url"){const u=new URL(raw);if(u.protocol!=="https:")throw Error("يُسمح بروابط HTTPS فقط.");payload={url:u.href};}else{const n=Number(raw);if(!Number.isFinite(n)||n<0||n>(type==="volume"?100:86400))throw Error("القيمة خارج النطاق المسموح.");payload={value:n};}}
+  const {ref,push,set,serverTimestamp}=window.__dbMod;
+  const node=push(ref(db,"users/"+currentUid+"/commands"));await set(node,{id:node.key,deviceId,type,payload,createdAt:Date.now(),expiresAt:Date.now()+60000,status:"pending"});
+  setStatus("commandStatus","تمت إضافة الأمر إلى الطابور: "+node.key+"\nهذا لا يؤكد التنفيذ؛ يلزم أن يكون Receiver متصلًا بالسحابة ويرسل إقرارًا.");
+ }catch(e){setStatus("commandStatus","لم يُرسل الأمر: "+clean(e.message));}
+});
+</script>
+</body>
+</html>
