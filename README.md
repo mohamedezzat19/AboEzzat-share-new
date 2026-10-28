@@ -35,5 +35,9 @@ gradle assembleDebug
 
 توجد واجهة الإدارة في [`cloud-admin/index.html`](cloud-admin/index.html)، وخطة الربط في [`cloud-admin/README.md`](cloud-admin/README.md)، وقواعد Firebase الأساسية في [`firebase/database.rules.json`](firebase/database.rules.json). تحتاج اللوحة إلى إعداد Firebase خاص بك وتسجيل الدخول. طابور الأوامر في هذه المرحلة واجهة تأسيسية فقط؛ لن ينفّذ Receiver الأوامر السحابية قبل دمج عميل Firebase في تطبيق Android واختباره. لا تفتح المنفذ 8081 على الإنترنت.
 
+## مرجع المقارنة وخطة التنفيذ التقنية
+
+راجع [`docs/TECHNICAL-ROADMAP.md`](docs/TECHNICAL-ROADMAP.md) لمعرفة ما تم التحقق منه في الكود، ومتطلبات Media3 ونقل الترويسات، وخطة التحكم السحابي والاختبارات. المستند يميّز بين الموجود حاليًا والميزات المستهدفة.
+
 ## المشروع المقابل
 [AboEzzat Receiver](https://github.com/mohamedezzat19/AboEzzat-Receiver)
