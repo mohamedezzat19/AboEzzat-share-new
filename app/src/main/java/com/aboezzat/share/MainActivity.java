@@ -235,8 +235,10 @@ public class MainActivity extends Activity {
             return host.equals("tiktok.com") || host.endsWith(".tiktok.com")
                     || host.equals("instagram.com") || host.endsWith(".instagram.com")
                     || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("threads.com") || host.endsWith(".threads.com")
                     || host.equals("facebook.com") || host.endsWith(".facebook.com")
                     || host.equals("fb.watch") || host.endsWith(".fb.watch")
+                    || host.equals("fb.me") || host.endsWith(".fb.me")
                     || host.equals("m.facebook.com") || host.equals("lm.facebook.com");
         } catch (Exception ignored) {
             return false;
@@ -576,9 +578,9 @@ public class MainActivity extends Activity {
             }
             edit.putInt("local_media_index", Math.max(0, backup.optInt("local_media_index", 0)));
             edit.putInt("slideshow_index", Math.max(0, backup.optInt("slideshow_index", 0)));
+            edit.remove("receiver_ip");
             edit.apply();
             receiverIp = "";
-            edit.remove("receiver_ip");
             restoreSavedMediaQueues();
             Toast.makeText(this, "تمت استعادة البيانات. راجع صلاحيات الملفات المحلية إذا لم تفتح بعض العناصر.", Toast.LENGTH_LONG).show();
             showHome();
@@ -1452,9 +1454,7 @@ public class MainActivity extends Activity {
                     Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
                     return;
                 }
-                receiverIp=normalized;
-                refreshConnectionLabel();
-                Toast.makeText(this, "تم حفظ عنوان الاستقبال: " + receiverIp,Toast.LENGTH_SHORT).show();
+                testReceiver(normalized);
             }).setNeutralButton("اختبار الاتصال",(d,w)->{
                 String ip = normalizeReceiverIp(input.getText().toString());
                 if (ip == null) {
