@@ -653,12 +653,17 @@ public class MainActivity extends Activity {
         address.setImeOptions(EditorInfo.IME_ACTION_GO);
         address.setPadding(dp(12),0,dp(12),0);
         address.setBackground(shape(PANEL2,BLUE,14));
+        TextView capture=button("▣",PANEL2,GOLD);
+        capture.setContentDescription("التقاط الفيديو المشغّل حاليًا وإرساله للتلفزيون");
+        capture.setBackground(shape(PANEL2,GOLD,50));
+        LinearLayout.LayoutParams cap=lp(34,34);cap.setMargins(0,0,dp(5),0);addressRow.addView(capture,cap);
+        capture.setOnClickListener(v -> captureCurrentPlayingVideo());
         addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
         TextView clear=button("×",PANEL2,WHITE);
-        LinearLayout.LayoutParams clp=lp(42,48);clp.setMargins(dp(5),0,0,0);addressRow.addView(clear,clp);
+        LinearLayout.LayoutParams clp=lp(32,42);clp.setMargins(dp(3),0,0,0);addressRow.addView(clear,clp);
         clear.setOnClickListener(v -> address.setText(""));
-        TextView go=button("Go",BLUE,WHITE);
-        LinearLayout.LayoutParams gp=lp(52,48);gp.setMargins(dp(5),0,0,0);addressRow.addView(go,gp);
+        TextView go=button("↵",BLUE,WHITE);
+        LinearLayout.LayoutParams gp=lp(34,42);gp.setMargins(dp(3),0,0,0);addressRow.addView(go,gp);
         browserTools.addView(addressRow);
         LinearLayout controls=row();
         addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();});
@@ -671,26 +676,10 @@ public class MainActivity extends Activity {
         content.addView(pageTitle,lp(-1,24));
         if(web.getParent()!=null) ((android.view.ViewGroup)web.getParent()).removeView(web);
         content.addView(web,new LinearLayout.LayoutParams(-1,0,1));
-        mediaPanel=column();
-        mediaPanel.setPadding(dp(9),dp(6),dp(9),dp(6));
-        mediaPanel.setBackgroundColor(PANEL);
-        mediaLabel=text("المصادر المكتشفة: "+mediaOrder.size(),12,GOLD,true);
-        mediaPanel.addView(mediaLabel,lp(-1,22));
-        LinearLayout castActions=row();
-        TextView cast=button("▶ إرسال",GOLD,BG);
-        castActionButton=cast;
-        TextView best=button("أفضل جودة",PANEL2,WHITE);
-        TextView list=button("القائمة",PANEL2,WHITE);
-        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(42),1);
-        ap.setMargins(dp(2),0,dp(2),0);
-        castActions.addView(cast,new LinearLayout.LayoutParams(0,dp(42),1));
-        castActions.addView(best,new LinearLayout.LayoutParams(0,dp(42),1));
-        castActions.addView(list,new LinearLayout.LayoutParams(0,dp(42),1));
-        mediaPanel.addView(castActions,lp(-1,44));
-        cast.setOnClickListener(v->castCurrent());
-        best.setOnClickListener(v->castBestQuality());
-        list.setOnClickListener(v->showMedia());
-        content.addView(mediaPanel,lp(-1,70));
+        // Keep browser navigation controls, but move video capture into the compact TV icon beside the URL.
+        castActionButton = capture;
+        mediaLabel = null;
+        mediaPanel = null;
         LinearLayout.LayoutParams navParams = lp(-1,44);
         navParams.topMargin = dp(2);
         content.addView(controls, navParams);
@@ -785,22 +774,60 @@ public class MainActivity extends Activity {
             @Override public void onPageFinished(WebView view,String url){
                 if(address!=null && "browser".equals(currentPage)) address.setText(url);
                 saveHistory(url);
-                // Supplement WebView request sniffing with a best-effort HTML/media scan.
-                MediaDetector.inspectPage(url, (mediaUrl, kind, quality) -> detectMedia(mediaUrl));
-                String js="(function(){var a=[];document.querySelectorAll('video,audio,source').forEach(function(e){var u=e.currentSrc||e.src;if(u&&u.indexOf('blob:')!==0)a.push(u)});return JSON.stringify(a)})()";
-                view.evaluateJavascript(js,value->{
-                    if(value!=null){
-                        try{
-                            String decoded=org.json.JSONTokener.class.getName()==null?"[]":value;
-                            if(decoded.startsWith("\"")&&decoded.endsWith("\"")) decoded=decoded.substring(1,decoded.length()-1).replace("\\\"","\"").replace("\\\\","\\");
-                            JSONArray arr=new JSONArray(decoded);
-                            for(int i=0;i<arr.length();i++) detectMedia(arr.optString(i));
-                        }catch(Exception ignored){}
-                    }
-                });
+                // Do not scan every video/image URL on the page. The TV button targets only the active player.
+                refreshCurrentVideoIndicator();
             }
         });
         web.setDownloadListener((url,ua,disposition,mime,length)->downloadUrl(url,mime));
+    }
+
+    private String currentPlayingVideoUrl = "";
+
+    private void refreshCurrentVideoIndicator() {
+        if (web == null) return;
+        String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);})||vs.find(function(x){return x.readyState>=2&&(x.currentSrc||x.src);});return v?(v.currentSrc||v.src||''):'';})()";
+        web.evaluateJavascript(js, value -> {
+            try {
+                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                String url = parsed == null ? "" : String.valueOf(parsed);
+                if (!url.isEmpty() && !"null".equals(url) && !url.startsWith("blob:") && isVideoCandidate(url)) {
+                    currentPlayingVideoUrl = url;
+                    if (castActionButton != null) {
+                        castActionButton.setText("▣");
+                        castActionButton.setTextColor(GOLD);
+                        castActionButton.setBackground(shape(PANEL2, GOLD, 50));
+                        castActionButton.setContentDescription("تم العثور على فيديو قابل للإرسال");
+                        AlphaAnimation pulse = new AlphaAnimation(1.0f, 0.45f);
+                        pulse.setDuration(700);
+                        pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
+                        pulse.setRepeatCount(2);
+                        castActionButton.startAnimation(pulse);
+                    }
+                }
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private void captureCurrentPlayingVideo() {
+        if (web == null || !"browser".equals(currentPage)) {
+            Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);});if(!v)return '';return v.currentSrc||v.src||'';})()";
+        web.evaluateJavascript(js, value -> {
+            try {
+                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                String url = parsed == null ? "" : String.valueOf(parsed);
+                if (url.isEmpty() || url.startsWith("blob:") || !isVideoCandidate(url)) {
+                    Toast.makeText(this, "شغّل الفيديو المطلوب أولًا؛ القناص يلتقط الفيديو النشط فقط وليس صور الصفحة.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                currentPlayingVideoUrl = url;
+                castUrl(url);
+            } catch (Exception e) {
+                Toast.makeText(this, "مش قادر أحدد رابط الفيديو المشغّل. بعض المواقع تحمي البث أو تستخدم blob.", Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void addSmallControl(LinearLayout row,String label,Runnable run){
