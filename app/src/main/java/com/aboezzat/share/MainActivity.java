@@ -598,8 +598,8 @@ public class MainActivity extends Activity {
         JSONObject backup = new JSONObject();
         backup.put("format", "AboEzzatShareBackup");
         backup.put("version", 1);
-        for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue"}) {
-            backup.put(key, prefs.getString(key, key.endsWith("_queue") || key.equals("history") || key.equals("bookmarks") || key.equals("saved_media_urls") || key.equals("recent_cast_urls") ? "[]" : ""));
+        for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue", "custom_sites_json"}) {
+            backup.put(key, prefs.getString(key, key.endsWith("_queue") || key.equals("history") || key.equals("bookmarks") || key.equals("saved_media_urls") || key.equals("recent_cast_urls") || key.equals("custom_sites_json") ? "[]" : ""));
         }
         backup.put("local_media_index", prefs.getInt("local_media_index", 0));
         backup.put("slideshow_index", prefs.getInt("slideshow_index", 0));
@@ -627,7 +627,7 @@ public class MainActivity extends Activity {
             JSONObject backup = new JSONObject(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
             if (!"AboEzzatShareBackup".equals(backup.optString("format"))) throw new IllegalArgumentException("الملف ليس نسخة احتياطية متوافقة");
             SharedPreferences.Editor edit = prefs.edit();
-            for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue"}) {
+            for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue", "custom_sites_json"}) {
                 String value = backup.optString(key, "[]");
                 new JSONArray(value);
                 edit.putString(key, value);
@@ -885,6 +885,32 @@ public class MainActivity extends Activity {
             page.addView(r, lp(-1, -2));
         }
 
+        LinearLayout.LayoutParams customGap = lp(-1, 12); page.addView(new View(this), customGap);
+        addSection(page, "مواقعك المخصصة", "احفظ أي موقع تستخدمه كثيرًا وافتحه بضغطة واحدة");
+        TextView addCustom = button("＋ إضافة موقع مخصص", PANEL2, GOLD);
+        page.addView(addCustom, lp(-1, 44));
+        addCustom.setOnClickListener(v -> showAddCustomSiteDialog());
+        JSONArray customSites = readCustomSites();
+        for (int i = 0; i < customSites.length(); i++) {
+            JSONObject item = customSites.optJSONObject(i);
+            if (item == null) continue;
+            final int siteIndex = i;
+            final String siteUrl = item.optString("url", "");
+            String siteName = item.optString("name", "موقع محفوظ");
+            TextView site = button("↗  " + siteName + "    •    " + siteUrl, PANEL, WHITE);
+            LinearLayout.LayoutParams siteParams = lp(-1, 44);
+            siteParams.topMargin = dp(5);
+            page.addView(site, siteParams);
+            site.setOnClickListener(v -> openQuickSite(siteUrl));
+            site.setOnLongClickListener(v -> {
+                new AlertDialog.Builder(this).setTitle("حذف الموقع المخصص")
+                        .setMessage("هل تريد حذف «" + siteName + "» من المواقع المحفوظة؟")
+                        .setPositiveButton("حذف", (d, which) -> removeCustomSite(siteIndex))
+                        .setNegativeButton("إلغاء", null).show();
+                return true;
+            });
+        }
+
         LinearLayout.LayoutParams gap2 = lp(-1, 12); page.addView(new View(this), gap2);
         addSection(page, "أقسام التطبيق", "كل أدواتك في كروت واضحة");
         LinearLayout r1 = row();
@@ -910,6 +936,64 @@ public class MainActivity extends Activity {
         page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
         scroll.addView(page);
         content.addView(scroll, lp(-1, -1));
+    }
+
+    private JSONArray readCustomSites() {
+        try { return new JSONArray(prefs.getString("custom_sites_json", "[]")); }
+        catch (Exception ignored) { return new JSONArray(); }
+    }
+
+    private void showAddCustomSiteDialog() {
+        LinearLayout form = column();
+        form.setPadding(dp(8), dp(4), dp(8), dp(4));
+        EditText name = new EditText(this);
+        name.setSingleLine(true);
+        name.setHint("اسم الموقع");
+        name.setTextColor(WHITE);
+        name.setHintTextColor(MUTED);
+        form.addView(name, lp(-1, 48));
+        EditText url = new EditText(this);
+        url.setSingleLine(true);
+        url.setHint("رابط الموقع (https://...)");
+        url.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        url.setTextColor(WHITE);
+        url.setHintTextColor(MUTED);
+        form.addView(url, lp(-1, 48));
+        new AlertDialog.Builder(this).setTitle("إضافة موقع مخصص").setView(form)
+                .setPositiveButton("حفظ", (d, which) -> {
+                    String siteName = name.getText().toString().trim();
+                    String siteUrl = BrowserEngine.normalizeAddress(url.getText().toString().trim());
+                    if (siteName.isEmpty() || !BrowserEngine.isWebUrl(siteUrl)) {
+                        Toast.makeText(this, "اكتب اسمًا ورابطًا صحيحًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    JSONArray oldSites = readCustomSites();
+                    JSONArray updated = new JSONArray();
+                    for (int i = 0; i < oldSites.length(); i++) {
+                        JSONObject item = oldSites.optJSONObject(i);
+                        if (item == null) continue;
+                        if (siteUrl.equalsIgnoreCase(item.optString("url", ""))) continue;
+                        updated.put(item);
+                    }
+                    JSONObject item = new JSONObject();
+                    try { item.put("name", siteName); item.put("url", siteUrl); updated.put(item); }
+                    catch (org.json.JSONException ignored) { }
+                    prefs.edit().putString("custom_sites_json", updated.toString()).apply();
+                    showHome();
+                    Toast.makeText(this, "تم حفظ الموقع المخصص", Toast.LENGTH_SHORT).show();
+                }).setNegativeButton("إلغاء", null).show();
+    }
+
+    private void removeCustomSite(int removeIndex) {
+        JSONArray oldSites = readCustomSites();
+        JSONArray updated = new JSONArray();
+        for (int i = 0; i < oldSites.length(); i++) {
+            if (i == removeIndex) continue;
+            JSONObject item = oldSites.optJSONObject(i);
+            if (item != null) updated.put(item);
+        }
+        prefs.edit().putString("custom_sites_json", updated.toString()).apply();
+        showHome();
     }
 
     private void openQuickSite(String url) {
