@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
         @Override public void run() {
             if (!slideshowRunning || slideshowQueue.isEmpty()) return;
             currentSlideIndex = (currentSlideIndex + 1) % slideshowQueue.size();
+            prefs.edit().putInt("slideshow_index", currentSlideIndex).apply();
             selectedImageUri = slideshowQueue.get(currentSlideIndex);
             showPhoneGallery();
             serveSelectedImageAndCast();
@@ -111,6 +112,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         receiverIp = prefs.getString("receiver_ip", "");
+        restoreSavedMediaQueues();
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         buildShell();
@@ -1667,7 +1669,9 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "اضبط عنوان IP للريسيفر أولاً", Toast.LENGTH_LONG).show();
             return;
         }
-        selectedMediaUri = localMediaQueue.get(Math.max(0, Math.min(currentLocalMediaIndex, localMediaQueue.size()-1)));
+        currentLocalMediaIndex = Math.max(0, Math.min(currentLocalMediaIndex, localMediaQueue.size()-1));
+        prefs.edit().putInt("local_media_index", currentLocalMediaIndex).apply();
+        selectedMediaUri = localMediaQueue.get(currentLocalMediaIndex);
         final Uri mediaToPlay = selectedMediaUri;
         final String mediaName = getDisplayName(mediaToPlay);
         final String mediaSessionId = java.util.UUID.randomUUID().toString();
@@ -1707,6 +1711,35 @@ public class MainActivity extends Activity {
                 }
             }
         }, "LocalMediaServer").start();
+    }
+
+    private void restoreSavedMediaQueues() {
+        restoreUriQueue("local_media_queue", localMediaQueue);
+        restoreUriQueue("slideshow_queue", slideshowQueue);
+        currentLocalMediaIndex = Math.max(0, Math.min(prefs.getInt("local_media_index", 0), Math.max(0, localMediaQueue.size() - 1)));
+        currentSlideIndex = Math.max(0, Math.min(prefs.getInt("slideshow_index", 0), Math.max(0, slideshowQueue.size() - 1)));
+        if (!slideshowQueue.isEmpty()) selectedImageUri = slideshowQueue.get(currentSlideIndex);
+    }
+
+    private void restoreUriQueue(String key, java.util.ArrayList<Uri> target) {
+        target.clear();
+        try {
+            JSONArray saved = new JSONArray(prefs.getString(key, "[]"));
+            for (int i = 0; i < saved.length(); i++) {
+                String value = saved.optString(i, "");
+                if (value.isEmpty()) continue;
+                Uri uri = Uri.parse(value);
+                try (InputStream stream = getContentResolver().openInputStream(uri)) {
+                    if (stream != null) target.add(uri);
+                } catch (Exception ignored) { }
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void saveUriQueue(String key, java.util.ArrayList<Uri> queue) {
+        JSONArray saved = new JSONArray();
+        for (Uri uri : queue) if (uri != null) saved.put(uri.toString());
+        prefs.edit().putString(key, saved.toString()).apply();
     }
 
     private void showLocalPlaylist() {
@@ -1758,6 +1791,8 @@ public class MainActivity extends Activity {
                 try { getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
             }
             currentLocalMediaIndex = 0;
+            saveUriQueue("local_media_queue", localMediaQueue);
+            prefs.edit().putInt("local_media_index", 0).apply();
             showMedia();
             Toast.makeText(this, "تمت إضافة " + localMediaQueue.size() + " ملف إلى قائمة التشغيل", Toast.LENGTH_SHORT).show();
         } else if (requestCode == PICK_IMAGE_REQUEST) {
@@ -1778,8 +1813,10 @@ public class MainActivity extends Activity {
                 try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); }
                 catch (Exception ignored) { /* Some providers grant temporary-only access. */ }
             }
+            saveUriQueue("slideshow_queue", slideshowQueue);
             if (!slideshowQueue.isEmpty()) {
                 currentSlideIndex = 0;
+                prefs.edit().putInt("slideshow_index", 0).apply();
                 selectedImageUri = slideshowQueue.get(0);
                 showPhoneGallery();
                 if (slideshowQueue.size() > 1) Toast.makeText(this, "تم اختيار " + slideshowQueue.size() + " صور. تقدر تبدأ عرض الشرائح تلقائيًا من نفس الصفحة.", Toast.LENGTH_LONG).show();
