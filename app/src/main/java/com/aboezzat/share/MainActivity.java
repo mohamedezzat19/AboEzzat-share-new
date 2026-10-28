@@ -1567,12 +1567,22 @@ public class MainActivity extends Activity {
         // Use known media-specific URL markers without treating every generic request as media.
         String lowerUrl=url.toLowerCase(Locale.ROOT);
         if (!ok) {
-            ok = lowerUrl.contains("mime=video") || lowerUrl.contains("mime=audio")
-                    || lowerUrl.contains("video_playback") || lowerUrl.contains("/videoplayback")
-                    || lowerUrl.contains("pull-") || lowerUrl.contains("format=mp4")
-                    || lowerUrl.contains("type=video") || lowerUrl.contains("type=audio")
+            String host = Uri.parse(url).getHost();
+            String lowerHost = host == null ? "" : host.toLowerCase(Locale.ROOT);
+            boolean socialVideoHost = lowerHost.contains("tiktokcdn")
+                    || lowerHost.contains("tiktokv.com") || lowerHost.contains("byteoversea")
+                    || lowerHost.contains("ibytedtos") || lowerHost.contains("muscdn")
+                    || lowerHost.contains("fbcdn.net") || lowerHost.contains("fbsbx.com")
+                    || lowerHost.contains("cdninstagram.com");
+            boolean videoMarker = lowerUrl.contains("mime=video") || lowerUrl.contains("video_playback")
+                    || lowerUrl.contains("/videoplayback") || lowerUrl.contains("pull-")
+                    || lowerUrl.contains("format=mp4") || lowerUrl.contains("type=video")
                     || lowerUrl.contains("contenttype=video") || lowerUrl.contains("content-type=video")
-                    || lowerUrl.contains("fbcdn.net") && (lowerUrl.contains("video") || lowerUrl.contains("audio"));
+                    || lowerUrl.contains("video") || lowerUrl.contains("playback")
+                    || lowerUrl.contains("bytevc") || lowerUrl.contains("avc1")
+                    || lowerUrl.contains("hevc") || lowerUrl.contains("dash");
+            ok = (socialVideoHost && videoMarker)
+                    || lowerUrl.contains("mime=audio") || lowerUrl.contains("type=audio");
         }
         if(!ok||media.containsKey(url))return;
         runOnUiThread(()->{
@@ -2163,10 +2173,22 @@ public class MainActivity extends Activity {
         String lower = candidate.toLowerCase(Locale.ROOT);
         if (lower.contains("mime=audio") || lower.contains("type=audio")
                 || lower.contains("mime=image") || lower.contains("type=image")) return false;
-        return lower.contains("mime=video") || lower.contains("video_playback")
+        if (lower.contains("mime=video") || lower.contains("video_playback")
                 || lower.contains("/videoplayback") || lower.contains("format=mp4")
                 || lower.contains("type=video") || lower.contains("contenttype=video")
-                || lower.contains("content-type=video");
+                || lower.contains("content-type=video") || lower.contains("bytevc")
+                || lower.contains("avc1") || lower.contains("hevc") || lower.contains("dash")) return true;
+        String host = uri.getHost();
+        String lowerHost = host == null ? "" : host.toLowerCase(Locale.ROOT);
+        // Social platforms often use signed, extensionless CDN URLs. Only accept known
+        // video-CDN hosts when the URL also carries a video/playback codec marker.
+        boolean socialCdn = lowerHost.contains("tiktokcdn") || lowerHost.contains("tiktokv.com")
+                || lowerHost.contains("byteoversea") || lowerHost.contains("ibytedtos")
+                || lowerHost.contains("muscdn") || lowerHost.contains("fbcdn.net")
+                || lowerHost.contains("fbsbx.com") || lowerHost.contains("cdninstagram.com");
+        return socialCdn && (lower.contains("video") || lower.contains("playback")
+                || lower.contains("bytevc") || lower.contains("avc1") || lower.contains("hevc")
+                || lower.contains("dash") || lower.contains("v/t16") || lower.contains("v/t39"));
     }
 
     private void castBestQuality() {
