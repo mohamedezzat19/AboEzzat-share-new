@@ -1450,47 +1450,61 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public boolean onRenderProcessGone(WebView crashedView, android.webkit.RenderProcessGoneDetail detail) {
-                // Never keep a renderer-crashed WebView in the tab list. Preserve the tab
-                // position and try to restore its last HTTP(S) page on a fresh instance.
                 final int crashedIndex = browserTabs.indexOf(crashedView);
-                final boolean wasActive = crashedView == web || crashedIndex == activeBrowserTab;
-                String lastUrl = "";
-                try {
-                    String candidate = crashedView.getUrl();
-                    if (BrowserEngine.isWebUrl(candidate)) lastUrl = candidate;
-                } catch (Exception ignored) { }
-                final String restoreUrl = lastUrl;
-                try { crashedView.stopLoading(); } catch (Exception ignored) { }
-                try { crashedView.destroy(); } catch (Exception ignored) { }
-
                 if (crashedIndex >= 0) {
-                    createWebView();
-                    final WebView replacementView = web;
-                    browserTabs.set(crashedIndex, replacementView);
-                    while (browserTabTitles.size() <= crashedIndex) browserTabTitles.add("تبويب");
-                    browserTabTitles.set(crashedIndex, "استعادة الصفحة");
-                    activeBrowserTab = Math.max(0, Math.min(activeBrowserTab, browserTabs.size() - 1));
-                    web = browserTabs.get(activeBrowserTab);
-                    if (wasActive) {
-                        activeBrowserTab = crashedIndex;
-                        web = replacementView;
+                    // Android may terminate a renderer shared by more than one WebView.
+                    // Rebuild every tab to avoid retaining sibling WebViews backed by a dead renderer.
+                    java.util.ArrayList<String> savedUrls = new java.util.ArrayList<>();
+                    java.util.ArrayList<String> savedTitles = new java.util.ArrayList<>();
+                    for (int i = 0; i < browserTabs.size(); i++) {
+                        WebView tab = browserTabs.get(i);
+                        String url = "";
+                        try {
+                            String candidate = tab.getUrl();
+                            if (BrowserEngine.isWebUrl(candidate)) url = candidate;
+                        } catch (Exception ignored) { }
+                        savedUrls.add(url);
+                        savedTitles.add(i < browserTabTitles.size() ? browserTabTitles.get(i) : "تبويب " + (i + 1));
                     }
+                    final int restoreIndex = Math.max(0, Math.min(activeBrowserTab, savedUrls.size() - 1));
+                    for (WebView tab : new java.util.ArrayList<>(browserTabs)) {
+                        try { tab.stopLoading(); } catch (Exception ignored) { }
+                        try { tab.destroy(); } catch (Exception ignored) { }
+                    }
+                    browserTabs.clear();
+                    browserTabTitles.clear();
+
+                    for (int i = 0; i < savedUrls.size(); i++) {
+                        createWebView();
+                        WebView freshTab = web;
+                        browserTabs.add(freshTab);
+                        browserTabTitles.add(savedTitles.get(i));
+                    }
+                    activeBrowserTab = restoreIndex;
+                    web = browserTabs.get(activeBrowserTab);
                     showBrowser();
-                    if (!restoreUrl.isEmpty()) {
-                        receiverMonitorHandler.postDelayed(() -> {
-                            if (!isFinishing() && browserTabs.contains(replacementView)
-                                    && BrowserEngine.isWebUrl(restoreUrl)) {
-                                try { replacementView.loadUrl(restoreUrl); } catch (Exception ignored) { }
-                            }
-                        }, 350L);
+
+                    for (int i = 0; i < savedUrls.size(); i++) {
+                        final WebView freshTab = browserTabs.get(i);
+                        final String restoreUrl = savedUrls.get(i);
+                        if (!restoreUrl.isEmpty()) {
+                            receiverMonitorHandler.postDelayed(() -> {
+                                if (!isFinishing() && browserTabs.contains(freshTab)
+                                        && BrowserEngine.isWebUrl(restoreUrl)) {
+                                    try { freshTab.loadUrl(restoreUrl); } catch (Exception ignored) { }
+                                }
+                            }, 350L + (i * 100L));
+                        }
                     }
                     Toast.makeText(MainActivity.this,
-                            "تعطّل محرك صفحة الويب؛ أُعيد إنشاء التبويب ومحاولة استعادة الصفحة",
+                            "تعطّل محرك الويب؛ أُعيد إنشاء التبويبات ومحاولة استعادة الصفحات",
                             Toast.LENGTH_LONG).show();
                     return true;
                 }
 
-                // A crashed popup/stale view is isolated; close it without killing the app.
+                // A crashed popup is isolated and closed; it is not part of the tab collection.
+                try { crashedView.stopLoading(); } catch (Exception ignored) { }
+                try { crashedView.destroy(); } catch (Exception ignored) { }
                 Toast.makeText(MainActivity.this, "تعذّر عرض نافذة الويب وتم إغلاقها", Toast.LENGTH_SHORT).show();
                 return true;
             }
