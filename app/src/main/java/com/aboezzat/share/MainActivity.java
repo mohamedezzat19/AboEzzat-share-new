@@ -1450,27 +1450,48 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public boolean onRenderProcessGone(WebView crashedView, android.webkit.RenderProcessGoneDetail detail) {
-                int crashedIndex = browserTabs.indexOf(crashedView);
+                // Never keep a renderer-crashed WebView in the tab list. Preserve the tab
+                // position and try to restore its last HTTP(S) page on a fresh instance.
+                final int crashedIndex = browserTabs.indexOf(crashedView);
+                final boolean wasActive = crashedView == web || crashedIndex == activeBrowserTab;
+                String lastUrl = "";
+                try {
+                    String candidate = crashedView.getUrl();
+                    if (BrowserEngine.isWebUrl(candidate)) lastUrl = candidate;
+                } catch (Exception ignored) { }
+                final String restoreUrl = lastUrl;
+                try { crashedView.stopLoading(); } catch (Exception ignored) { }
+                try { crashedView.destroy(); } catch (Exception ignored) { }
+
                 if (crashedIndex >= 0) {
-                    browserTabs.remove(crashedIndex);
-                    if (crashedIndex < browserTabTitles.size()) browserTabTitles.remove(crashedIndex);
-                    if (crashedView == web) web = null;
-                    try { crashedView.destroy(); } catch (Exception ignored) { }
-                    if (browserTabs.isEmpty()) {
-                        createWebView();
-                        ensureBrowserTabRegistered();
-                    } else {
-                        // Removing a crashed background tab shifts every later tab index left.
-                        if (crashedIndex < activeBrowserTab) activeBrowserTab--;
-                        activeBrowserTab = Math.max(0, Math.min(activeBrowserTab, browserTabs.size() - 1));
-                        web = browserTabs.get(activeBrowserTab);
+                    createWebView();
+                    final WebView replacementView = web;
+                    browserTabs.set(crashedIndex, replacementView);
+                    while (browserTabTitles.size() <= crashedIndex) browserTabTitles.add("تبويب");
+                    browserTabTitles.set(crashedIndex, "استعادة الصفحة");
+                    activeBrowserTab = Math.max(0, Math.min(activeBrowserTab, browserTabs.size() - 1));
+                    web = browserTabs.get(activeBrowserTab);
+                    if (wasActive) {
+                        activeBrowserTab = crashedIndex;
+                        web = replacementView;
                     }
                     showBrowser();
-                    Toast.makeText(MainActivity.this, "تعطّلت عملية عرض صفحة الويب؛ تم استعادة المتصفح", Toast.LENGTH_LONG).show();
+                    if (!restoreUrl.isEmpty()) {
+                        receiverMonitorHandler.postDelayed(() -> {
+                            if (!isFinishing() && browserTabs.contains(replacementView)
+                                    && BrowserEngine.isWebUrl(restoreUrl)) {
+                                try { replacementView.loadUrl(restoreUrl); } catch (Exception ignored) { }
+                            }
+                        }, 350L);
+                    }
+                    Toast.makeText(MainActivity.this,
+                            "تعطّل محرك صفحة الويب؛ أُعيد إنشاء التبويب ومحاولة استعادة الصفحة",
+                            Toast.LENGTH_LONG).show();
                     return true;
                 }
-                try { crashedView.destroy(); } catch (Exception ignored) { }
-                Toast.makeText(MainActivity.this, "تعذّر عرض هذه الصفحة وتم إغلاقها", Toast.LENGTH_SHORT).show();
+
+                // A crashed popup/stale view is isolated; close it without killing the app.
+                Toast.makeText(MainActivity.this, "تعذّر عرض نافذة الويب وتم إغلاقها", Toast.LENGTH_SHORT).show();
                 return true;
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
