@@ -1937,9 +1937,22 @@ public class MainActivity extends Activity {
                     discover.setText("تم العثور على " + devices.size() + " جهاز — اختر يدويًا");
                     String[] choices = devices.toArray(new String[0]);
                     new AlertDialog.Builder(this)
-                        .setTitle("اختار عنوان Receiver الصحيح")
-                        .setMessage("البحث قد يعثر على أجهزة أخرى على الشبكة. اختار العنوان الظاهر داخل تطبيق Receiver، أو ألغِ واكتب العنوان يدويًا.")
-                        .setItems(choices, (dialog, which) -> input.setText(choices[which]))
+                        .setTitle("اختار جهاز AboEzzat Receiver")
+                        .setMessage("اختيار الجهاز يحفظ عنوانه ويثبّت الإرسال عليه. تأكد أن الجهازين على نفس شبكة Wi-Fi.")
+                        .setItems(choices, (dialog, which) -> {
+                            String selectedIp = normalizeReceiverIp(choices[which]);
+                            if (selectedIp == null) {
+                                Toast.makeText(this, "عنوان الجهاز المكتشف غير صالح", Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            input.setText(selectedIp);
+                            // The discovery routine already protocol-verified this IP.
+                            receiverIp = selectedIp;
+                            receiverConnected = true;
+                            prefs.edit().putString("receiver_ip", selectedIp).apply();
+                            refreshConnectionLabel();
+                            Toast.makeText(this, "تم اختيار الريسيفر وحفظه: " + selectedIp, Toast.LENGTH_LONG).show();
+                        })
                         .setNegativeButton("إلغاء", null)
                         .show();
                 }
@@ -1991,9 +2004,9 @@ public class MainActivity extends Activity {
     private void refreshConnectionLabel(){
         if (connectionLabel == null) return;
         if (receiverIp == null || receiverIp.isEmpty()) {
-            connectionLabel.setText("● جهاز الاستقبال: غير متصل — جاري البحث تلقائيًا");
+            connectionLabel.setText("● لا يوجد جهاز محدد — افتح إعدادات الاستقبال لاختيار Receiver");
         } else {
-            connectionLabel.setText((receiverConnected ? "● متصل بالريسيفر: " : "● آخر عنوان للريسيفر (غير مؤكد): ") + receiverIp + ":8081");
+            connectionLabel.setText((receiverConnected ? "● الريسيفر متاح: " : "● الجهاز المختار (إعادة المحاولة على نفس العنوان): ") + receiverIp + ":8081");
         }
     }
 
