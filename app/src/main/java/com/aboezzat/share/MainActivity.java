@@ -102,6 +102,15 @@ public class MainActivity extends Activity {
     private boolean discoveryInProgress = false;
     private int receiverMonitorCycles = 0;
     private String pendingPlatformUrl;
+    private String pendingAutoCastPageUrl = "";
+    private final Runnable autoCastDetectedMediaRunnable = () -> {
+        if (web == null || isFinishing() || !"browser".equals(currentPage)) return;
+        String activePage = web.getUrl();
+        if (activePage == null || !activePage.equals(pendingAutoCastPageUrl)
+                || !isDirectPlatformUrl(activePage)) return;
+        // Wait for the page to expose its available quality variants, then choose a direct stream.
+        castBestQuality();
+    };
     private final android.os.Handler receiverMonitorHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable receiverMonitorRunnable = new Runnable() {
         @Override public void run() {
@@ -1570,6 +1579,16 @@ public class MainActivity extends Activity {
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
             autoSelectDetectedTrack(url);
+            // Automatically cast a captured direct video from the current platform page.
+            // Debounce for five seconds so Share can collect multiple quality variants first.
+            if (isVideoCandidate(url) && web != null && "browser".equals(currentPage)) {
+                String activePage = web.getUrl();
+                if (isDirectPlatformUrl(activePage)) {
+                    pendingAutoCastPageUrl = activePage;
+                    receiverMonitorHandler.removeCallbacks(autoCastDetectedMediaRunnable);
+                    receiverMonitorHandler.postDelayed(autoCastDetectedMediaRunnable, 5000L);
+                }
+            }
             if(mediaLabel!=null)mediaLabel.setText("المصادر المكتشفة: "+mediaOrder.size());
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
             if(castActionButton!=null) {
@@ -2162,7 +2181,7 @@ public class MainActivity extends Activity {
             if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) formatScore = 3;
             else if (lower.endsWith(".webm") || lower.endsWith(".mov")) formatScore = 2;
             else if (lower.endsWith(".m3u8") || lower.endsWith(".mpd")) formatScore = 1;
-            else continue;
+            else formatScore = 0; // Extensionless direct platform streams (for example videoplayback).
             String quality = MediaDetector.quality(candidate);
             int score = 0;
             try { score = Integer.parseInt(quality.replace("p", "")); } catch (Exception ignored) {}
