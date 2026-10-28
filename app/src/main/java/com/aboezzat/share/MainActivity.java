@@ -317,10 +317,16 @@ public class MainActivity extends Activity {
     private void startRemoteExtractionFallback(String pageUrl, int generation) {
         if (generation != authenticatedResolveGeneration || isFinishing()) return;
         String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
-        // Use the public Cobalt API as an automatic fallback when the user has not configured
-        // a private extractor. The shared URL is sent only after local WebView sniffing fails.
-        if (configuredApi.isEmpty()) configuredApi = "https://api.cobalt.tools/api";
-        Toast.makeText(this, "لم يظهر رابط مباشر محليًا؛ بجرب محرك استخراج إضافي للرابط العام…", Toast.LENGTH_LONG).show();
+        if (configuredApi.isEmpty()) {
+            // Do not silently send shared links to a third-party extraction service.
+            // Let Receiver try its own configured resolver, then use its TV webpage fallback.
+            Toast.makeText(this,
+                    "لم يظهر رابط مباشر في Share؛ جاري إرسال الرابط للريسيفر ليجرب الاستخراج والتشغيل على الشاشة…",
+                    Toast.LENGTH_LONG).show();
+            sendPlatformLinkToReceiver(pageUrl);
+            return;
+        }
+        Toast.makeText(this, "لم يظهر رابط مباشر محليًا؛ بجرب محرك الاستخراج الذي ضبطته…", Toast.LENGTH_LONG).show();
         runRemoteExtraction(pageUrl, generation, configuredApi);
     }
 
@@ -335,7 +341,8 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "تم استخراج رابط من المحرك الإضافي؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
                 castUrl(mediaUrl);
             } else {
-                Toast.makeText(this, message + " لم يتم إرسال صفحة الموقع كأنها فيديو.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, message + " جاري تمرير الرابط للريسيفر ليجرب تشغيل صفحة الموقع على الشاشة.", Toast.LENGTH_LONG).show();
+                sendPlatformLinkToReceiver(pageUrl);
             }
         }));
     }
