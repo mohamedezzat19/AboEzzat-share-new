@@ -2489,7 +2489,7 @@ public class MainActivity extends Activity {
             req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             req.setAllowedOverMetered(true);
             req.setAllowedOverRoaming(false);
-            req.setDestinationInExternalFilesDir(this,Environment.DIRECTORY_DOWNLOADS,fileName);
+            req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS,fileName);
             String resolvedMime = mime;
             if (resolvedMime == null || resolvedMime.trim().isEmpty() || "application/octet-stream".equalsIgnoreCase(resolvedMime)) {
                 String path = source.getPath();
