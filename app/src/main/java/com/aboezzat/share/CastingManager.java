@@ -67,7 +67,7 @@ public final class CastingManager {
                     String[] parts = status.trim().split("\\s+", 3);
                     ok = parts.length >= 2 && "200".equals(parts[1]);
                 }
-                callback.onResult(ok, ok ? "تم استلام طلب الإرسال" : "جهاز الاستقبال لم يؤكد الطلب");
+                callback.onResult(ok, ok ? "تم إرسال الرابط إلى الشاشة، جارٍ استخراج الفيديو وتشغيله" : "جهاز الاستقبال لم يؤكد الطلب");
             } catch (Exception e) { callback.onResult(false, "تعذّر الاتصال: " + e.getMessage()); }
         });
     }
