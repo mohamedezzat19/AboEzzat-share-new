@@ -163,6 +163,21 @@ public class MainActivity extends Activity {
         setContentView(shellOverlay);
         showHome();
         handleSharedIntent(getIntent());
+        // If Android killed the process while the browser was in the background,
+        // reopen the last page on a normal launcher restart (not on an incoming share).
+        Intent launchIntent = getIntent();
+        boolean incomingShare = launchIntent != null &&
+                (Intent.ACTION_VIEW.equals(launchIntent.getAction()) ||
+                 Intent.ACTION_SEND.equals(launchIntent.getAction()) ||
+                 Intent.ACTION_SEND_MULTIPLE.equals(launchIntent.getAction()));
+        if (state == null && !incomingShare &&
+                prefs.getBoolean("browser_was_active", false)) {
+            String lastUrl = prefs.getString("last_browser_url", "");
+            if (BrowserEngine.isWebUrl(lastUrl)) {
+                showBrowser();
+                if (web != null) web.loadUrl(lastUrl);
+            }
+        }
         receiverMonitorHandler.post(receiverMonitorRunnable);
     }
 
@@ -1515,6 +1530,10 @@ public class MainActivity extends Activity {
                             String candidate = tab.getUrl();
                             if (BrowserEngine.isWebUrl(candidate)) url = candidate;
                         } catch (Exception ignored) { }
+                        if (url.isEmpty() && i == activeBrowserTab) {
+                            String lastKnownUrl = prefs.getString("last_browser_url", "");
+                            if (BrowserEngine.isWebUrl(lastKnownUrl)) url = lastKnownUrl;
+                        }
                         savedUrls.add(url);
                         savedTitles.add(i < browserTabTitles.size() ? browserTabTitles.get(i) : "تبويب " + (i + 1));
                     }
@@ -1570,6 +1589,11 @@ public class MainActivity extends Activity {
                 return super.shouldInterceptRequest(view,request);
             }
             @Override public void onPageFinished(WebView view,String url){
+                if (BrowserEngine.isWebUrl(url)) {
+                    // Keep a lightweight recovery point so a renderer crash cannot erase
+                    // the only copy of the active page URL.
+                    prefs.edit().putString("last_browser_url", url).apply();
+                }
                 if (view == web) {
                     if(address!=null && "browser".equals(currentPage)) address.setText(url);
                     int tabIndex = browserTabs.indexOf(view);
@@ -3628,6 +3652,55 @@ public class MainActivity extends Activity {
         if("browser".equals(currentPage)&&web!=null&&web.canGoBack()){web.goBack();return;}
         if(!"home".equals(currentPage)){showHome();return;}
         super.onBackPressed();
+    }
+
+    @Override protected void onPause() {
+        // Pause JavaScript timers and WebView activity while the app is backgrounded.
+        // This reduces unnecessary work and memory pressure without clearing cookies or page data.
+        try {
+            for (WebView tab : new ArrayList<>(browserTabs)) {
+                try { tab.onPause(); } catch (Exception ignored) { }
+            }
+            WebView.pauseTimers();
+        } catch (Exception ignored) { }
+        if ("browser".equals(currentPage) && web != null) {
+            try {
+                String url = web.getUrl();
+                if (BrowserEngine.isWebUrl(url)) {
+                    prefs.edit().putString("last_browser_url", url).apply();
+                }
+            } catch (Exception ignored) { }
+        }
+        super.onPause();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        try {
+            WebView.resumeTimers();
+            for (WebView tab : new ArrayList<>(browserTabs)) {
+                try { tab.onResume(); } catch (Exception ignored) { }
+            }
+        } catch (Exception ignored) { }
+        // The process survived backgrounding, so a future cold start should not need recovery.
+        prefs.edit().putBoolean("browser_was_active", false).apply();
+    }
+
+    @Override protected void onStop() {
+        if ("browser".equals(currentPage) && web != null) {
+            try {
+                String url = web.getUrl();
+                if (BrowserEngine.isWebUrl(url)) {
+                    prefs.edit()
+                            .putString("last_browser_url", url)
+                            .putBoolean("browser_was_active", true)
+                            .apply();
+                }
+            } catch (Exception ignored) { }
+        } else {
+            prefs.edit().putBoolean("browser_was_active", false).apply();
+        }
+        super.onStop();
     }
 
     @Override protected void onDestroy(){
