@@ -420,6 +420,7 @@ public class MainActivity extends Activity {
     private TextView button(String label, int color, int fg) {
         TextView b = text(label, 14, fg, true);
         b.setGravity(Gravity.CENTER);
+        b.setContentDescription(label);
         b.setBackground(shape(color, color == PANEL ? 0 : PANEL2, 13));
         b.setPadding(dp(12),dp(9),dp(12),dp(9));
         b.setClickable(true);
@@ -430,6 +431,7 @@ public class MainActivity extends Activity {
     private void nav(String label, String page) {
         TextView b = text(label, 11, MUTED, true);
         b.setGravity(Gravity.CENTER);
+        b.setContentDescription(label.replace("\n", " "));
         bottom.addView(b, new LinearLayout.LayoutParams(0,-1,1));
         b.setOnClickListener(v -> {
             if ("home".equals(page)) showHome();
@@ -1006,9 +1008,11 @@ public class MainActivity extends Activity {
         capture.setOnClickListener(v -> captureCurrentPlayingVideo());
         addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
         TextView clear=button("×",PANEL2,WHITE);
+        clear.setContentDescription("مسح عنوان الرابط");
         LinearLayout.LayoutParams clp=lp(32,42);clp.setMargins(dp(3),0,0,0);addressRow.addView(clear,clp);
         clear.setOnClickListener(v -> address.setText(""));
         TextView go=button("↵",BLUE,WHITE);
+        go.setContentDescription("فتح الرابط أو تنفيذ البحث");
         LinearLayout.LayoutParams gp=lp(34,42);gp.setMargins(dp(3),0,0,0);addressRow.addView(go,gp);
         browserTools.addView(addressRow);
         LinearLayout controls=row();
@@ -1214,6 +1218,12 @@ public class MainActivity extends Activity {
 
     private void addSmallControl(LinearLayout row,String label,Runnable run){
         TextView b=button(label,PANEL,WHITE);
+        String description = "‹".equals(label) ? "رجوع للصفحة السابقة"
+                : "›".equals(label) ? "تقدم للصفحة التالية"
+                : "↻".equals(label) ? "إعادة تحميل الصفحة"
+                : "⌂".equals(label) ? "العودة للرئيسية"
+                : "☆".equals(label) ? "إضافة للمفضلة" : label;
+        b.setContentDescription(description);
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(40),1);
         p.setMargins(dp(2),dp(2),dp(2),dp(2));
         row.addView(b,p);b.setOnClickListener(v->run.run());
