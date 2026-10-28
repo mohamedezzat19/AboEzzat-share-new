@@ -268,11 +268,53 @@ public class MainActivity extends Activity {
             if (attempt < 16) {
                 receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 300L);
             } else {
-                Toast.makeText(this,
-                        "ماقدرتش ألتقط رابط الفيديو المباشر خلال 5 ثوانٍ. سيب الصفحة تكمّل التحميل أو شغّل الفيديو داخل Share؛ لم يتم إرسال رابط الصفحة للشاشة.",
-                        Toast.LENGTH_LONG).show();
+                startRemoteExtractionFallback(pageUrl, generation);
             }
         });
+    }
+
+    private void startRemoteExtractionFallback(String pageUrl, int generation) {
+        if (generation != authenticatedResolveGeneration || isFinishing()) return;
+        String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
+        if (configuredApi.isEmpty()) {
+            EditText apiInput = new EditText(this);
+            apiInput.setSingleLine(true);
+            apiInput.setHint("https://عنوان-خادم-الاستخراج");
+            new AlertDialog.Builder(this)
+                    .setTitle("إعداد محرك استخراج إضافي")
+                    .setMessage("المحرك المحلي لم يعثر على رابط مباشر. أدخل عنوان Cobalt API مستضافًا لديك أو خادمًا لديك إذن باستخدامه. لن نستخدم خادمًا عامًا دون تصريح.")
+                    .setView(apiInput)
+                    .setPositiveButton("حفظ وتجربة", (dialog, which) -> {
+                        String base = apiInput.getText() == null ? "" : apiInput.getText().toString().trim();
+                        if (!(base.startsWith("https://") || base.startsWith("http://"))) {
+                            Toast.makeText(this, "أدخل عنوان API صحيحًا يبدأ بـ https:// أو http://", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        prefs.edit().putString("extractor_api_base", base).apply();
+                        runRemoteExtraction(pageUrl, generation, base);
+                    })
+                    .setNegativeButton("ليس الآن", (dialog, which) ->
+                            Toast.makeText(this, "لم يتم إرسال رابط صفحة الموقع إلى الريسيفر. يمكنك إعداد محرك إضافي لاحقًا.", Toast.LENGTH_LONG).show())
+                    .show();
+            return;
+        }
+        runRemoteExtraction(pageUrl, generation, configuredApi);
+    }
+
+    private void runRemoteExtraction(String pageUrl, int generation, String apiBase) {
+        Toast.makeText(this, "المحرك الأول لم يعثر على رابط؛ جاري تجربة محرك الاستخراج الإضافي…", Toast.LENGTH_LONG).show();
+        PlatformExtractor.resolve(apiBase, pageUrl, (mediaUrl, message) -> runOnUiThread(() -> {
+            if (generation != authenticatedResolveGeneration || isFinishing()) return;
+            if (mediaUrl != null && !mediaUrl.isEmpty()
+                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)
+                    && !mediaUrl.startsWith("blob:") && !mediaUrl.startsWith("data:")) {
+                currentPlayingVideoUrl = mediaUrl;
+                Toast.makeText(this, "تم استخراج رابط من المحرك الإضافي؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
+                castUrl(mediaUrl);
+            } else {
+                Toast.makeText(this, message + " لم يتم إرسال صفحة الموقع كأنها فيديو.", Toast.LENGTH_LONG).show();
+            }
+        }));
     }
 
     private void sendPlatformLinkToReceiver(String url) {
