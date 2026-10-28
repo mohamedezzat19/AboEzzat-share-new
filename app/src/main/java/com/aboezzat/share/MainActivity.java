@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
     private boolean receiverConnected = false;
     private boolean discoveryInProgress = false;
     private int receiverMonitorCycles = 0;
+    private String pendingPlatformUrl;
     private final android.os.Handler receiverMonitorHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable receiverMonitorRunnable = new Runnable() {
         @Override public void run() {
@@ -206,22 +207,10 @@ public class MainActivity extends Activity {
     }
 
     private void sendPlatformLinkToScreen(String url) {
-        if (receiverIp != null && !receiverIp.trim().isEmpty()) {
-            castUrl(url);
-            return;
-        }
-        Toast.makeText(this, "جاري البحث عن جهاز الاستقبال لإرسال الفيديو…", Toast.LENGTH_LONG).show();
-        CastingManager.discover(this, devices -> runOnUiThread(() -> {
-            if (devices == null || devices.isEmpty()) {
-                Toast.makeText(this, "لم يتم العثور على الريسيفر الصحيح. تأكد أن الجهازين على نفس شبكة Wi-Fi.", Toast.LENGTH_LONG).show();
-                receiverSettings();
-                return;
-            }
-            receiverIp = devices.get(0);
-            
-            refreshConnectionLabel();
-            castUrl(url);
-        }));
+        // Always discover the live receiver for shared social links; never trust a saved IP.
+        pendingPlatformUrl = url;
+        Toast.makeText(this, "جاري العثور على عنوان الريسيفر الحالي وإرسال الفيديو…", Toast.LENGTH_LONG).show();
+        discoverReceiverInBackground();
     }
 
     private boolean isDirectPlatformUrl(String value) {
@@ -1513,7 +1502,15 @@ public class MainActivity extends Activity {
         discoveryInProgress = true;
         CastingManager.discover(this, devices -> {
             if (devices == null || devices.isEmpty()) {
-                runOnUiThread(() -> discoveryInProgress = false);
+                runOnUiThread(() -> {
+                    discoveryInProgress = false;
+                    if (pendingPlatformUrl != null) {
+                        pendingPlatformUrl = null;
+                        Toast.makeText(this,
+                                "لم يتم العثور على الريسيفر الصحيح. تأكد أن الجهازين على نفس شبكة Wi-Fi.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
                 return;
             }
             // Only accept a discovered device after its TCP receiver port responds.
@@ -1526,9 +1523,11 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         receiverIp = verifiedIp;
                         receiverConnected = true;
-                        
                         refreshConnectionLabel();
                         discoveryInProgress = false;
+                        String pendingUrl = pendingPlatformUrl;
+                        pendingPlatformUrl = null;
+                        if (pendingUrl != null) castUrl(pendingUrl);
                     });
                     return;
                 }
