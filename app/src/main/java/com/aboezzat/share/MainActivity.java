@@ -64,7 +64,8 @@ public class MainActivity extends Activity {
     private static final int PICK_BROWSER_FILE_REQUEST = 903;
     private ValueCallback<Uri[]> browserFileCallback;
     private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
-    private FrameLayout contentFrame, shellOverlay, drawerPanel;
+    private FrameLayout contentFrame, shellOverlay;
+    private LinearLayout drawerPanel;
     private View drawerScrim;
     private float drawerTouchStartX, drawerTouchStartY;
     private boolean drawerGestureTracking = false;
