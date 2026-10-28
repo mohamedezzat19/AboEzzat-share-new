@@ -415,7 +415,7 @@ public class MainActivity extends Activity {
         else if ("phone_media".equals(key)) showPhoneGallery();
         else if ("iptv".equals(key)) showIptvDialog();
         else if ("recent".equals(key)) showRecentCastDialog();
-        else if ("playlist".equals(key)) showLibrary();
+        else if ("playlist".equals(key)) showLocalPlaylist();
         else if ("bookmarks".equals(key) || "history".equals(key)) showLibrary();
         else if ("popular".equals(key)) showBrowser();
         else if ("downloads".equals(key)) openDownloads();
