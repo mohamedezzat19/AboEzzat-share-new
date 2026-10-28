@@ -804,15 +804,29 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_MICROPHONE && pendingWebPermissionRequest != null) {
+        if (requestCode == REQUEST_MICROPHONE) {
             android.webkit.PermissionRequest request = pendingWebPermissionRequest;
             pendingWebPermissionRequest = null;
-            boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
             if (granted) {
-                confirmWebsiteMicrophonePermission(request);
+                if (request != null) {
+                    // A WebView permission request can expire while Android's runtime
+                    // permission dialog is open. Try to grant the original request first;
+                    // if it expired, tell the user to reload so the site can request again.
+                    confirmWebsiteMicrophonePermission(request);
+                } else {
+                    Toast.makeText(this,
+                            "تم السماح بميكروفون التطبيق. ارجع للصفحة واضغط البحث الصوتي مرة أخرى.",
+                            Toast.LENGTH_LONG).show();
+                }
             } else {
-                try { request.deny(); } catch (Exception ignored) { }
-                Toast.makeText(this, "لازم تسمح بالمايك من أندرويد لاستخدام البحث الصوتي", Toast.LENGTH_LONG).show();
+                if (request != null) {
+                    try { request.deny(); } catch (Exception ignored) { }
+                }
+                Toast.makeText(this,
+                        "الميكروفون غير مسموح للتطبيق. فعّله من إعدادات Android ثم أعد محاولة البحث الصوتي.",
+                        Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == REQUEST_NOTIFICATIONS) {
             boolean granted = grantResults.length > 0
@@ -2251,6 +2265,10 @@ public class MainActivity extends Activity {
         if (android.os.Build.VERSION.SDK_INT >= 23
                 && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            // Keep only the latest live website request while Android asks the user.
+            if (pendingWebPermissionRequest != null && pendingWebPermissionRequest != request) {
+                try { pendingWebPermissionRequest.deny(); } catch (Exception ignored) { }
+            }
             pendingWebPermissionRequest = request;
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
             return;
