@@ -1,9 +1,11 @@
-
 name: Build AboEzzat Share APK
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+  pull_request:
     branches:
       - main
 
@@ -14,6 +16,7 @@ jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Download repository
@@ -52,3 +55,4 @@ jobs:
           name: AboEzzatShare-debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
