@@ -140,8 +140,9 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         prepareExtractionNotifications();
-        receiverIp = "";
-        prefs.edit().remove("receiver_ip").apply();
+        // Keep the user-selected Receiver across launches; never erase a valid selection on startup.
+        receiverIp = prefs.getString("receiver_ip", "").trim();
+        receiverConnected = false;
         restoreSavedMediaQueues();
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
@@ -637,9 +638,8 @@ public class MainActivity extends Activity {
             }
             edit.putInt("local_media_index", Math.max(0, backup.optInt("local_media_index", 0)));
             edit.putInt("slideshow_index", Math.max(0, backup.optInt("slideshow_index", 0)));
-            edit.remove("receiver_ip");
+            // Keep the selected receiver separate from media/browser backup contents.
             edit.apply();
-            receiverIp = "";
             restoreSavedMediaQueues();
             Toast.makeText(this, "تمت استعادة البيانات. راجع صلاحيات الملفات المحلية إذا لم تفتح بعض العناصر.", Toast.LENGTH_LONG).show();
             showHome();
@@ -1995,23 +1995,20 @@ public class MainActivity extends Activity {
 
     private void monitorReceiverConnection() {
         final String ip = receiverIp == null ? "" : receiverIp.trim();
+        // No background discovery loop when the user has not selected a device.
+        // Discovery is initiated explicitly from Receiver settings instead.
         if (ip.isEmpty()) {
             receiverConnected = false;
             refreshConnectionLabel();
-            discoverReceiverInBackground();
             return;
         }
         new Thread(() -> {
-            boolean ok = false;
-             ok = CastingManager.isReceiver(ip);
-            final boolean connected = ok;
+            boolean connected = CastingManager.isReceiver(ip);
             runOnUiThread(() -> {
+                // A temporary ping failure must not erase the selected IP or trigger
+                // a scan that silently switches the user to a different receiver.
                 receiverConnected = connected;
-                if (!connected) receiverIp = "";
                 refreshConnectionLabel();
-                if (!connected || (++receiverMonitorCycles % 4 == 0)) {
-                    discoverReceiverInBackground();
-                }
             });
         }, "ReceiverConnectionMonitor").start();
     }
@@ -2047,6 +2044,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     receiverIp = receiverAddress;
                     receiverConnected = true;
+                    prefs.edit().putString("receiver_ip", receiverAddress).apply();
                     refreshConnectionLabel();
                     discoveryInProgress = false;
                     String pendingUrl = pendingPlatformUrl;
@@ -2080,10 +2078,14 @@ public class MainActivity extends Activity {
                 if (result) {
                     receiverConnected = true;
                     receiverIp = ip;
-                    
+                    prefs.edit().putString("receiver_ip", ip).apply();
+                    refreshConnectionLabel();
+                } else {
+                    receiverConnected = false;
+                    // Preserve the current saved selection; do not replace it on a failed test.
                     refreshConnectionLabel();
                 }
-                Toast.makeText(this,result?"تم التحقق من عنوان الريسيفر الحالي":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ 8081.",Toast.LENGTH_LONG).show();
+                Toast.makeText(this,result?"تم التحقق من الريسيفر وحفظ عنوانه للاستخدام لاحقًا":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ 8081. راجع الشبكة أو جرّب العنوان مرة أخرى.",Toast.LENGTH_LONG).show();
             });
         }).start();
     }
