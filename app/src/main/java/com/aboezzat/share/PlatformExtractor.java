@@ -57,15 +57,19 @@ final class PlatformExtractor {
                         if ("picker".equals(status)) {
                             org.json.JSONArray items = result.optJSONArray("picker");
                             if (items != null) {
-                                for (int i = 0; i < items.length(); i++) {
-                                    JSONObject item = items.optJSONObject(i);
-                                    if (item == null) continue;
-                                    String type = item.optString("type", "").toLowerCase(Locale.ROOT);
-                                    String itemUrl = item.optString("url", "");
-                                    if (("video".equals(type) || "audio".equals(type))
-                                            && isHttpUrl(itemUrl) && !itemUrl.equals(pageUrl)) {
-                                        candidate = itemUrl;
-                                        break;
+                                // Prefer an actual video variant over audio-only tracks.
+                                for (int pass = 0; pass < 2 && candidate.isEmpty(); pass++) {
+                                    for (int i = 0; i < items.length(); i++) {
+                                        JSONObject item = items.optJSONObject(i);
+                                        if (item == null) continue;
+                                        String type = item.optString("type", "").toLowerCase(Locale.ROOT);
+                                        String itemUrl = item.optString("url", "");
+                                        boolean preferredType = pass == 0
+                                                ? "video".equals(type) : "audio".equals(type);
+                                        if (preferredType && isHttpUrl(itemUrl) && !itemUrl.equals(pageUrl)) {
+                                            candidate = itemUrl;
+                                            break;
+                                        }
                                     }
                                 }
                             }
