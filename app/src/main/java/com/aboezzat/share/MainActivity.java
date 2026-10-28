@@ -1504,26 +1504,30 @@ public class MainActivity extends Activity {
 
     private void refreshCurrentVideoIndicator() {
         if (web == null) return;
-        String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);})||vs.find(function(x){return x.readyState>=2&&(x.currentSrc||x.src);});return v?(v.currentSrc||v.src||''):'';})()";
+        String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));"
+                + "var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);})"
+                + "||vs.find(function(x){return !x.paused&&!x.ended&&(x.currentSrc||x.src);});"
+                + "return v?(v.currentSrc||v.src||''):'';})()";
         web.evaluateJavascript(js, value -> {
             try {
-                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                Object parsed = new org.json.JSONTokener(value == null ? "\\\"\\\"" : value).nextValue();
                 String url = parsed == null ? "" : String.valueOf(parsed);
-                if (!url.isEmpty() && !"null".equals(url) && !url.startsWith("blob:") && isVideoCandidate(url)) {
+                if (!url.isEmpty() && !"null".equals(url)
+                        && !url.startsWith("blob:") && isVideoCandidate(url)) {
                     currentPlayingVideoUrl = url;
                     if (castActionButton != null) {
                         castActionButton.setText("▣");
                         castActionButton.setTextColor(GOLD);
                         castActionButton.setBackground(shape(PANEL2, GOLD, 50));
                         castActionButton.setContentDescription("تم العثور على فيديو قابل للإرسال");
-                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                        AlphaAnimation pulse = new AlphaAnimation(1.0f, 0.35f);
                         pulse.setDuration(700);
                         pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
                         pulse.setRepeatCount(2);
                         castActionButton.startAnimation(pulse);
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) { }
         });
     }
 
