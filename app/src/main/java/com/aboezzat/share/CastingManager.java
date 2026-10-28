@@ -106,12 +106,12 @@ public final class CastingManager {
                 String target = "/?video=" + URLEncoder.encode(video, "UTF-8")
                         + "&audio=" + URLEncoder.encode(audio, "UTF-8");
                 OutputStream out = socket.getOutputStream();
-                out.write(("GET " + target + " HTTP/1.1\\r\\nHost: " + ip
-                        + ":8081\\r\\nConnection: close\\r\\n\\r\\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip
+                        + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
-                boolean ok = status != null && status.matches("HTTP/1\\\\.[01] 200(?: .*)?");
+                boolean ok = status != null && status.matches("HTTP/1\\.[01] 200(?: .*)?");
                 callback.onResult(ok, ok ? "تم إرسال مساري الفيديو والصوت للريسيفر" : "الريسيفر لم يؤكد إرسال المسارين");
             } catch (Exception e) {
                 callback.onResult(false, "تعذّر إرسال المسارين: " + e.getMessage());
