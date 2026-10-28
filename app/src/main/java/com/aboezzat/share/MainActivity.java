@@ -179,15 +179,9 @@ public class MainActivity extends Activity {
                 if (matcher.find()) {
                     String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
                     String normalized = BrowserEngine.normalizeAddress(sharedUrl);
-                    if (isDirectPlatformUrl(normalized)) {
-                        sendPlatformLinkToScreen(normalized);
-                        return;
-                    }
-                    showBrowser();
-                    if (address != null) {
-                        address.setText(normalized);
-                        if (web != null) web.loadUrl(normalized);
-                    }
+                    // A shared URL is treated as a playback request first; Receiver resolves
+                    // direct media when the public page exposes a playable stream.
+                    sendPlatformLinkToScreen(normalized);
                     return;
                 }
             }
@@ -228,7 +222,23 @@ public class MainActivity extends Activity {
                     || host.equals("facebook.com") || host.endsWith(".facebook.com")
                     || host.equals("fb.watch") || host.endsWith(".fb.watch")
                     || host.equals("fb.me") || host.endsWith(".fb.me")
-                    || host.equals("m.facebook.com") || host.equals("lm.facebook.com");
+                    || host.equals("m.facebook.com") || host.equals("lm.facebook.com")
+                    || host.equals("x.com") || host.endsWith(".x.com")
+                    || host.equals("twitter.com") || host.endsWith(".twitter.com")
+                    || host.equals("vimeo.com") || host.endsWith(".vimeo.com")
+                    || host.equals("twitch.tv") || host.endsWith(".twitch.tv")
+                    || host.equals("clips.twitch.tv")
+                    || host.equals("dailymotion.com") || host.endsWith(".dailymotion.com")
+                    || host.equals("reddit.com") || host.endsWith(".reddit.com")
+                    || host.equals("redd.it")
+                    || host.equals("snapchat.com") || host.endsWith(".snapchat.com")
+                    || host.equals("streamable.com") || host.endsWith(".streamable.com")
+                    || host.equals("rumble.com") || host.endsWith(".rumble.com")
+                    || host.equals("bilibili.com") || host.endsWith(".bilibili.com")
+                    || host.equals("pinterest.com") || host.endsWith(".pinterest.com")
+                    || host.equals("likee.video") || host.endsWith(".likee.video")
+                    || host.equals("kick.com") || host.endsWith(".kick.com")
+                    || host.equals("odysee.com") || host.endsWith(".odysee.com");
         } catch (Exception ignored) {
             return false;
         }
