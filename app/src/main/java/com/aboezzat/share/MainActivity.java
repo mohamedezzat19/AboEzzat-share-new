@@ -1114,6 +1114,12 @@ public class MainActivity extends Activity {
                     popupSettings.setSafeBrowsingEnabled(true);
                 }
                 popupSettings.setJavaScriptEnabled(true);
+                popupSettings.setAllowFileAccess(false);
+                popupSettings.setAllowContentAccess(true);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                    popupSettings.setAllowFileAccessFromFileURLs(false);
+                    popupSettings.setAllowUniversalAccessFromFileURLs(false);
+                }
                 popupSettings.setDomStorageEnabled(true);
                 popupSettings.setDatabaseEnabled(true);
                 popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
