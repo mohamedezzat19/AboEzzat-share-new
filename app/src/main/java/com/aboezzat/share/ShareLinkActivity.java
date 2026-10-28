@@ -55,6 +55,12 @@ public class ShareLinkActivity extends Activity {
         });
     }
 
+    @Override
+    protected void onDestroy() {
+        mainHandler.removeCallbacks(timeoutTask);
+        super.onDestroy();
+    }
+
     private String extractUrl(Intent intent) {
         if (intent == null) return null;
         String candidate = null;
