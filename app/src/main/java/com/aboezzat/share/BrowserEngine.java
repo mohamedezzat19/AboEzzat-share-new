@@ -11,6 +11,9 @@ public final class BrowserEngine {
 
     public static void configure(WebView web) {
         WebSettings s = web.getSettings();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            s.setSafeBrowsingEnabled(true);
+        }
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
