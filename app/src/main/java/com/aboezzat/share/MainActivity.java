@@ -490,7 +490,7 @@ public class MainActivity extends Activity {
             {"📥", "التنزيلات", "downloads"},
             {"📡", "إعداد جهاز الاستقبال (TV IP)", "receiver"},
             {"💾", "نسخة احتياطية واستعادة", "backup"},
-            {"⚙️", "الإعدادات", "settings"},
+            {"⚙️", "أذونات التطبيق", "settings"},
             {"🚪", "خروج", "exit"}
         };
         for (String[] entry : entries) {
@@ -500,6 +500,7 @@ public class MainActivity extends Activity {
             item.setBackground(shape(PANEL, PANEL2, 12));
             TextView icon = text(entry[0], 21, GOLD, true);
             icon.setGravity(Gravity.CENTER);
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             item.addView(icon, lp(38, 44));
             TextView title = text(entry[1], 13, "exit".equals(entry[2]) ? Color.rgb(255, 100, 100) : WHITE, true);
             title.setGravity(Gravity.CENTER_VERTICAL);
@@ -507,6 +508,8 @@ public class MainActivity extends Activity {
             LinearLayout.LayoutParams itemLp = lp(-1, 48);
             itemLp.bottomMargin = dp(5);
             items.addView(item, itemLp);
+            item.setContentDescription(entry[1]);
+            item.setFocusable(true);
             item.setOnClickListener(v -> handleDrawerItem(entry[2]));
         }
         scroll.addView(items);
@@ -564,7 +567,8 @@ public class MainActivity extends Activity {
         else if ("history".equals(key)) showLibrary("history");
         else if ("popular".equals(key)) showPopularSites();
         else if ("downloads".equals(key)) openDownloads();
-        else if ("receiver".equals(key) || "settings".equals(key)) receiverSettings();
+        else if ("receiver".equals(key)) receiverSettings();
+        else if ("settings".equals(key)) openAppPermissionSettings();
         else if ("backup".equals(key)) showBackupOptions();
         else if ("exit".equals(key)) finish();
     }
