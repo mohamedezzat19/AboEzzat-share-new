@@ -3661,7 +3661,7 @@ public class MainActivity extends Activity {
             for (WebView tab : new ArrayList<>(browserTabs)) {
                 try { tab.onPause(); } catch (Exception ignored) { }
             }
-            WebView.pauseTimers();
+            if (web != null) web.pauseTimers();
         } catch (Exception ignored) { }
         if ("browser".equals(currentPage) && web != null) {
             try {
@@ -3677,7 +3677,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         try {
-            WebView.resumeTimers();
+            if (web != null) web.resumeTimers();
             for (WebView tab : new ArrayList<>(browserTabs)) {
                 try { tab.onResume(); } catch (Exception ignored) { }
             }
