@@ -1505,17 +1505,46 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
             return;
         }
-        String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2&&(x.currentSrc||x.src);});if(!v)return '';return v.currentSrc||v.src||'';})()";
+        // Some players expose a blob: URL to the DOM while their real HTTP(S)
+        // media segments are only visible to WebView's request sniffer.
+        String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));"
+                + "var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2;})"
+                + "||vs.find(function(x){return !x.paused&&!x.ended;});"
+                + "return v?(v.currentSrc||v.src||''):'';})()";
         web.evaluateJavascript(js, value -> {
             try {
-                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                Object parsed = new org.json.JSONTokener(value == null ? "\"\\"" : value).nextValue();
                 String url = parsed == null ? "" : String.valueOf(parsed);
-                if (url.isEmpty() || url.startsWith("blob:") || !isVideoCandidate(url)) {
-                    Toast.makeText(this, "شغّل الفيديو المطلوب أولًا؛ القناص يلتقط الفيديو النشط فقط وليس صور الصفحة.", Toast.LENGTH_LONG).show();
+                if (!url.isEmpty() && !url.startsWith("blob:") && isVideoCandidate(url)) {
+                    currentPlayingVideoUrl = url;
+                    castUrl(url);
                     return;
                 }
-                currentPlayingVideoUrl = url;
-                castUrl(url);
+
+                // Fall back to the latest direct video URL detected from this browser's
+                // network requests. Do not send blob:, page URLs, audio, or images.
+                String candidate = null;
+                if (currentPlayingVideoUrl != null && isVideoCandidate(currentPlayingVideoUrl)
+                        && !currentPlayingVideoUrl.startsWith("blob:")) {
+                    candidate = currentPlayingVideoUrl;
+                }
+                if (candidate == null) {
+                    for (int i = mediaOrder.size() - 1; i >= 0; i--) {
+                        String found = mediaOrder.get(i);
+                        if (isVideoCandidate(found) && !found.startsWith("blob:")
+                                && !found.startsWith("data:")) {
+                            candidate = found;
+                            break;
+                        }
+                    }
+                }
+                if (candidate != null) {
+                    currentPlayingVideoUrl = candidate;
+                    Toast.makeText(this, "الفيديو يستخدم رابط بث مخفي داخل المشغّل؛ بجرب آخر رابط فيديو تم التقاطه…", Toast.LENGTH_SHORT).show();
+                    castUrl(candidate);
+                    return;
+                }
+                Toast.makeText(this, "الفيديو شغال، لكن الموقع مخفي رابط البث عن المتصفح. جرّب من غير حماية DRM أو افتح رابط فيديو مباشر.", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
                 Toast.makeText(this, "مش قادر أحدد رابط الفيديو المشغّل. بعض المواقع تحمي البث أو تستخدم blob.", Toast.LENGTH_LONG).show();
             }
@@ -1639,6 +1668,7 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
+            if (isVideoCandidate(url)) currentPlayingVideoUrl = url;
             autoSelectDetectedTrack(url);
             // Automatically cast a captured direct video from the current platform page.
             // Debounce for five seconds so Share can collect multiple quality variants first.
