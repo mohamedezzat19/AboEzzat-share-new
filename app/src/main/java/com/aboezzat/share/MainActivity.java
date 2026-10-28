@@ -62,6 +62,8 @@ public class MainActivity extends Activity {
     private static final String PREFS = "aboezzat_browser";
     private static final int PICK_IMAGE_REQUEST = 901;
     private static final int PICK_BROWSER_FILE_REQUEST = 903;
+    private static final int CREATE_BACKUP_REQUEST = 905;
+    private static final int RESTORE_BACKUP_REQUEST = 906;
     private ValueCallback<Uri[]> browserFileCallback;
     private View fullscreenVideoView;
     private WebChromeClient.CustomViewCallback fullscreenVideoCallback;
@@ -428,8 +430,78 @@ public class MainActivity extends Activity {
         else if ("downloads".equals(key)) openDownloads();
         else if ("receiver".equals(key) || "settings".equals(key)) receiverSettings();
         else if ("dark".equals(key)) Toast.makeText(this, "الوضع الداكن مفعل بالفعل", Toast.LENGTH_SHORT).show();
-        else if ("backup".equals(key)) new AlertDialog.Builder(this).setTitle("النسخ الاحتياطي").setMessage("المفضلة وسجل التصفح محفوظان محليًا داخل التطبيق.").setPositiveButton("حسنًا", null).show();
+        else if ("backup".equals(key)) showBackupOptions();
         else if ("exit".equals(key)) finish();
+    }
+
+    private void showBackupOptions() {
+        new AlertDialog.Builder(this).setTitle("النسخ الاحتياطي والاستعادة")
+                .setItems(new String[]{"تصدير نسخة احتياطية", "استعادة نسخة احتياطية"}, (dialog, which) -> {
+                    if (which == 0) {
+                        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("application/json");
+                        intent.putExtra(Intent.EXTRA_TITLE, "AboEzzat-Share-backup.json");
+                        startActivityForResult(intent, CREATE_BACKUP_REQUEST);
+                    } else {
+                        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("*/*");
+                        startActivityForResult(intent, RESTORE_BACKUP_REQUEST);
+                    }
+                }).setNegativeButton("إلغاء", null).show();
+    }
+
+    private JSONObject createBackupJson() throws org.json.JSONException {
+        JSONObject backup = new JSONObject();
+        backup.put("format", "AboEzzatShareBackup");
+        backup.put("version", 1);
+        for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue", "receiver_ip"}) {
+            backup.put(key, prefs.getString(key, key.endsWith("_queue") || key.equals("history") || key.equals("bookmarks") || key.equals("saved_media_urls") || key.equals("recent_cast_urls") ? "[]" : ""));
+        }
+        backup.put("local_media_index", prefs.getInt("local_media_index", 0));
+        backup.put("slideshow_index", prefs.getInt("slideshow_index", 0));
+        return backup;
+    }
+
+    private void exportBackup(Uri destination) {
+        try (OutputStream out = getContentResolver().openOutputStream(destination, "wt")) {
+            if (out == null) throw new java.io.IOException("تعذر فتح ملف النسخة");
+            out.write(createBackupJson().toString(2).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            Toast.makeText(this, "تم تصدير النسخة الاحتياطية", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "فشل تصدير النسخة: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void importBackup(Uri source) {
+        try (InputStream in = getContentResolver().openInputStream(source)) {
+            if (in == null) throw new java.io.IOException("تعذر قراءة الملف");
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] chunk = new byte[4096];
+            int count;
+            while ((count = in.read(chunk)) != -1) buffer.write(chunk, 0, count);
+            JSONObject backup = new JSONObject(new String(buffer.toByteArray(), StandardCharsets.UTF_8));
+            if (!"AboEzzatShareBackup".equals(backup.optString("format"))) throw new IllegalArgumentException("الملف ليس نسخة احتياطية متوافقة");
+            SharedPreferences.Editor edit = prefs.edit();
+            for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue"}) {
+                String value = backup.optString(key, "[]");
+                new JSONArray(value);
+                edit.putString(key, value);
+            }
+            String ip = backup.optString("receiver_ip", "");
+            edit.putString("receiver_ip", ip);
+            edit.putInt("local_media_index", Math.max(0, backup.optInt("local_media_index", 0)));
+            edit.putInt("slideshow_index", Math.max(0, backup.optInt("slideshow_index", 0)));
+            edit.apply();
+            receiverIp = ip;
+            restoreSavedMediaQueues();
+            Toast.makeText(this, "تمت استعادة البيانات. راجع صلاحيات الملفات المحلية إذا لم تفتح بعض العناصر.", Toast.LENGTH_LONG).show();
+            showHome();
+        } catch (Exception e) {
+            Toast.makeText(this, "فشلت الاستعادة: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showPopularSites() {
@@ -2130,6 +2202,8 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == CREATE_BACKUP_REQUEST) { if (resultCode == RESULT_OK && data != null && data.getData() != null) exportBackup(data.getData()); return; }
+        if (requestCode == RESTORE_BACKUP_REQUEST) { if (resultCode == RESULT_OK && data != null && data.getData() != null) importBackup(data.getData()); return; }
         if (requestCode == PICK_BROWSER_FILE_REQUEST) {
             if (browserFileCallback != null) {
                 Uri[] results = null;
