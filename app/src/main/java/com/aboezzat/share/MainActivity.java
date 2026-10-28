@@ -282,8 +282,8 @@ public class MainActivity extends Activity {
                 }
             } catch (Exception ignored) { }
             // Poll the authenticated page briefly for a direct stream. Never send the page URL itself.
-            if (attempt < 16) {
-                receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 300L);
+            if (attempt < 40) {
+                receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(pageUrl, generation, attempt + 1), 500L);
             } else {
                 startRemoteExtractionFallback(pageUrl, generation);
             }
@@ -1513,7 +1513,7 @@ public class MainActivity extends Activity {
                 + "return v?(v.currentSrc||v.src||''):'';})()";
         web.evaluateJavascript(js, value -> {
             try {
-                Object parsed = new org.json.JSONTokener(value == null ? "\"\\"" : value).nextValue();
+                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
                 String url = parsed == null ? "" : String.valueOf(parsed);
                 if (!url.isEmpty() && !url.startsWith("blob:") && isVideoCandidate(url)) {
                     currentPlayingVideoUrl = url;
