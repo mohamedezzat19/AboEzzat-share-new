@@ -554,7 +554,6 @@ public class MainActivity extends Activity {
             {"📺", "تشغيل IPTV", "iptv"},
             {"🕒", "الوسائط الأخيرة", "recent"},
             {"📑", "قائمة التشغيل", "playlist"},
-            {"🎞️", "الوسائط المحفوظة", "saved_media"},
             {"⭐", "العلامات المرجعية", "bookmarks"},
             {"📜", "سجل التصفح", "history"},
             {"🔥", "المواقع الأكثر زيارة", "popular"},
@@ -631,7 +630,6 @@ public class MainActivity extends Activity {
         else if ("iptv".equals(key)) showIptvDialog();
         else if ("recent".equals(key)) showRecentCastDialog();
         else if ("playlist".equals(key)) showLocalPlaylist();
-        else if ("saved_media".equals(key)) showSavedMedia();
         else if ("bookmarks".equals(key)) showLibrary("bookmarks");
         else if ("history".equals(key)) showLibrary("history");
         else if ("popular".equals(key)) showPopularSites();
@@ -1745,6 +1743,14 @@ public class MainActivity extends Activity {
         r1.addView(ff,remoteButtonParams());
         remote.addView(r1,lp(-1,dp(38)));
         LinearLayout r2 = row();
+        TextView previous = button("⏮ السابق",PANEL,WHITE);
+        TextView next = button("التالي ⏭",PANEL,WHITE);
+        compactRemoteButton(previous);
+        compactRemoteButton(next);
+        r2.addView(previous, remoteButtonParams());
+        r2.addView(next, remoteButtonParams());
+        remote.addView(r2, lp(-1, dp(38)));
+        LinearLayout r3 = row();
         TextView volumeDown = button("− صوت",PANEL,WHITE);
         TextView mute = button("🔇 كتم",PANEL2,GOLD);
         TextView volumeUp = button("+ صوت",PANEL,WHITE);
@@ -1753,13 +1759,15 @@ public class MainActivity extends Activity {
         compactRemoteButton(mute);
         compactRemoteButton(volumeUp);
         compactRemoteButton(stop);
-        r2.addView(volumeDown,remoteButtonParams());
-        r2.addView(mute,remoteButtonParams());
-        r2.addView(volumeUp,remoteButtonParams());
-        r2.addView(stop,remoteButtonParams());
+        r3.addView(volumeDown,remoteButtonParams());
+        r3.addView(mute,remoteButtonParams());
+        r3.addView(volumeUp,remoteButtonParams());
+        r3.addView(stop,remoteButtonParams());
         LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(38));
         remoteRowParams.topMargin=dp(4);
-        remote.addView(r2,remoteRowParams);
+        remote.addView(r3,remoteRowParams);
+        previous.setOnClickListener(v -> sendRemoteCommand("previous"));
+        next.setOnClickListener(v -> sendRemoteCommand("next"));
         volumeDown.setOnClickListener(v -> sendRemoteCommand("volume_down"));
         mute.setOnClickListener(v -> sendRemoteCommand("mute"));
         volumeUp.setOnClickListener(v -> sendRemoteCommand("volume_up"));
@@ -1768,9 +1776,6 @@ public class MainActivity extends Activity {
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
         stop.setOnClickListener(v -> sendRemoteCommand("stop"));
         content.addView(remote,lp(-1,-2));
-        TextView savedButton=button("الوسائط المحفوظة ("+readSavedMedia().length()+")",PANEL2,GOLD);
-        LinearLayout.LayoutParams savedParams=lp(-1,42);savedParams.topMargin=dp(6);content.addView(savedButton,savedParams);
-        savedButton.setOnClickListener(v -> showSavedMedia());
         TextView info=button("عرض المصادر المكتشفة ("+mediaOrder.size()+")",PANEL2,GOLD);
         LinearLayout.LayoutParams ip=lp(-1,44);ip.topMargin=dp(6);content.addView(info,ip);
         ScrollView scroll=new ScrollView(this);scroll.setVisibility(View.GONE);LinearLayout list=column();
@@ -2098,9 +2103,14 @@ public class MainActivity extends Activity {
             return;
         }
         try {
-            request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
             String key = microphoneOriginKey(request);
-            if (key != null) getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(key, true).apply();
+            if (key == null) {
+                request.deny();
+                Log.w("AboEzzatBrowser", "Denied microphone request from a non-HTTP(S) origin");
+                return;
+            }
+            request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(key, true).apply();
             Log.i("AboEzzatBrowser", "Granted WebView microphone permission for " + key);
         } catch (Exception e) {
             Log.e("AboEzzatBrowser", "WebView microphone grant failed", e);
@@ -2113,20 +2123,10 @@ public class MainActivity extends Activity {
 
     private void confirmWebsiteMicrophonePermission(android.webkit.PermissionRequest request) {
         if (request == null) return;
-        final String host = request.getOrigin() == null || request.getOrigin().getHost() == null
-                ? "الموقع الحالي" : request.getOrigin().getHost();
-        final String originKey = microphoneOriginKey(request);
-        if (originKey != null && getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(originKey, false)) {
-            grantWebsiteMicrophone(request);
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("السماح للصفحة باستخدام المايك")
-                .setMessage("صفحة " + host + " بتطلب الميكروفون. لو أنت بدأت البحث الصوتي وتثق في الموقع، اسمح له مرة واحدة.")
-                .setPositiveButton("السماح", (d, w) -> grantWebsiteMicrophone(request))
-                .setNegativeButton("رفض", (d, w) -> { try { request.deny(); } catch (Exception ignored) { } })
-                .setOnCancelListener(d -> { try { request.deny(); } catch (Exception ignored) { } })
-                .show();
+        // The website already initiated this request (e.g. YouTube voice search).
+        // Avoid a second app dialog: WebView PermissionRequest may expire while it is shown.
+        // Android RECORD_AUDIO is checked independently in requestBrowserMicrophonePermission.
+        grantWebsiteMicrophone(request);
     }
 
     private void requestBrowserMicrophonePermission(android.webkit.PermissionRequest request) {
