@@ -1510,7 +1510,7 @@ public class MainActivity extends Activity {
                 + "return v?(v.currentSrc||v.src||''):'';})()";
         web.evaluateJavascript(js, value -> {
             try {
-                Object parsed = new org.json.JSONTokener(value == null ? "\\\"\\\"" : value).nextValue();
+                Object parsed = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
                 String url = parsed == null ? "" : String.valueOf(parsed);
                 if (!url.isEmpty() && !"null".equals(url)
                         && !url.startsWith("blob:") && isVideoCandidate(url)) {
