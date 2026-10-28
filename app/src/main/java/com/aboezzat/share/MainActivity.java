@@ -317,14 +317,10 @@ public class MainActivity extends Activity {
     private void startRemoteExtractionFallback(String pageUrl, int generation) {
         if (generation != authenticatedResolveGeneration || isFinishing()) return;
         String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
-        if (configuredApi.isEmpty()) {
-            // Cobalt is optional: do not interrupt every share with a server-setup dialog.
-            // Keep the local WebView extraction path usable without any third-party endpoint.
-            Toast.makeText(this,
-                    "لم يظهر رابط بث مباشر في الصفحة. محرك الخادم الإضافي غير مُعدّ؛ لم يتم إرسال رابط صفحة الموقع للريسيفر.",
-                    Toast.LENGTH_LONG).show();
-            return;
-        }
+        // Use the public Cobalt API as an automatic fallback when the user has not configured
+        // a private extractor. The shared URL is sent only after local WebView sniffing fails.
+        if (configuredApi.isEmpty()) configuredApi = "https://api.cobalt.tools/api";
+        Toast.makeText(this, "لم يظهر رابط مباشر محليًا؛ بجرب محرك استخراج إضافي للرابط العام…", Toast.LENGTH_LONG).show();
         runRemoteExtraction(pageUrl, generation, configuredApi);
     }
 
