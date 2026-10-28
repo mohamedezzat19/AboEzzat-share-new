@@ -27,6 +27,30 @@ public final class CastingManager {
     private static final ExecutorService IO = Executors.newCachedThreadPool();
     private CastingManager() {}
 
+    // Verify the AboEzzat Receiver HTTP response, not just an open port.
+    public static boolean isReceiver(String ip) {
+        if (ip == null || !ip.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")) {
+            return false;
+        }
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(ip, 8081), 900);
+            socket.setSoTimeout(1200);
+            OutputStream out = socket.getOutputStream();
+            out.write(("GET /?command=ping HTTP/1.1\\r\\nHost: " + ip + ":8081\\r\\nConnection: close\\r\\n\\r\\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            String status = reader.readLine();
+            if (status == null || !status.matches("HTTP/1\\.[01] 200(?: .*)?")) return false;
+            String header;
+            while ((header = reader.readLine()) != null && !header.isEmpty()) { }
+            return "OK".equals(reader.readLine());
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     public static void send(String ip, String url, Callback callback) {
         IO.execute(() -> {
             try (Socket socket = new Socket()) {
@@ -126,10 +150,7 @@ public final class CastingManager {
             List<String> verifiedMulticast = new ArrayList<>();
             synchronized (found) {
                 for (String candidate : found) {
-                    try (Socket socket = new Socket()) {
-                        socket.connect(new InetSocketAddress(candidate, 8081), 700);
-                        verifiedMulticast.add(candidate);
-                    } catch (Exception ignored) { }
+                    if (isReceiver(candidate)) verifiedMulticast.add(candidate);
                 }
             }
             if (!verifiedMulticast.isEmpty()) {
@@ -167,12 +188,10 @@ public final class CastingManager {
                     for (int i = 1; i < 255; i++) {
                         String host = prefix + i;
                         tasks.add(() -> {
-                            try (Socket socket = new Socket()) {
-                                socket.connect(new java.net.InetSocketAddress(host, 8081), 350);
+                            if (isReceiver(host)) {
                                 synchronized (found) {
                                     if (!found.contains(host)) found.add(host);
                                 }
-                            } catch (Exception ignored) {
                             }
                         });
                     }
