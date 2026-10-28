@@ -8,10 +8,11 @@
 
     <application
         android:allowBackup="false"
-        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="true" />
         android:label="AboEzzat Share"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AboEzzatShare">
+
+        <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="true" />
 
         <activity
             android:name=".MainActivity"
