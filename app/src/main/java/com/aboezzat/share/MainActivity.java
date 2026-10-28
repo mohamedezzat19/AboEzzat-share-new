@@ -670,6 +670,60 @@ public class MainActivity extends Activity {
         parent.addView(card,p);
     }
 
+    private TextView makeSocialIcon(int index) {
+        String glyph;
+        int foreground = Color.WHITE;
+        int background;
+        switch (index) {
+            case 0: // YouTube
+                glyph = "▶";
+                background = Color.rgb(255, 0, 0);
+                break;
+            case 1: // Facebook
+                glyph = "f";
+                background = Color.rgb(24, 119, 242);
+                break;
+            case 2: // TikTok
+                glyph = "♪";
+                background = Color.rgb(8, 8, 8);
+                break;
+            case 3: // Instagram
+                glyph = "◎";
+                background = Color.rgb(193, 53, 132);
+                break;
+            case 4: // X
+                glyph = "𝕏";
+                background = Color.rgb(0, 0, 0);
+                break;
+            default: // Threads
+                glyph = "@";
+                background = Color.rgb(18, 18, 18);
+                break;
+        }
+        TextView icon = text(glyph, index == 1 ? 27 : 23, foreground, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setIncludeFontPadding(false);
+        GradientDrawable iconBackground = new GradientDrawable();
+        if (index == 3) {
+            iconBackground.setColors(new int[]{
+                    Color.rgb(255, 196, 72),
+                    Color.rgb(245, 75, 106),
+                    Color.rgb(193, 53, 132),
+                    Color.rgb(88, 81, 219)
+            });
+            iconBackground.setOrientation(GradientDrawable.Orientation.BL_TR);
+        } else {
+            iconBackground.setColor(background);
+        }
+        iconBackground.setCornerRadius(dp(10));
+        iconBackground.setStroke(dp(1), Color.argb(55, 255, 255, 255));
+        icon.setBackground(iconBackground);
+        if (index == 2) {
+            icon.setShadowLayer(dp(1), dp(1), 0, Color.rgb(0, 220, 220));
+        }
+        return icon;
+    }
+
     private void showHome() {
         header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage = "home";
@@ -709,12 +763,15 @@ public class MainActivity extends Activity {
                 card.setGravity(Gravity.CENTER);
                 card.setPadding(dp(5), dp(10), dp(5), dp(10));
                 card.setBackground(shape(PANEL, PANEL2, 16));
-                TextView icon = text(sites[j][0], 24, j == 1 ? Color.rgb(86,150,255) : GOLD, true);
-                icon.setGravity(Gravity.CENTER);
-                card.addView(icon, lp(-1, 34));
+                TextView icon = makeSocialIcon(j);
+                LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+                iconParams.gravity = Gravity.CENTER_HORIZONTAL;
+                card.addView(icon, iconParams);
                 TextView label = text(sites[j][1], 11, WHITE, true);
                 label.setGravity(Gravity.CENTER);
-                card.addView(label, lp(-1, 24));
+                LinearLayout.LayoutParams labelParams = lp(-1, 22);
+                labelParams.topMargin = dp(5);
+                card.addView(label, labelParams);
                 card.setOnClickListener(v -> openQuickSite(url));
                 LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(82), 1);
                 cp.setMargins(dp(3), dp(4), dp(3), dp(4));
