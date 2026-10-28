@@ -32,21 +32,39 @@ public class ShareLinkActivity extends Activity {
             return;
         }
 
-        CastingManager.discover(getApplicationContext(), devices -> {
-            // discover() already verifies every returned address with the
-            // receiver's HTTP ping endpoint. Avoid repeating network probes here.
-            String receiverIp = (devices == null || devices.isEmpty())
-                    ? null : devices.get(0);
+        // Honor the IP explicitly selected in Share settings. A temporary failure
+        // must not trigger discovery that silently switches to another receiver.
+        String savedIp = getSharedPreferences("aboezzat_browser", MODE_PRIVATE)
+                .getString("receiver_ip", "").trim();
+        if (!savedIp.isEmpty()) {
+            sendToReceiver(savedIp, url, true);
+            return;
+        }
 
+        CastingManager.discover(getApplicationContext(), devices -> {
+            // Discovery only returns addresses that answered the Receiver ping.
+            String receiverIp = (devices == null || devices.isEmpty()) ? null : devices.get(0);
             if (receiverIp == null) {
-                finishWithMessage("مش لاقي AboEzzat Receiver؛ تأكد إن الجهازين على نفس شبكة Wi‑Fi والريسيفر شغال.");
+                finishWithMessage("مش لاقي AboEzzat Receiver؛ افتح Share واضغط إعداد IP لاختيار الجهاز، وتأكد إن الجهازين على نفس شبكة Wi‑Fi.");
                 return;
             }
+            // Save the first verified receiver so subsequent shares keep using the same device.
+            getSharedPreferences("aboezzat_browser", MODE_PRIVATE).edit()
+                    .putString("receiver_ip", receiverIp).apply();
+            sendToReceiver(receiverIp, url, false);
+        });
+    }
 
-            CastingManager.send(receiverIp, url, (success, message) ->
-                    finishWithMessage(success
-                            ? "اتبعَت الرابط للشاشة؛ لو المنصة مدعومة هيبدأ التشغيل تلقائيًا."
-                            : "ماقدرتش أبعت الرابط للشاشة: " + message));
+
+    private void sendToReceiver(String receiverIp, String url, boolean wasSelected) {
+        CastingManager.send(receiverIp, url, (success, message) -> {
+            if (success) {
+                finishWithMessage("اتبعَت الرابط للشاشة؛ لو المنصة مدعومة هيبدأ التشغيل تلقائيًا.");
+            } else if (wasSelected) {
+                finishWithMessage("الجهاز المختار " + receiverIp + " لم يستجب. احتفظنا بعنوانه؛ افتح إعداد IP في Share لاختبار الاتصال أو اختيار جهاز آخر. " + message);
+            } else {
+                finishWithMessage("ماقدرتش أبعت الرابط للشاشة: " + message);
+            }
         });
     }
 
