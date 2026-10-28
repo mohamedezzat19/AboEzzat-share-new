@@ -2077,16 +2077,52 @@ public class MainActivity extends Activity {
             }).setNegativeButton("إلغاء",null).show();
     }
 
+    private String microphoneOriginKey(android.webkit.PermissionRequest request) {
+        if (request == null || request.getOrigin() == null) return null;
+        Uri origin = request.getOrigin();
+        String scheme = origin.getScheme();
+        String host = origin.getHost();
+        if (host == null || !("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))) return null;
+        return "browser_mic_origin_" + scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT)
+                + (origin.getPort() > 0 ? ":" + origin.getPort() : "");
+    }
+
+    private void grantWebsiteMicrophone(android.webkit.PermissionRequest request) {
+        if (request == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try { request.deny(); } catch (Exception ignored) { }
+            Toast.makeText(this, "إذن المايك للتطبيق غير مسموح من أندرويد", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            String key = microphoneOriginKey(request);
+            if (key != null) getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(key, true).apply();
+            Log.i("AboEzzatBrowser", "Granted WebView microphone permission for " + key);
+        } catch (Exception e) {
+            Log.e("AboEzzatBrowser", "WebView microphone grant failed", e);
+            try { request.deny(); } catch (Exception ignored) { }
+            Toast.makeText(this,
+                    "أندرويد رفض طلب المايك من داخل الصفحة. جرّب إعادة تحميل YouTube أو فتحه في Chrome.",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void confirmWebsiteMicrophonePermission(android.webkit.PermissionRequest request) {
         if (request == null) return;
-        final String host = request.getOrigin() == null ? "الموقع الحالي" : request.getOrigin().getHost();
+        final String host = request.getOrigin() == null || request.getOrigin().getHost() == null
+                ? "الموقع الحالي" : request.getOrigin().getHost();
+        final String originKey = microphoneOriginKey(request);
+        if (originKey != null && getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(originKey, false)) {
+            grantWebsiteMicrophone(request);
+            return;
+        }
         new AlertDialog.Builder(this)
                 .setTitle("السماح للصفحة باستخدام المايك")
-                .setMessage("صفحة " + host + " بتطلب الميكروفون. وافق فقط لو أنت بدأت البحث أو التسجيل الصوتي.")
-                .setPositiveButton("السماح", (d, w) -> {
-                    try { request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE}); }
-                    catch (Exception e) { Toast.makeText(this, "تعذّر منح إذن المايك؛ أعد تحميل الصفحة وحاول مجددًا", Toast.LENGTH_LONG).show(); }
-                })
+                .setMessage("صفحة " + host + " بتطلب الميكروفون. لو أنت بدأت البحث الصوتي وتثق في الموقع، اسمح له مرة واحدة.")
+                .setPositiveButton("السماح", (d, w) -> grantWebsiteMicrophone(request))
                 .setNegativeButton("رفض", (d, w) -> { try { request.deny(); } catch (Exception ignored) { } })
                 .setOnCancelListener(d -> { try { request.deny(); } catch (Exception ignored) { } })
                 .show();
@@ -2095,14 +2131,21 @@ public class MainActivity extends Activity {
     private void requestBrowserMicrophonePermission(android.webkit.PermissionRequest request) {
         if (request == null) return;
         boolean wantsAudio = false;
-        for (String resource : request.getResources()) {
-            if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+        boolean requestsOtherResource = false;
+        String[] resources = request.getResources();
+        if (resources != null) {
+            for (String resource : resources) {
+                if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                    wantsAudio = true;
+                } else {
+                    requestsOtherResource = true;
+                }
+            }
         }
-        // Never grant camera or any other WebView resource implicitly.
-        if (!wantsAudio || request.getOrigin() == null
-                || !("https".equalsIgnoreCase(request.getOrigin().getScheme())
-                || "http".equalsIgnoreCase(request.getOrigin().getScheme()))) {
+        // Only approve a microphone-only request from a normal web origin.
+        if (!wantsAudio || requestsOtherResource || microphoneOriginKey(request) == null) {
             try { request.deny(); } catch (Exception ignored) { }
+            Log.w("AboEzzatBrowser", "Denied unsupported WebView permission request");
             return;
         }
         if (android.os.Build.VERSION.SDK_INT >= 23
