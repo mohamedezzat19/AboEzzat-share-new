@@ -554,6 +554,7 @@ public class MainActivity extends Activity {
             {"📺", "تشغيل IPTV", "iptv"},
             {"🕒", "الوسائط الأخيرة", "recent"},
             {"📑", "قائمة التشغيل", "playlist"},
+            {"🎞️", "الوسائط المحفوظة", "saved_media"},
             {"⭐", "العلامات المرجعية", "bookmarks"},
             {"📜", "سجل التصفح", "history"},
             {"🔥", "المواقع الأكثر زيارة", "popular"},
@@ -630,6 +631,7 @@ public class MainActivity extends Activity {
         else if ("iptv".equals(key)) showIptvDialog();
         else if ("recent".equals(key)) showRecentCastDialog();
         else if ("playlist".equals(key)) showLocalPlaylist();
+        else if ("saved_media".equals(key)) showSavedMedia();
         else if ("bookmarks".equals(key)) showLibrary("bookmarks");
         else if ("history".equals(key)) showLibrary("history");
         else if ("popular".equals(key)) showPopularSites();
