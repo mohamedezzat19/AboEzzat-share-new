@@ -2032,24 +2032,28 @@ public class MainActivity extends Activity {
                 });
                 return;
             }
-            // Only accept a discovered device after its TCP receiver port responds.
+            // CastingManager.discover() returns only addresses that already passed
+            // the receiver's protocol-level ping, including its subnet-scan fallback.
+            // Avoid probing the same verified devices a second time here.
+            String verifiedIp = null;
             for (String candidate : devices) {
-                if (candidate == null || candidate.trim().isEmpty()) continue;
-                boolean ok = false;
-                 ok = CastingManager.isReceiver(candidate);
-                if (ok) {
-                    final String verifiedIp = candidate;
-                    runOnUiThread(() -> {
-                        receiverIp = verifiedIp;
-                        receiverConnected = true;
-                        refreshConnectionLabel();
-                        discoveryInProgress = false;
-                        String pendingUrl = pendingPlatformUrl;
-                        pendingPlatformUrl = null;
-                        if (pendingUrl != null) castUrl(pendingUrl);
-                    });
-                    return;
+                if (candidate != null && !candidate.trim().isEmpty()) {
+                    verifiedIp = candidate;
+                    break;
                 }
+            }
+            if (verifiedIp != null) {
+                final String receiverAddress = verifiedIp;
+                runOnUiThread(() -> {
+                    receiverIp = receiverAddress;
+                    receiverConnected = true;
+                    refreshConnectionLabel();
+                    discoveryInProgress = false;
+                    String pendingUrl = pendingPlatformUrl;
+                    pendingPlatformUrl = null;
+                    if (pendingUrl != null) castUrl(pendingUrl);
+                });
+                return;
             }
             runOnUiThread(() -> {
                 discoveryInProgress = false;
