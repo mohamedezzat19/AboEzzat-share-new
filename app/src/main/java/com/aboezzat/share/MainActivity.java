@@ -122,7 +122,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        receiverIp = prefs.getString("receiver_ip", "");
+        receiverIp = "";
+        prefs.edit().remove("receiver_ip").apply();
         restoreSavedMediaQueues();
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
@@ -151,8 +152,8 @@ public class MainActivity extends Activity {
             String scheme = data.getScheme();
             if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
                 String sharedUrl = BrowserEngine.normalizeAddress(data.toString());
-                if (isYouTubeUrl(sharedUrl)) {
-                    sendYouTubeToScreen(sharedUrl);
+                if (isDirectPlatformUrl(sharedUrl)) {
+                    sendPlatformLinkToScreen(sharedUrl);
                     return;
                 }
                 showBrowser();
@@ -176,8 +177,8 @@ public class MainActivity extends Activity {
                 if (matcher.find()) {
                     String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
                     String normalized = BrowserEngine.normalizeAddress(sharedUrl);
-                    if (isYouTubeUrl(normalized)) {
-                        sendYouTubeToScreen(normalized);
+                    if (isDirectPlatformUrl(normalized)) {
+                        sendPlatformLinkToScreen(normalized);
                         return;
                     }
                     showBrowser();
@@ -203,23 +204,42 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void sendYouTubeToScreen(String url) {
+    private void sendPlatformLinkToScreen(String url) {
         if (receiverIp != null && !receiverIp.trim().isEmpty()) {
             castUrl(url);
             return;
         }
-        Toast.makeText(this, "جاري البحث عن جهاز الاستقبال لإرسال YouTube…", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "جاري البحث عن جهاز الاستقبال لإرسال الفيديو…", Toast.LENGTH_LONG).show();
         CastingManager.discover(this, devices -> runOnUiThread(() -> {
             if (devices == null || devices.isEmpty()) {
-                Toast.makeText(this, "لم يتم العثور على الريسيفر. تأكد أن الجهازين على نفس شبكة Wi-Fi.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "لم يتم العثور على الريسيفر الصحيح. تأكد أن الجهازين على نفس شبكة Wi-Fi.", Toast.LENGTH_LONG).show();
                 receiverSettings();
                 return;
             }
             receiverIp = devices.get(0);
-            prefs.edit().putString("receiver_ip", receiverIp).apply();
+            
             refreshConnectionLabel();
             castUrl(url);
         }));
+    }
+
+    private boolean isDirectPlatformUrl(String value) {
+        if (isYouTubeUrl(value)) return true;
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String host = uri.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("tiktok.com") || host.endsWith(".tiktok.com")
+                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("facebook.com") || host.endsWith(".facebook.com")
+                    || host.equals("fb.watch") || host.endsWith(".fb.watch")
+                    || host.equals("m.facebook.com") || host.equals("lm.facebook.com");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private boolean isYouTubeUrl(String value) {
@@ -519,7 +539,7 @@ public class MainActivity extends Activity {
         JSONObject backup = new JSONObject();
         backup.put("format", "AboEzzatShareBackup");
         backup.put("version", 1);
-        for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue", "receiver_ip"}) {
+        for (String key : new String[]{"bookmarks", "history", "saved_media_urls", "recent_cast_urls", "local_media_queue", "slideshow_queue"}) {
             backup.put(key, prefs.getString(key, key.endsWith("_queue") || key.equals("history") || key.equals("bookmarks") || key.equals("saved_media_urls") || key.equals("recent_cast_urls") ? "[]" : ""));
         }
         backup.put("local_media_index", prefs.getInt("local_media_index", 0));
@@ -553,12 +573,11 @@ public class MainActivity extends Activity {
                 new JSONArray(value);
                 edit.putString(key, value);
             }
-            String ip = backup.optString("receiver_ip", "");
-            edit.putString("receiver_ip", ip);
             edit.putInt("local_media_index", Math.max(0, backup.optInt("local_media_index", 0)));
             edit.putInt("slideshow_index", Math.max(0, backup.optInt("slideshow_index", 0)));
             edit.apply();
-            receiverIp = ip;
+            receiverIp = "";
+            edit.remove("receiver_ip");
             restoreSavedMediaQueues();
             Toast.makeText(this, "تمت استعادة البيانات. راجع صلاحيات الملفات المحلية إذا لم تفتح بعض العناصر.", Toast.LENGTH_LONG).show();
             showHome();
@@ -1475,10 +1494,7 @@ public class MainActivity extends Activity {
         }
         new Thread(() -> {
             boolean ok = false;
-            try (Socket socket = new Socket()) {
-                socket.connect(new java.net.InetSocketAddress(ip, 8081), 1800);
-                ok = true;
-            } catch (Exception ignored) { }
+             ok = CastingManager.isReceiver(ip);
             final boolean connected = ok;
             runOnUiThread(() -> {
                 receiverConnected = connected;
@@ -1500,10 +1516,7 @@ public class MainActivity extends Activity {
             for (String candidate : devices) {
                 if (candidate == null || candidate.trim().isEmpty()) continue;
                 boolean ok = false;
-                try (Socket socket = new Socket()) {
-                    socket.connect(new java.net.InetSocketAddress(candidate, 8081), 1200);
-                    ok = true;
-                } catch (Exception ignored) { }
+                 ok = CastingManager.isReceiver(candidate);
                 if (ok) {
                     final String verifiedIp = candidate;
                     runOnUiThread(() -> {
@@ -1524,7 +1537,7 @@ public class MainActivity extends Activity {
         if(ip.isEmpty()){Toast.makeText(this,"اكتب عنوان IP أولاً",Toast.LENGTH_SHORT).show();return;}
         new Thread(()->{
             boolean ok=false;
-            try(Socket s=new Socket()){s.connect(new java.net.InetSocketAddress(ip,8081),2500);ok=true;}catch(Exception ignored){}
+             ok = CastingManager.isReceiver(ip);
             final boolean result=ok;
             runOnUiThread(()->{
                 if (result) {
@@ -1533,7 +1546,7 @@ public class MainActivity extends Activity {
                     prefs.edit().putString("receiver_ip", receiverIp).apply();
                     refreshConnectionLabel();
                 }
-                Toast.makeText(this,result?"الاتصال ناجح وتم حفظ عنوان الريسيفر":"فشل الاتصال على "+ip+":8081. تأكد أن الهاتف والريسيفر على نفس شبكة الواي فاي وأن المنفذ 8081 متاح.",Toast.LENGTH_LONG).show();
+                Toast.makeText(this,result?"تم التحقق من عنوان الريسيفر الحالي":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ 8081.",Toast.LENGTH_LONG).show();
             });
         }).start();
     }
