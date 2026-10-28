@@ -4,6 +4,9 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -12,6 +15,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Environment;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -69,6 +73,10 @@ public class MainActivity extends Activity {
     private WebChromeClient.CustomViewCallback fullscreenVideoCallback;
     private int orientationBeforeFullscreen = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private static final int REQUEST_MICROPHONE = 904;
+    private static final int REQUEST_NOTIFICATIONS = 907;
+    private static final String EXTRACTION_CHANNEL = "aboezzat_extraction_progress";
+    private static final int EXTRACTION_NOTIFICATION_ID = 4708;
+    private volatile boolean extractionTracking = false;
     private android.webkit.PermissionRequest pendingWebPermissionRequest;
     private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
     private FrameLayout contentFrame, shellOverlay;
@@ -124,6 +132,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        prepareExtractionNotifications();
         receiverIp = "";
         prefs.edit().remove("receiver_ip").apply();
         restoreSavedMediaQueues();
@@ -1721,6 +1730,105 @@ public class MainActivity extends Activity {
                 .setNegativeButton("إغلاق", null).show();
     }
 
+
+    private void prepareExtractionNotifications() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (manager != null) {
+                NotificationChannel channel = new NotificationChannel(
+                        EXTRACTION_CHANNEL, "استخراج الفيديو", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("حالة محاولات استخراج الفيديو المرسل إلى الريسيفر");
+                manager.createNotificationChannel(channel);
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_NOTIFICATIONS);
+        }
+    }
+
+    private void updateExtractionNotification(String title, String message, boolean ongoing) {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, EXTRACTION_CHANNEL)
+                : new Notification.Builder(this);
+        builder.setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(new Notification.BigTextStyle().bigText(message))
+                .setOngoing(ongoing)
+                .setOnlyAlertOnce(true)
+                .setCategory(Notification.CATEGORY_PROGRESS);
+        manager.notify(EXTRACTION_NOTIFICATION_ID, builder.build());
+    }
+
+    private void trackReceiverExtraction(String ip) {
+        extractionTracking = true;
+        updateExtractionNotification("AboEzzat Share", "تم إرسال الرابط؛ جاري انتظار حالة استخراج الفيديو على الريسيفر…", true);
+        Thread tracker = new Thread(() -> {
+            long deadline = System.currentTimeMillis() + 90000L;
+            boolean sawStatus = false;
+            while (extractionTracking && System.currentTimeMillis() < deadline) {
+                HttpURLConnection connection = null;
+                try {
+                    URL statusUrl = new URL("http://" + ip + ":8081/?command=status");
+                    connection = (HttpURLConnection) statusUrl.openConnection();
+                    connection.setConnectTimeout(1800);
+                    connection.setReadTimeout(1800);
+                    connection.setRequestProperty("Accept", "application/json");
+                    if (connection.getResponseCode() == 200) {
+                        StringBuilder body = new StringBuilder();
+                        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                                new java.io.InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                            String line;
+                            while ((line = reader.readLine()) != null && body.length() < 8192) body.append(line);
+                        }
+                        JSONObject status = new JSONObject(body.toString());
+                        boolean extracting = status.optBoolean("extracting", false);
+                        int attempt = status.optInt("attempt", 0);
+                        String stage = status.optString("status", "waiting");
+                        if (extracting) {
+                            sawStatus = true;
+                            String detail = "محاولة استخراج رقم " + Math.max(1, attempt)
+                                    + " من 3 — " + stage + " — عملية واحدة قيد التقدم";
+                            updateExtractionNotification("جاري استخراج الفيديو", detail, true);
+                        } else if ("resolved".equals(stage)) {
+                            sawStatus = true;
+                            updateExtractionNotification("تم استخراج الفيديو", "الريسيفر استخرج رابط الوسائط وبدأ محاولة التشغيل.", false);
+                            extractionTracking = false;
+                            return;
+                        } else if ("web_fallback".equals(stage)) {
+                            sawStatus = true;
+                            updateExtractionNotification("تجربة مشغّل الويب", "لم ينجح استخراج رابط مباشر؛ الريسيفر يجرب صفحة الفيديو داخل مشغّل الويب.", false);
+                            extractionTracking = false;
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // The receiver can still be resolving or the local network may briefly pause.
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+                try { Thread.sleep(1400L); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+            if (extractionTracking) {
+                updateExtractionNotification("حالة استخراج الفيديو", sawStatus
+                        ? "انتهت متابعة الحالة؛ تحقق من شاشة الريسيفر."
+                        : "تم إرسال الرابط، لكن لم تصل حالة الاستخراج من الريسيفر.", false);
+            }
+            extractionTracking = false;
+        }, "ReceiverExtractionStatus");
+        tracker.setDaemon(true);
+        tracker.start();
+    }
+
     private void castUrl(String url){
         if(receiverIp.isEmpty()){new AlertDialog.Builder(this).setTitle("إعداد الاستقبال").setMessage("لازم تحفظ عنوان IP الظاهر في تطبيق AboEzzat Receiver أولاً.").setPositiveButton("ضبط الآن",(d,w)->receiverSettings()).setNegativeButton("إلغاء",null).show();return;}
         final String ip=receiverIp;
@@ -1730,6 +1838,7 @@ public class MainActivity extends Activity {
             receiverConnected = success;
             refreshConnectionLabel();
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            if (success) trackReceiverExtraction(ip);
             if (!success) discoverReceiverInBackground();
         }));
     }
