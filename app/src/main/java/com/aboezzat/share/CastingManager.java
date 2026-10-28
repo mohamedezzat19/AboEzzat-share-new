@@ -52,13 +52,14 @@ public final class CastingManager {
     }
 
     public static void send(String ip, String url, Callback callback) {
+        final String targetUrl = url == null ? "" : url.trim();
         IO.execute(() -> {
             try {
-                if (url == null || url.trim().isEmpty()) {
+                if (targetUrl.isEmpty()) {
                     callback.onResult(false, "الرابط فارغ");
                     return;
                 }
-                android.net.Uri parsed = android.net.Uri.parse(url.trim());
+                android.net.Uri parsed = android.net.Uri.parse(targetUrl);
                 String scheme = parsed.getScheme();
                 if (parsed.getHost() == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
                     callback.onResult(false, "لا يمكن إرسال هذا النوع من الروابط؛ استخدم رابط HTTP أو HTTPS صالحًا");
@@ -71,7 +72,7 @@ public final class CastingManager {
             try (Socket socket = new Socket()) {
                 socket.connect(new java.net.InetSocketAddress(ip, 8081), 3500);
                 socket.setSoTimeout(4000);
-                String target = "/?url=" + URLEncoder.encode(url, "UTF-8");
+                String target = "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
                 OutputStream out = socket.getOutputStream();
                 out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
