@@ -33,15 +33,10 @@ public class ShareLinkActivity extends Activity {
         }
 
         CastingManager.discover(getApplicationContext(), devices -> {
-            String receiverIp = null;
-            if (devices != null) {
-                for (String candidate : devices) {
-                    if (CastingManager.isReceiver(candidate)) {
-                        receiverIp = candidate;
-                        break;
-                    }
-                }
-            }
+            // discover() already verifies every returned address with the
+            // receiver's HTTP ping endpoint. Avoid repeating network probes here.
+            String receiverIp = (devices == null || devices.isEmpty())
+                    ? null : devices.get(0);
 
             if (receiverIp == null) {
                 finishWithMessage("مش لاقي AboEzzat Receiver؛ تأكد إن الجهازين على نفس شبكة Wi‑Fi والريسيفر شغال.");
@@ -65,13 +60,16 @@ public class ShareLinkActivity extends Activity {
         if (intent == null) return null;
         String candidate = null;
         if (Intent.ACTION_SEND.equals(intent.getAction())) {
-            candidate = intent.getStringExtra(Intent.EXTRA_TEXT);
+            CharSequence sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+            candidate = sharedText == null ? null : sharedText.toString();
         }
         if (candidate == null || candidate.trim().isEmpty()) return null;
 
+        // Search the full shared text (including multiline shares), then remove
+        // punctuation commonly appended by messaging apps without touching the query.
         Matcher matcher = Pattern.compile("(?i)https?://[^\\s<>\\\"']+").matcher(candidate);
         if (!matcher.find()) return null;
-        String url = matcher.group().replaceAll("[),.]+$", "");
+        String url = matcher.group().replaceAll("[),.?!;،؛؟\\]}]+$", "");
         try {
             Uri uri = Uri.parse(url);
             String scheme = uri.getScheme();
