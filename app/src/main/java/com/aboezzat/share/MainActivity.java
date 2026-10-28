@@ -803,6 +803,9 @@ public class MainActivity extends Activity {
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
         stop.setOnClickListener(v -> sendRemoteCommand("stop"));
         content.addView(remote,lp(-1,-2));
+        TextView savedButton=button("الوسائط المحفوظة ("+readSavedMedia().length()+")",PANEL2,GOLD);
+        LinearLayout.LayoutParams savedParams=lp(-1,42);savedParams.topMargin=dp(6);content.addView(savedButton,savedParams);
+        savedButton.setOnClickListener(v -> showSavedMedia());
         TextView info=button("عرض المصادر المكتشفة ("+mediaOrder.size()+")",PANEL2,GOLD);
         LinearLayout.LayoutParams ip=lp(-1,44);ip.topMargin=dp(6);content.addView(info,ip);
         ScrollView scroll=new ScrollView(this);scroll.setVisibility(View.GONE);LinearLayout list=column();
@@ -827,6 +830,9 @@ public class MainActivity extends Activity {
             cast.setOnClickListener(v->castUrl(url));
             best.setOnClickListener(v->castBestQuality());
             download.setOnClickListener(v->downloadUrl(url, null));
+            TextView save=button(isInSavedMedia(url) ? "✓ محفوظ" : "＋ حفظ الرابط",PANEL2,GOLD);
+            LinearLayout.LayoutParams saveP=lp(-1,38);saveP.topMargin=dp(5);card.addView(save,saveP);
+            save.setOnClickListener(v -> { saveMediaUrl(url); showMedia(); });
             LinearLayout.LayoutParams cp=lp(-1,-2);cp.topMargin=dp(7);list.addView(card,cp);
         }
         if(mediaOrder.isEmpty()){
@@ -835,6 +841,80 @@ public class MainActivity extends Activity {
         }
         scroll.addView(list);content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         TextView open=button("الرجوع للمتصفح",PANEL2,WHITE);content.addView(open,lp(-1,46));open.setOnClickListener(v->showBrowser());
+    }
+
+    private JSONArray readSavedMedia() {
+        try { return new JSONArray(prefs.getString("saved_media_urls", "[]")); }
+        catch (Exception e) { return new JSONArray(); }
+    }
+
+    private boolean isInSavedMedia(String url) {
+        JSONArray items = readSavedMedia();
+        for (int i = 0; i < items.length(); i++) if (url.equals(items.optString(i))) return true;
+        return false;
+    }
+
+    private void saveMediaUrl(String url) {
+        JSONArray items = readSavedMedia();
+        if (isInSavedMedia(url)) {
+            Toast.makeText(this, "الرابط محفوظ بالفعل", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        items.put(url);
+        prefs.edit().putString("saved_media_urls", items.toString()).apply();
+        Toast.makeText(this, "تم حفظ رابط الوسائط", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showSavedMedia() {
+        currentPage = "saved_media";
+        resetContent();
+        addSection(content, "الوسائط المحفوظة", "روابط محفوظة تقدر ترسلها أو تنزلها لاحقًا");
+        JSONArray items = readSavedMedia();
+        if (items.length() == 0) {
+            content.addView(text("مفيش روابط محفوظة لسه. احفظ أي مصدر من مركز الوسائط.", 14, MUTED, false), lp(-1, 60));
+        } else {
+            for (int i = 0; i < items.length(); i++) {
+                final String url = items.optString(i);
+                if (url.isEmpty()) continue;
+                LinearLayout card = column();
+                card.setPadding(dp(12), dp(10), dp(12), dp(10));
+                card.setBackground(shape(PANEL, PANEL2, 14));
+                String host = Uri.parse(url).getHost();
+                card.addView(text(mediaType(url) + " • " + (host == null ? url : host), 14, WHITE, true), lp(-1, 28));
+                TextView link = text(url, 10, MUTED, false);
+                link.setMaxLines(2);
+                link.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                card.addView(link, lp(-1, 36));
+                LinearLayout actions = row();
+                TextView send = button("إرسال", BLUE, WHITE);
+                TextView download = button("تنزيل", PANEL2, WHITE);
+                TextView remove = button("حذف", PANEL2, GOLD);
+                actions.addView(send, new LinearLayout.LayoutParams(0, dp(40), 1));
+                actions.addView(download, new LinearLayout.LayoutParams(0, dp(40), 1));
+                actions.addView(remove, new LinearLayout.LayoutParams(0, dp(40), 1));
+                card.addView(actions, lp(-1, 42));
+                send.setOnClickListener(v -> castUrl(url));
+                download.setOnClickListener(v -> downloadUrl(url, null));
+                remove.setOnClickListener(v -> {
+                    JSONArray latest = readSavedMedia();
+                    JSONArray kept = new JSONArray();
+                    for (int j = 0; j < latest.length(); j++) {
+                        String candidate = latest.optString(j);
+                        if (!url.equals(candidate)) kept.put(candidate);
+                    }
+                    prefs.edit().putString("saved_media_urls", kept.toString()).apply();
+                    showSavedMedia();
+                });
+                LinearLayout.LayoutParams cp = lp(-1, -2);
+                cp.topMargin = dp(7);
+                content.addView(card, cp);
+            }
+        }
+        TextView back = button("الرجوع لمركز الوسائط", PANEL2, WHITE);
+        LinearLayout.LayoutParams bp = lp(-1, 44);
+        bp.topMargin = dp(12);
+        content.addView(back, bp);
+        back.setOnClickListener(v -> showMedia());
     }
 
     private String mediaType(String url){
