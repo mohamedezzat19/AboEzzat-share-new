@@ -3634,6 +3634,8 @@ public class MainActivity extends Activity {
         // Invalidate pending authenticated WebView URL-resolution retries before
         // destroying tabs so late JavaScript callbacks cannot act on stale pages.
         authenticatedResolveGeneration++;
+        pendingVoiceTarget = null;
+        releaseNativeSpeechRecognizer();
         receiverMonitorHandler.removeCallbacks(receiverMonitorRunnable);
         slideshowRunning = false;
         slideshowHandler.removeCallbacks(slideshowRunnable);
