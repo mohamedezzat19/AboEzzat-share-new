@@ -1451,6 +1451,9 @@ public class MainActivity extends Activity {
             }));
         });
         box.addView(input,lp(-1,52));
+        TextView permissions = button("إدارة أذونات التطبيق في إعدادات أندرويد", PANEL2, WHITE);
+        box.addView(permissions, lp(-1, 46));
+        permissions.setOnClickListener(v -> openAppPermissionSettings());
         new AlertDialog.Builder(this).setTitle("إعداد جهاز الاستقبال").setView(box)
             .setPositiveButton("حفظ", (d,w)->{
                 String normalized = normalizeReceiverIp(input.getText().toString());
@@ -1467,6 +1470,16 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(ip);
             }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private void openAppPermissionSettings() {
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "افتح إعدادات أندرويد > التطبيقات > AboEzzat Share > الأذونات", Toast.LENGTH_LONG).show();
+        }
     }
 
     private String normalizeReceiverIp(String raw) {
