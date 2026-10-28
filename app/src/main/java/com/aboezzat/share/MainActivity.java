@@ -1962,9 +1962,9 @@ public class MainActivity extends Activity {
                 : "history".equals(focusKey) ? "سجل التصفح" : "مكتبتك";
         addSection(content, title, "افتح أي عنصر للرجوع إليه، واضغط مطولًا لحذفه");
 
-        if (showBookmarks) addUrlCollection(content, "☆ المفضلة", "bookmarks");
+        if (showBookmarks) addUrlCollection(content, "☆ المفضلة", "bookmarks", focusKey);
         if (showHistory) {
-            addUrlCollection(content, "◷ سجل التصفح", "history");
+            addUrlCollection(content, "◷ سجل التصفح", "history", focusKey);
             TextView clear = button("مسح سجل التصفح", PANEL2, MUTED);
             LinearLayout.LayoutParams p = lp(-1, 44);
             p.topMargin = dp(12);
@@ -1977,7 +1977,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void addUrlCollection(LinearLayout parent,String title,String key){
+    private void addUrlCollection(LinearLayout parent, String title, String key, String focusKey){
         parent.addView(text(title,16,GOLD,true),lp(-1,38));
         JSONArray a;
         try{a=new JSONArray(prefs.getString(key,"[]"));}catch(Exception e){a=new JSONArray();}
@@ -1987,7 +1987,7 @@ public class MainActivity extends Activity {
             TextView item=button(url,PANEL,WHITE);item.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);item.setMaxLines(2);item.setEllipsize(android.text.TextUtils.TruncateAt.END);
             LinearLayout.LayoutParams p=lp(-1,44);p.setMargins(0,dp(3),0,dp(3));parent.addView(item,p);
             item.setOnClickListener(v->{showBrowser();address.setText(url);loadAddress();});
-            item.setOnLongClickListener(v->{new AlertDialog.Builder(this).setMessage("حذف من القائمة؟").setPositiveButton("حذف",(d,w)->{removeSaved(key,url);showLibrary();}).setNegativeButton("إلغاء",null).show();return true;});
+            item.setOnLongClickListener(v->{new AlertDialog.Builder(this).setMessage("حذف من القائمة؟").setPositiveButton("حذف",(d,w)->{removeSaved(key,url);showLibrary(focusKey);}).setNegativeButton("إلغاء",null).show();return true;});
         }
     }
 
