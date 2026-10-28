@@ -152,7 +152,7 @@ public class MainActivity extends Activity {
             if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
                 String sharedUrl = BrowserEngine.normalizeAddress(data.toString());
                 if (isYouTubeUrl(sharedUrl)) {
-                    castUrl(sharedUrl);
+                    sendYouTubeToScreen(sharedUrl);
                     return;
                 }
                 showBrowser();
@@ -177,7 +177,7 @@ public class MainActivity extends Activity {
                     String sharedUrl = matcher.group().replaceAll("[),.]+$", "");
                     String normalized = BrowserEngine.normalizeAddress(sharedUrl);
                     if (isYouTubeUrl(normalized)) {
-                        castUrl(normalized);
+                        sendYouTubeToScreen(normalized);
                         return;
                     }
                     showBrowser();
@@ -201,6 +201,25 @@ public class MainActivity extends Activity {
                 return;
             }
         }
+    }
+
+    private void sendYouTubeToScreen(String url) {
+        if (receiverIp != null && !receiverIp.trim().isEmpty()) {
+            castUrl(url);
+            return;
+        }
+        Toast.makeText(this, "جاري البحث عن جهاز الاستقبال لإرسال YouTube…", Toast.LENGTH_LONG).show();
+        CastingManager.discover(this, devices -> runOnUiThread(() -> {
+            if (devices == null || devices.isEmpty()) {
+                Toast.makeText(this, "لم يتم العثور على الريسيفر. تأكد أن الجهازين على نفس شبكة Wi-Fi.", Toast.LENGTH_LONG).show();
+                receiverSettings();
+                return;
+            }
+            receiverIp = devices.get(0);
+            prefs.edit().putString("receiver_ip", receiverIp).apply();
+            refreshConnectionLabel();
+            castUrl(url);
+        }));
     }
 
     private boolean isYouTubeUrl(String value) {
