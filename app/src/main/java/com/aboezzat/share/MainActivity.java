@@ -1206,6 +1206,7 @@ public class MainActivity extends Activity {
         addSmallControl(controls,"☆",()->saveBookmark());
         addSmallControl(controls,"▣",()->showBrowserTabsDialog());
         addSmallControl(controls,"＋",()->openNewBrowserTab());
+        addSmallControl(controls,"⚙",()->showBrowserSettingsDialog());
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
         pageTitle.setVisibility(View.GONE);
@@ -1321,20 +1322,7 @@ public class MainActivity extends Activity {
             }
             @Override public void onHideCustomView() { exitVideoFullscreen(); }
             @Override public void onPermissionRequest(android.webkit.PermissionRequest request) {
-                runOnUiThread(() -> {
-                    boolean wantsAudio = false;
-                    for (String resource : request.getResources()) {
-                        if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
-                    }
-                    if (!wantsAudio) { request.deny(); return; }
-                    if (android.os.Build.VERSION.SDK_INT >= 23 &&
-                            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        pendingWebPermissionRequest = request;
-                        requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
-                    } else {
-                        request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                    }
-                });
+                runOnUiThread(() -> requestBrowserMicrophonePermission(request));
             }
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
                 if (browserFileCallback != null) {
@@ -1403,6 +1391,9 @@ public class MainActivity extends Activity {
                 popupWeb.setWebChromeClient(new WebChromeClient() {
                     @Override public void onCloseWindow(WebView window) {
                         if (!isFinishing() && dialog.isShowing()) dialog.dismiss();
+                    }
+                    @Override public void onPermissionRequest(android.webkit.PermissionRequest request) {
+                        runOnUiThread(() -> requestBrowserMicrophonePermission(request));
                     }
                 });
                 WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
@@ -2074,6 +2065,121 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(ip);
             }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private void requestBrowserMicrophonePermission(android.webkit.PermissionRequest request) {
+        if (request == null) return;
+        boolean wantsAudio = false;
+        for (String resource : request.getResources()) {
+            if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) wantsAudio = true;
+        }
+        // Never grant camera or any other WebView resource implicitly.
+        if (!wantsAudio || request.getOrigin() == null
+                || !("https".equalsIgnoreCase(request.getOrigin().getScheme())
+                || "http".equalsIgnoreCase(request.getOrigin().getScheme()))) {
+            try { request.deny(); } catch (Exception ignored) { }
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendingWebPermissionRequest = request;
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("السماح باستخدام المايك")
+                .setMessage("الموقع " + request.getOrigin().getHost()
+                        + " بيطلب استخدام المايك. اسمح فقط لو أنت بدأت البحث أو التسجيل الصوتي بنفسك.")
+                .setPositiveButton("السماح", (d, w) -> {
+                    try { request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE}); }
+                    catch (Exception e) { Toast.makeText(this, "تعذّر منح إذن المايك؛ جرّب إعادة تحميل الصفحة", Toast.LENGTH_LONG).show(); }
+                })
+                .setNegativeButton("رفض", (d, w) -> {
+                    try { request.deny(); } catch (Exception ignored) { }
+                })
+                .setOnCancelListener(d -> { try { request.deny(); } catch (Exception ignored) { } })
+                .show();
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private void showBrowserSettingsDialog() {
+        boolean micGranted = android.os.Build.VERSION.SDK_INT < 23
+                || checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        boolean javaScript = web != null && web.getSettings().getJavaScriptEnabled();
+        boolean cookies = CookieManager.getInstance().acceptCookie();
+        boolean desktop = web != null && web.getSettings().getUserAgentString() != null
+                && web.getSettings().getUserAgentString().toLowerCase(Locale.ROOT).contains("x11");
+        String[] items = {
+                (micGranted ? "🎙 المايك: إذن أندرويد مسموح" : "🎙 المايك: فتح/طلب الإذن"),
+                "🎙 إرشادات إذن المايك للمواقع",
+                "JavaScript: " + (javaScript ? "مفعّل" : "متوقف"),
+                "ملفات تعريف الارتباط Cookies: " + (cookies ? "مفعّلة" : "متوقفة"),
+                "وضع سطح المكتب: " + (desktop ? "مفعّل" : "متوقف"),
+                "مسح ذاكرة الصفحات المؤقتة",
+                "مسح ملفات تعريف الارتباط وتسجيلات المواقع",
+                "إعدادات أذونات Android للتطبيق"
+        };
+        new AlertDialog.Builder(this).setTitle("إعدادات المتصفح")
+                .setItems(items, (dialog, which) -> {
+                    if (which == 0) {
+                        if (micGranted) {
+                            new AlertDialog.Builder(this).setTitle("إذن المايك")
+                                    .setMessage("إذن المايك للتطبيق مسموح من Android. لازم كمان توافق على طلب الموقع نفسه عند استخدام البحث أو التسجيل الصوتي.")
+                                    .setPositiveButton("حسنًا", null)
+                                    .setNeutralButton("إعدادات Android", (d, w) -> openAppPermissionSettings()).show();
+                        } else if (android.os.Build.VERSION.SDK_INT >= 23
+                                && shouldShowRequestPermissionRationale(android.Manifest.permission.RECORD_AUDIO)) {
+                            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
+                        } else {
+                            new AlertDialog.Builder(this).setTitle("السماح بالمايك")
+                                    .setMessage("لو رفضت الإذن قبل كده، افتح إعدادات التطبيق وفعّل الميكروفون ثم ارجع للمتصفح وأعد تحميل YouTube.")
+                                    .setPositiveButton("فتح إعدادات التطبيق", (d, w) -> openAppPermissionSettings())
+                                    .setNegativeButton("إلغاء", null).show();
+                        }
+                    } else if (which == 1) {
+                        new AlertDialog.Builder(this).setTitle("إذن المايك للمواقع")
+                                .setMessage("فيه إذنان منفصلان: إذن الميكروفون للتطبيق من Android، وإذن الموقع من داخل المتصفح. اسمح فقط للموقع اللي بتثق فيه، ثم أعد تحميل الصفحة إذا لم يظهر طلب الإذن.")
+                                .setPositiveButton("حسنًا", null).show();
+                    } else if (which == 2) {
+                        boolean enabled = !javaScript;
+                        for (WebView tab : browserTabs) if (tab != null) tab.getSettings().setJavaScriptEnabled(enabled);
+                        if (web != null) web.getSettings().setJavaScriptEnabled(enabled);
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("browser_javascript", enabled).apply();
+                        Toast.makeText(this, "JavaScript " + (enabled ? "مفعّل" : "متوقف") + "؛ أعد تحميل الصفحة لتطبيق التغيير", Toast.LENGTH_LONG).show();
+                    } else if (which == 3) {
+                        boolean enabled = !cookies;
+                        CookieManager.getInstance().setAcceptCookie(enabled);
+                        for (WebView tab : browserTabs) if (tab != null) CookieManager.getInstance().setAcceptThirdPartyCookies(tab, enabled);
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("browser_cookies", enabled).apply();
+                        Toast.makeText(this, "تم تحديث إعدادات Cookies؛ قد تحتاج لتسجيل الدخول مرة أخرى", Toast.LENGTH_LONG).show();
+                    } else if (which == 4) {
+                        boolean enableDesktop = !desktop;
+                        String ua = enableDesktop
+                                ? "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                                : WebSettings.getDefaultUserAgent(this);
+                        for (WebView tab : browserTabs) if (tab != null) tab.getSettings().setUserAgentString(ua);
+                        if (web != null) web.getSettings().setUserAgentString(ua);
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("browser_desktop_mode", enableDesktop).apply();
+                        Toast.makeText(this, "تم تحديث وضع سطح المكتب؛ أعد تحميل الصفحة", Toast.LENGTH_LONG).show();
+                    } else if (which == 5) {
+                        for (WebView tab : browserTabs) if (tab != null) tab.clearCache(true);
+                        if (web != null) web.clearCache(true);
+                        Toast.makeText(this, "تم مسح ذاكرة الصفحات المؤقتة", Toast.LENGTH_SHORT).show();
+                    } else if (which == 6) {
+                        new AlertDialog.Builder(this).setTitle("مسح بيانات المواقع")
+                                .setMessage("سيتم حذف Cookies وبيانات تسجيل الدخول للمواقع من المتصفح.")
+                                .setPositiveButton("مسح", (d, w) -> {
+                                    CookieManager.getInstance().removeAllCookies(null);
+                                    CookieManager.getInstance().flush();
+                                    for (WebView tab : browserTabs) if (tab != null) tab.clearHistory();
+                                    Toast.makeText(this, "تم مسح Cookies وسجل التصفح", Toast.LENGTH_LONG).show();
+                                }).setNegativeButton("إلغاء", null).show();
+                    } else if (which == 7) {
+                        openAppPermissionSettings();
+                    }
+                }).setNegativeButton("إغلاق", null).show();
     }
 
     private void openAppPermissionSettings() {
