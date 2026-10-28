@@ -6,7 +6,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.widget.Toast;
 
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,12 +21,10 @@ public class ShareLinkActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable timeoutTask = () -> finishWithMessage(
             "لسه ماوصلتش للريسيفر. اتأكد إن AboEzzat Receiver مفتوح والجهازين على نفس شبكة Wi‑Fi.");
-    private long startedAt;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        startedAt = SystemClock.elapsedRealtime();
         mainHandler.postDelayed(timeoutTask, 18000L);
         String url = extractUrl(getIntent());
         if (url == null) {
