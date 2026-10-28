@@ -839,20 +839,68 @@ public class MainActivity extends Activity {
         LinearLayout page = column();
         page.setPadding(0, dp(4), 0, dp(16));
 
-        LinearLayout hero = column();
-        hero.setPadding(dp(18), dp(16), dp(18), dp(16));
-        hero.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.rgb(28,63,130), Color.rgb(19,31,63), Color.rgb(40,29,66)}));
-        ((GradientDrawable) hero.getBackground()).setCornerRadius(dp(22));
-        hero.addView(text("متصفح وإرسال الوسائط", 21, WHITE, true), lp(-1, 38));
-        hero.addView(text("افتح موقعك واكتشف روابط الفيديو والصوت بسرعة", 12, Color.rgb(207,220,246), false), lp(-1, 28));
-        TextView start = button("افتح المتصفح  ↗", BLUE, WHITE);
-        LinearLayout.LayoutParams sp = lp(-1, 46); sp.topMargin = dp(10);
-        hero.addView(start, sp);
-        start.setOnClickListener(v -> { showBrowser(); if (web != null && web.getUrl() == null) web.loadUrl("https://www.google.com"); });
-        page.addView(hero, lp(-1, -2));
+        // Compact Google-style address/search bar replaces the old welcome card.
+        LinearLayout searchBar = row();
+        searchBar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        searchBar.setPadding(dp(10), dp(5), dp(7), dp(5));
+        searchBar.setBackground(shape(PANEL, PANEL2, 18));
+        TextView searchIcon = text("⌕", 27, BLUE, true);
+        searchIcon.setGravity(Gravity.CENTER);
+        searchIcon.setContentDescription("بحث");
+        searchBar.addView(searchIcon, lp(38, 44));
 
-        LinearLayout.LayoutParams gap = lp(-1, 14); page.addView(new View(this), gap);
+        EditText homeSearch = new EditText(this);
+        homeSearch.setSingleLine(true);
+        homeSearch.setTextSize(15);
+        homeSearch.setTextColor(WHITE);
+        homeSearch.setHintTextColor(MUTED);
+        homeSearch.setHint("ابحث في جوجل أو اكتب رابط موقع");
+        homeSearch.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        homeSearch.setImeOptions(EditorInfo.IME_ACTION_GO);
+        homeSearch.setSelectAllOnFocus(false);
+        homeSearch.setPadding(dp(7), 0, dp(7), 0);
+        homeSearch.setBackgroundColor(Color.TRANSPARENT);
+        searchBar.addView(homeSearch, new LinearLayout.LayoutParams(0, dp(46), 1));
+
+        TextView clearSearch = button("×", PANEL2, MUTED);
+        clearSearch.setContentDescription("مسح البحث");
+        clearSearch.setPadding(dp(8), 0, dp(8), 0);
+        searchBar.addView(clearSearch, lp(36, 40));
+        clearSearch.setOnClickListener(v -> homeSearch.setText(""));
+
+        TextView goSearch = button("➜", BLUE, WHITE);
+        goSearch.setContentDescription("بحث أو فتح الرابط");
+        goSearch.setPadding(dp(8), 0, dp(8), 0);
+        LinearLayout.LayoutParams goSearchParams = lp(40, 40);
+        goSearchParams.setMargins(dp(4), 0, 0, 0);
+        searchBar.addView(goSearch, goSearchParams);
+
+        Runnable submitHomeSearch = () -> {
+            String query = homeSearch.getText().toString().trim();
+            if (query.isEmpty()) {
+                homeSearch.setError("اكتب كلمة للبحث أو رابط الموقع");
+                homeSearch.requestFocus();
+                return;
+            }
+            showBrowser();
+            address.setText(query);
+            loadAddress();
+        };
+        goSearch.setOnClickListener(v -> submitHomeSearch.run());
+        homeSearch.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO
+                    || actionId == EditorInfo.IME_ACTION_SEARCH
+                    || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                    && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                submitHomeSearch.run();
+                return true;
+            }
+            return false;
+        });
+        LinearLayout.LayoutParams searchBarParams = lp(-1, 58);
+        searchBarParams.setMargins(0, dp(6), 0, dp(10));
+        page.addView(searchBar, searchBarParams);
         addSection(page, "وصول سريع للمنصات", "اختار المنصة وافتحها مباشرة");
         String[][] sites = {
             {"▶", "YouTube", "https://m.youtube.com"},
