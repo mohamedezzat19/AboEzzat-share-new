@@ -553,6 +553,7 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage = "home";
         resetContent();
         ScrollView scroll = new ScrollView(this);
@@ -707,6 +708,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBrowser() {
+        header.setVisibility(View.GONE); bottom.setVisibility(View.GONE);
         currentPage="browser";
         resetContent();
         if(web==null) createWebView();
@@ -1004,6 +1006,7 @@ public class MainActivity extends Activity {
     }
 
     private void showMedia(){
+        header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage="media";resetContent();
         addSection(content,"مركز الوسائط","اختار ملفات من هاتفك أو أرسل رابطًا اكتشفه المتصفح");
         TextView pickLocal = button("اختيار فيديوهات أو ملفات صوتية من الهاتف", BLUE, WHITE);
@@ -1522,6 +1525,7 @@ public class MainActivity extends Activity {
     }
 
     private void showLibrary(){
+        header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage="library";resetContent();
         addSection(content,"مكتبتك","المواقع المحفوظة وآخر الصفحات");
         addUrlCollection(content,"☆ المفضلة","bookmarks");
