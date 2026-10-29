@@ -425,7 +425,12 @@ public class MainActivity extends Activity {
             String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
             String query = uri.getQuery();
             String lowerQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
-            return lowerPath.matches(".*\\\\.(jpg|jpeg|png|webp|gif|bmp|avif|heic|heif|tif|tiff)$")
+            return lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg")
+                    || lowerPath.endsWith(".png") || lowerPath.endsWith(".webp")
+                    || lowerPath.endsWith(".gif") || lowerPath.endsWith(".bmp")
+                    || lowerPath.endsWith(".avif") || lowerPath.endsWith(".heic")
+                    || lowerPath.endsWith(".heif") || lowerPath.endsWith(".tif")
+                    || lowerPath.endsWith(".tiff")
                     || lowerQuery.matches(".*(?:format|fm|type)=(?:jpg|jpeg|png|webp|gif|bmp|avif|heic|heif)(?:&.*)?")
                     || value.toLowerCase(Locale.ROOT).contains("mime=image%2f");
         } catch (Exception ignored) { return false; }
@@ -1294,7 +1299,7 @@ public class MainActivity extends Activity {
         ImageView logo = new ImageView(this);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setPadding(dp(2), dp(2), dp(2), dp(2));
-        logo.setBackground(shape(Color.WHITE, Color.argb(50, 255, 255, 255), 12));
+        logo.setBackgroundColor(Color.TRANSPARENT);
         LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(42), dp(42));
         logoParams.gravity = Gravity.CENTER_HORIZONTAL;
         card.addView(logo, logoParams);
@@ -1325,7 +1330,35 @@ public class MainActivity extends Activity {
     private void loadWebsiteFavicon(ImageView target, String siteUrl) {
         target.setTag(siteUrl);
         target.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        target.setImageBitmap(createFallbackSiteBitmap(siteHostLabel(siteUrl)));
+        target.setBackgroundColor(Color.TRANSPARENT);
+        String host = "";
+        try {
+            host = Uri.parse(siteUrl).getHost();
+            if (host != null) host = host.toLowerCase(Locale.ROOT);
+        } catch (Exception ignored) { }
+        int icon = 0;
+        if (host.equals("youtube.com") || host.endsWith(".youtube.com") || host.equals("youtu.be")) {
+            icon = R.drawable.quick_youtube;
+        } else if (host.equals("facebook.com") || host.endsWith(".facebook.com")) {
+            icon = R.drawable.quick_facebook;
+        } else if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) {
+            icon = R.drawable.quick_tiktok;
+        } else if (host.equals("instagram.com") || host.endsWith(".instagram.com")) {
+            icon = R.drawable.quick_instagram;
+        } else if (host.equals("x.com") || host.endsWith(".x.com")
+                || host.equals("twitter.com") || host.endsWith(".twitter.com")) {
+            icon = R.drawable.quick_x;
+        } else if (host.equals("threads.net") || host.endsWith(".threads.net")
+                || host.equals("threads.com") || host.endsWith(".threads.com")) {
+            icon = R.drawable.quick_threads;
+        }
+        if (icon != 0) {
+            target.setPadding(dp(3), dp(3), dp(3), dp(3));
+            target.setImageResource(icon);
+        } else {
+            target.setPadding(dp(2), dp(2), dp(2), dp(2));
+            target.setImageBitmap(createFallbackSiteBitmap(siteHostLabel(siteUrl)));
+        }
     }
 
     private Bitmap createFallbackSiteBitmap(String label) {
@@ -1625,7 +1658,13 @@ public class MainActivity extends Activity {
         browserSettings.setSupportZoom(true);
         browserSettings.setBuiltInZoomControls(true);
         browserSettings.setDisplayZoomControls(false);
-        browserSettings.setTextZoom(Math.max(75, Math.min(100, browserPrefs.getInt("browser_text_zoom", 88))));
+        boolean televisionUi = (getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_TYPE_MASK)
+                == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+                || getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK);
+        browserSettings.setTextZoom(Math.max(75, Math.min(100,
+                browserPrefs.getInt("browser_text_zoom", televisionUi ? 82 : 88))));
+        if (televisionUi) web.setInitialScale(85);
         boolean acceptCookies = browserPrefs.getBoolean("browser_cookies", true);
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(acceptCookies);
