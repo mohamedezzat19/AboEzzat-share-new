@@ -1895,12 +1895,12 @@ public class MainActivity extends Activity {
 
     private void captureCurrentPlayingVideo() {
         if (web == null || !"browser".equals(currentPage)) {
-            updateExtractionNotification("AboEzzat Share", "افتح صفحة الفيديو في المتصفح أولًا.", false);
+            updateExtractionNotification("مشاركة AboEzzat", "افتح صفحة الفيديو في المتصفح أولًا.", false);
             return;
         }
         final String pageUrl = web.getUrl();
         if (!BrowserEngine.isWebUrl(pageUrl)) {
-            updateExtractionNotification("AboEzzat Share", "رابط الصفحة غير صالح.", false);
+            updateExtractionNotification("مشاركة AboEzzat", "رابط الصفحة غير صالح.", false);
             return;
         }
         final int generation = ++extractionGeneration;
