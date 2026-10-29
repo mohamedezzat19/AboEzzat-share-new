@@ -1121,13 +1121,12 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams addCardParams = new LinearLayout.LayoutParams(0, dp(94), 1);
         addCardParams.setMargins(dp(3), dp(4), dp(3), dp(4));
         siteGrid.addView(addSiteCard, addCardParams);
-        if (siteCountInRow != 0) {
-            for (int i = siteCountInRow; i < 3; i++) {
-                View spacer = new View(this);
-                LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, dp(94), 1);
-                spacerParams.setMargins(dp(3), dp(4), dp(3), dp(4));
-                siteGrid.addView(spacer, spacerParams);
-            }
+        int cardsInFinalRow = siteCountInRow + 1;
+        for (int i = cardsInFinalRow; i < 3; i++) {
+            View spacer = new View(this);
+            LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, dp(94), 1);
+            spacerParams.setMargins(dp(3), dp(4), dp(3), dp(4));
+            siteGrid.addView(spacer, spacerParams);
         }
 
         // These tools already live in the sidebar; avoid duplicate home cards.
