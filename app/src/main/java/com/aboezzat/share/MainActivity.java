@@ -96,6 +96,7 @@ public class MainActivity extends Activity {
     private boolean drawerGestureTracking = false;
     private EditText address;
     private WebView web;
+    private android.widget.ProgressBar browserProgressBar;
     private final ArrayList<WebView> browserTabs = new ArrayList<>();
     private final ArrayList<String> browserTabTitles = new ArrayList<>();
     private int activeBrowserTab = -1;
@@ -260,6 +261,11 @@ public class MainActivity extends Activity {
             sendPlatformLinkToReceiver(url);
             return;
         }
+        if (isImageUrl(url)) {
+            updateExtractionNotification("تم استلام رابط الصورة", "جاري إرسال الصورة مباشرة إلى شاشة Receiver…", true);
+            sendPlatformLinkToReceiver(url);
+            return;
+        }
         if (!isEngineEnabled("rapidapi")) {
             sendPlatformLinkToReceiver(url);
             return;
@@ -408,6 +414,20 @@ public class MainActivity extends Activity {
                 sendPlatformLinkToReceiver(pageUrl);
             }
         }));
+    }
+
+    private boolean isImageUrl(String value) {
+        if (value == null) return false;
+        try {
+            Uri uri = Uri.parse(value);
+            String path = uri.getPath();
+            String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
+            String query = uri.getQuery();
+            String lowerQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
+            return lowerPath.matches(".*\\\\.(jpg|jpeg|png|webp|gif|bmp|avif|heic|heif|tif|tiff)$")
+                    || lowerQuery.matches(".*(?:format|fm|type)=(?:jpg|jpeg|png|webp|gif|bmp|avif|heic|heif)(?:&.*)?")
+                    || value.toLowerCase(Locale.ROOT).contains("mime=image%2f");
+        } catch (Exception ignored) { return false; }
     }
 
     private void sendPlatformLinkToReceiver(String url) {
@@ -1302,9 +1322,12 @@ public class MainActivity extends Activity {
     }
 
     private void loadWebsiteFavicon(ImageView target, String siteUrl) {
-        target.setImageDrawable(null);
         target.setTag(siteUrl);
-        Thread worker = new Thread(() -> {
+        target.setImageBitmap(createFallbackSiteBitmap(siteHostLabel(siteUrl)));
+        target.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        // Static local artwork: no remote favicon request and no repeated loading on home visits.
+        return;
+        /* Thread worker = new Thread(() -> {
             HttpURLConnection connection = null;
             Bitmap bitmap = null;
             try {
@@ -1337,7 +1360,7 @@ public class MainActivity extends Activity {
             });
         }, "site-favicon-loader");
         worker.setDaemon(true);
-        worker.start();
+        worker.start(); */
     }
 
     private Bitmap createFallbackSiteBitmap(String label) {
@@ -1345,13 +1368,26 @@ public class MainActivity extends Activity {
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
         android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(BLUE);
-        canvas.drawRoundRect(0, 0, size, size, dp(18), dp(18), paint);
+        String lower = label == null ? "" : label.toLowerCase(Locale.ROOT);
+        int brand = lower.contains("youtube") ? Color.rgb(255,0,0)
+                : lower.contains("facebook") ? Color.rgb(24,119,242)
+                : lower.contains("tiktok") ? Color.rgb(20,20,20)
+                : lower.contains("instagram") ? Color.rgb(193,53,132)
+                : lower.contains("twitter") || lower.equals("x") ? Color.BLACK
+                : lower.contains("threads") ? Color.rgb(35,35,35) : BLUE;
+        paint.setColor(brand);
+        canvas.drawRoundRect(dp(7), dp(7), size-dp(7), size-dp(7), dp(22), dp(22), paint);
         paint.setColor(Color.WHITE);
         paint.setTextAlign(android.graphics.Paint.Align.CENTER);
         paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
         paint.setTextSize(size * 0.42f);
-        String glyph = label == null || label.isEmpty() ? "W" : label.substring(0, 1).toUpperCase(Locale.ROOT);
+        String glyph = lower.contains("youtube") ? "▶"
+                : lower.contains("facebook") ? "f"
+                : lower.contains("tiktok") ? "♪"
+                : lower.contains("instagram") ? "◎"
+                : lower.contains("twitter") || lower.equals("x") ? "X"
+                : lower.contains("threads") ? "@"
+                : label == null || label.isEmpty() ? "W" : label.substring(0, 1).toUpperCase(Locale.ROOT);
         android.graphics.Rect bounds = new android.graphics.Rect();
         paint.getTextBounds(glyph, 0, glyph.length(), bounds);
         canvas.drawText(glyph, size / 2f, size / 2f - bounds.exactCenterY(), paint);
@@ -1467,15 +1503,21 @@ public class MainActivity extends Activity {
         address.setImeOptions(EditorInfo.IME_ACTION_GO);
         address.setPadding(dp(12),0,dp(12),0);
         address.setBackground(shape(PANEL2,BLUE,14));
-        TextView capture=button("▣",PANEL2,GOLD);
+        TextView capture=button("▶",GOLD,WHITE);
+        capture.setTextSize(16);
+        capture.setIncludeFontPadding(false);
+        capture.setGravity(Gravity.CENTER);
         capture.setContentDescription("التقاط الفيديو المشغّل حاليًا وإرساله للتلفزيون");
-        capture.setBackground(shape(PANEL2,GOLD,50));
-        LinearLayout.LayoutParams cap=lp(34,34);cap.setMargins(0,0,dp(5),0);addressRow.addView(capture,cap);
+        capture.setBackground(shape(GOLD,GOLD,50));
+        LinearLayout.LayoutParams cap=lp(38,38);cap.setMargins(0,0,dp(5),0);addressRow.addView(capture,cap);
         capture.setOnClickListener(v -> captureCurrentPlayingVideo());
         addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
         TextView voice=button("🎙",PANEL2,GOLD);
+        voice.setTextSize(18);
+        voice.setIncludeFontPadding(false);
+        voice.setGravity(Gravity.CENTER);
         voice.setContentDescription("البحث الصوتي باستخدام الميكروفون");
-        LinearLayout.LayoutParams voiceParams=lp(34,34);voiceParams.setMargins(0,0,dp(4),0);
+        LinearLayout.LayoutParams voiceParams=lp(42,42);voiceParams.setMargins(0,0,dp(4),0);
         addressRow.addView(voice,voiceParams);
         voice.setOnClickListener(v -> beginNativeVoiceSearch(address));
         TextView clear=button("×",PANEL2,WHITE);
@@ -1486,6 +1528,17 @@ public class MainActivity extends Activity {
         go.setContentDescription("فتح الرابط أو تنفيذ البحث");
         LinearLayout.LayoutParams gp=lp(34,42);gp.setMargins(dp(3),0,0,0);addressRow.addView(go,gp);
         browserTools.addView(addressRow);
+        browserProgressBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        browserProgressBar.setMax(100);
+        browserProgressBar.setProgress(0);
+        browserProgressBar.setVisibility(View.GONE);
+        if (Build.VERSION.SDK_INT >= 21) {
+            browserProgressBar.setProgressTintList(android.content.res.ColorStateList.valueOf(GOLD));
+            browserProgressBar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(PANEL2));
+        }
+        LinearLayout.LayoutParams browserProgressParams = lp(-1,3);
+        browserProgressParams.setMargins(dp(4),0,dp(4),dp(3));
+        browserTools.addView(browserProgressBar,browserProgressParams);
         LinearLayout controls=row();
         addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();else Toast.makeText(this,"مفيش صفحة سابقة",Toast.LENGTH_SHORT).show();});
         addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();else Toast.makeText(this,"مفيش صفحة تالية",Toast.LENGTH_SHORT).show();});
@@ -1591,6 +1644,12 @@ public class MainActivity extends Activity {
         SharedPreferences browserPrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         WebSettings browserSettings = web.getSettings();
         browserSettings.setJavaScriptEnabled(browserPrefs.getBoolean("browser_javascript", true));
+        browserSettings.setUseWideViewPort(true);
+        browserSettings.setLoadWithOverviewMode(true);
+        browserSettings.setSupportZoom(true);
+        browserSettings.setBuiltInZoomControls(true);
+        browserSettings.setDisplayZoomControls(false);
+        browserSettings.setTextZoom(Math.max(75, Math.min(100, browserPrefs.getInt("browser_text_zoom", 88))));
         boolean acceptCookies = browserPrefs.getBoolean("browser_cookies", true);
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(acceptCookies);
@@ -1715,6 +1774,9 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public void onProgressChanged(WebView view,int progress){
+                if (view != web || !"browser".equals(currentPage) || browserProgressBar == null) return;
+                browserProgressBar.setProgress(progress);
+                browserProgressBar.setVisibility(progress >= 100 ? View.GONE : View.VISIBLE);
                 if(pageTitle!=null) pageTitle.setText(progress<100?"تحميل الصفحة… "+progress+"%":"تم تحميل الصفحة");
             }
         });
@@ -1837,15 +1899,11 @@ public class MainActivity extends Activity {
                         && !url.startsWith("blob:") && isVideoCandidate(url)) {
                     currentPlayingVideoUrl = url;
                     if (castActionButton != null) {
-                        castActionButton.setText("▣");
-                        castActionButton.setTextColor(GOLD);
-                        castActionButton.setBackground(shape(PANEL2, GOLD, 50));
+                        castActionButton.clearAnimation();
+                        castActionButton.setText("▶");
+                        castActionButton.setTextColor(WHITE);
+                        castActionButton.setBackground(shape(GOLD, GOLD, 50));
                         castActionButton.setContentDescription("تم العثور على فيديو قابل للإرسال");
-                        AlphaAnimation pulse = new AlphaAnimation(1.0f, 0.35f);
-                        pulse.setDuration(700);
-                        pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
-                        pulse.setRepeatCount(2);
-                        castActionButton.startAnimation(pulse);
                     }
                 }
             } catch (Exception ignored) { }
@@ -1872,11 +1930,9 @@ public class MainActivity extends Activity {
         final int generation = ++extractionGeneration;
         if (castActionButton != null) {
             castActionButton.clearAnimation();
-            android.view.animation.AlphaAnimation pulse = new android.view.animation.AlphaAnimation(1.0f, 0.25f);
-            pulse.setDuration(380);
-            pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
-            pulse.setRepeatCount(android.view.animation.Animation.INFINITE);
-            castActionButton.startAnimation(pulse);
+            castActionButton.setText("▶");
+            castActionButton.setTextColor(WHITE);
+            castActionButton.setBackground(shape(GOLD, GOLD, 50));
         }
         updateExtractionNotification("جاري استخراج الفيديو", "تجهيز المحركات المفعّلة…", true);
         if (!isEngineEnabled("fast")) {
@@ -3317,19 +3373,29 @@ public class MainActivity extends Activity {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, EXTRACTION_CHANNEL)
                 : new Notification.Builder(this);
+        int progress = 0;
+        String lowerMessage = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        if (title != null && (title.contains("تم") || title.contains("فشل"))) progress = 100;
+        else if (lowerMessage.contains("تجهيز") || lowerMessage.contains("المحركات")) progress = 8;
+        else if (lowerMessage.contains("السريع") || lowerMessage.contains("fast")) progress = 22;
+        else if (lowerMessage.contains("okhttp")) progress = 45;
+        else if (lowerMessage.contains("rapidapi") || lowerMessage.contains("3 من 4")) progress = 68;
+        else if (lowerMessage.contains("webview") || lowerMessage.contains("مشغّل")) progress = 86;
+        else if (lowerMessage.contains("إرسال") || lowerMessage.contains("receiver")) progress = 94;
         builder.setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle(title)
+                .setContentTitle(title == null ? "AboEzzat Share" : title)
                 .setContentText(message)
                 .setStyle(new Notification.BigTextStyle().bigText(message))
                 .setOngoing(ongoing)
                 .setOnlyAlertOnce(true)
-                .setCategory(Notification.CATEGORY_PROGRESS);
+                .setCategory(Notification.CATEGORY_PROGRESS)
+                .setProgress(100, progress, false);
         manager.notify(EXTRACTION_NOTIFICATION_ID, builder.build());
     }
 
     private void trackReceiverExtraction(String ip) {
         extractionTracking = true;
-        updateExtractionNotification("AboEzzat Share", "تم إرسال الرابط؛ جاري انتظار حالة استخراج الفيديو على الريسيفر…", true);
+        updateExtractionNotification("متابعة تشغيل الفيديو", "تم إرسال الرابط؛ جاري متابعة حالة التشغيل على Receiver…", true);
         Thread tracker = new Thread(() -> {
             long deadline = System.currentTimeMillis() + 90000L;
             boolean sawStatus = false;
