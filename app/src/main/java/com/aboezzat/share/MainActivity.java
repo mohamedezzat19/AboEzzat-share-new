@@ -225,11 +225,10 @@ public class MainActivity extends Activity {
         } else if (android.content.Intent.ACTION_SEND.equals(action)) {
             // A shared image/file attachment takes precedence over any accompanying text URL.
             Uri attachedStream = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
-            String sharedMime = intent.getType();
-            if (attachedStream != null && sharedMime != null
-                    && (sharedMime.toLowerCase(Locale.ROOT).startsWith("image/")
-                    || sharedMime.toLowerCase(Locale.ROOT).startsWith("video/")
-                    || sharedMime.toLowerCase(Locale.ROOT).startsWith("audio/"))) {
+            // The URI is the authoritative attachment. Some gallery/share providers report
+            // a generic or missing MIME type, so never let accompanying text turn an image
+            // attachment into a webpage/video request.
+            if (attachedStream != null) {
                 acceptSharedMedia(java.util.Collections.singletonList(attachedStream));
                 return;
             }
@@ -4034,9 +4033,10 @@ public class MainActivity extends Activity {
                 return;
             }
 
-            String mime = getContentResolver().getType(uri);
-            if (mime == null || mime.trim().isEmpty()) {
-                mime = isMedia ? "application/octet-stream" : "image/jpeg";
+            String mime = resolveLocalMediaMimeType(uri);
+            if (mime == null || mime.trim().isEmpty()
+                    || "application/octet-stream".equalsIgnoreCase(mime)) {
+                mime = isPhoto ? "image/jpeg" : "application/octet-stream";
             }
 
             try (android.content.res.AssetFileDescriptor afd =
@@ -4223,7 +4223,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
                 return;
             }
-            String mediaType = getContentResolver().getType(mediaToPlay);
+            String mediaType = resolveLocalMediaMimeType(mediaToPlay);
             boolean imageMedia = mediaType != null
                     && mediaType.toLowerCase(Locale.ROOT).startsWith("image/");
             String url = "http://" + phoneIp + ":8082/media?id=" + mediaSessionId
@@ -4238,6 +4238,24 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             Toast.makeText(this, "تعذّر تجهيز الملف: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    private String resolveLocalMediaMimeType(Uri uri) {
+        String mime = null;
+        try { mime = getContentResolver().getType(uri); } catch (Exception ignored) { }
+        if (mime != null && !mime.trim().isEmpty()
+                && !"application/octet-stream".equalsIgnoreCase(mime)) return mime;
+        String name = getDisplayName(uri);
+        if (name != null) {
+            int dot = name.lastIndexOf('.');
+            if (dot >= 0 && dot < name.length() - 1) {
+                String extension = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+                String guessed = android.webkit.MimeTypeMap.getSingleton()
+                        .getMimeTypeFromExtension(extension);
+                if (guessed != null && !guessed.isEmpty()) return guessed;
+            }
+        }
+        return mime;
     }
 
     private void ensureLocalMediaServer() throws java.io.IOException {
