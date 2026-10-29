@@ -1324,44 +1324,8 @@ public class MainActivity extends Activity {
 
     private void loadWebsiteFavicon(ImageView target, String siteUrl) {
         target.setTag(siteUrl);
-        target.setImageBitmap(createFallbackSiteBitmap(siteHostLabel(siteUrl)));
         target.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        // Static local artwork: no remote favicon request and no repeated loading on home visits.
-        return;
-        /* Thread worker = new Thread(() -> {
-            HttpURLConnection connection = null;
-            Bitmap bitmap = null;
-            try {
-                String host = Uri.parse(siteUrl).getHost();
-                if (host == null || host.trim().isEmpty()) return;
-                URL iconUrl = new URL("https://www.google.com/s2/favicons?domain=" +
-                        URLEncoder.encode(host, "UTF-8") + "&sz=128");
-                connection = (HttpURLConnection) iconUrl.openConnection();
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(5000);
-                connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
-                try (InputStream input = connection.getInputStream()) {
-                    bitmap = BitmapFactory.decodeStream(input);
-                }
-            } catch (Exception ignored) {
-            } finally {
-                if (connection != null) connection.disconnect();
-            }
-            final Bitmap result = bitmap;
-            runOnUiThread(() -> {
-                if (target.getTag() == null || !siteUrl.equals(target.getTag())) return;
-                if (result != null) target.setImageBitmap(result);
-                else {
-                    TextView fallback = text("◉", 23, BLUE, true);
-                    fallback.setGravity(Gravity.CENTER);
-                    target.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(),
-                            createFallbackSiteBitmap(siteHostLabel(siteUrl))));
-                }
-            });
-        }, "site-favicon-loader");
-        worker.setDaemon(true);
-        worker.start(); */
+        target.setImageBitmap(createFallbackSiteBitmap(siteHostLabel(siteUrl)));
     }
 
     private Bitmap createFallbackSiteBitmap(String label) {
@@ -2298,12 +2262,11 @@ public class MainActivity extends Activity {
             }
             if(mediaLabel!=null)mediaLabel.setText("المصادر المكتشفة: "+mediaOrder.size());
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
-            if(castActionButton!=null) {
-                AlphaAnimation pulse = new AlphaAnimation(1.0f, 0.35f);
-                pulse.setDuration(650);
-                pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
-                pulse.setRepeatCount(android.view.animation.Animation.INFINITE);
-                castActionButton.startAnimation(pulse);
+            if (castActionButton != null) {
+                castActionButton.clearAnimation();
+                castActionButton.setText("▶");
+                castActionButton.setTextColor(WHITE);
+                castActionButton.setBackground(shape(GOLD, GOLD, 50));
             }
         });
     }
@@ -3392,6 +3355,9 @@ public class MainActivity extends Activity {
         else if (lowerMessage.contains("السريع") || lowerMessage.contains("fast")) progress = 22;
         else if (lowerMessage.contains("okhttp")) progress = 45;
         else if (lowerMessage.contains("rapidapi") || lowerMessage.contains("3 من 4")) progress = 68;
+        else if (lowerMessage.contains("1 من 3")) progress = 58;
+        else if (lowerMessage.contains("2 من 3")) progress = 76;
+        else if (lowerMessage.contains("3 من 3")) progress = 90;
         else if (lowerMessage.contains("webview") || lowerMessage.contains("مشغّل")) progress = 86;
         else if (lowerMessage.contains("إرسال") || lowerMessage.contains("receiver")) progress = 94;
         builder.setSmallIcon(android.R.drawable.stat_sys_download)
