@@ -1775,38 +1775,121 @@ public class MainActivity extends Activity {
         });
     }
 
+    private interface ExtractionResult {
+        void success(String mediaUrl, String engine);
+        void failure(String reason);
+    }
+
+    private int extractionGeneration = 0;
+
     private void captureCurrentPlayingVideo() {
         if (web == null || !"browser".equals(currentPage)) {
-            Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
+            updateExtractionNotification("AboEzzat Share", "افتح صفحة الفيديو في المتصفح أولًا.", false);
             return;
         }
-        String pageUrl = web.getUrl();
-        if (pageUrl != null && isFastExtractorPlatform(pageUrl)) {
-            if (castActionButton != null) {
-                castActionButton.clearAnimation();
-                android.view.animation.AlphaAnimation pulse = new android.view.animation.AlphaAnimation(1.0f, 0.25f);
-                pulse.setDuration(380);
-                pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
-                pulse.setRepeatCount(5);
-                castActionButton.startAnimation(pulse);
+        final String pageUrl = web.getUrl();
+        if (!BrowserEngine.isWebUrl(pageUrl)) {
+            updateExtractionNotification("AboEzzat Share", "رابط الصفحة غير صالح.", false);
+            return;
+        }
+        final int generation = ++extractionGeneration;
+        if (castActionButton != null) {
+            castActionButton.clearAnimation();
+            android.view.animation.AlphaAnimation pulse = new android.view.animation.AlphaAnimation(1.0f, 0.25f);
+            pulse.setDuration(380);
+            pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
+            pulse.setRepeatCount(android.view.animation.Animation.INFINITE);
+            castActionButton.startAnimation(pulse);
+        }
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 1 من 4: المحرك السريع…", true);
+
+        // Engine 1: platform-aware extraction (OkHttp + social metadata/JSON).
+        FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+            @Override public void onSuccess(String videoUrl, String platform) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                extractionSucceeded(videoUrl, "FastMediaExtractor", generation);
             }
-            Toast.makeText(this, "بجرب استخراج الرابط المباشر بسرعة…", Toast.LENGTH_SHORT).show();
-            FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
-                @Override public void onSuccess(String videoUrl, String platform) {
-                    if (castActionButton != null) castActionButton.clearAnimation();
-                    currentPlayingVideoUrl = videoUrl;
-                    Toast.makeText(MainActivity.this, "تم التقاط رابط " + platform + "، جاري إرساله للشاشة…", Toast.LENGTH_SHORT).show();
-                    castUrl(videoUrl);
-                }
-                @Override public void onError(String error) {
-                    if (castActionButton != null) castActionButton.clearAnimation();
-                    Toast.makeText(MainActivity.this, error + " — بجرب الالتقاط من مشغل الصفحة", Toast.LENGTH_LONG).show();
-                    captureCurrentPlayingVideoFallback();
-                }
-            });
+            @Override public void onError(String error) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                updateExtractionNotification("جاري استخراج الفيديو", "تجربة 2 من 4: تحليل الصفحة عبر OkHttp…", true);
+                // Engine 2: independent generic HTTP page parser.
+                OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+                    @Override public void onSuccess(String mediaUrl) {
+                        if (generation != extractionGeneration || isFinishing()) return;
+                        extractionSucceeded(mediaUrl, "OkHttp Page Parser", generation);
+                    }
+                    @Override public void onError(String reason) {
+                        if (generation != extractionGeneration || isFinishing()) return;
+                        tryRapidApiEngine(pageUrl, generation);
+                    }
+                });
+            }
+        });
+    }
+
+    private void tryRapidApiEngine(String pageUrl, int generation) {
+        if (generation != extractionGeneration || isFinishing()) return;
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 3 من 4: خدمة RapidAPI…", true);
+        String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+        if (apiKey.isEmpty()) {
+            tryWebViewEngine(generation, "لم يُضبط مفتاح RapidAPI");
             return;
         }
-        captureCurrentPlayingVideoFallback();
+        RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> runOnUiThread(() -> {
+            if (generation != extractionGeneration || isFinishing()) return;
+            if (mediaUrl != null && !mediaUrl.trim().isEmpty()
+                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                extractionSucceeded(mediaUrl, "RapidAPI", generation);
+            } else {
+                tryWebViewEngine(generation, message == null ? "لم يُعثر على رابط مباشر" : message);
+            }
+        }));
+    }
+
+    private void tryWebViewEngine(int generation, String previousFailure) {
+        if (generation != extractionGeneration || isFinishing()) return;
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 4 من 4: التقاط المصدر من مشغّل WebView…", true);
+        captureCurrentPlayingVideoFallback(new ExtractionResult() {
+            @Override public void success(String mediaUrl, String engine) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                extractionSucceeded(mediaUrl, "WebView Capture", generation);
+            }
+            @Override public void failure(String reason) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                if (castActionButton != null) castActionButton.clearAnimation();
+                updateExtractionNotification("فشل استخراج الفيديو", "فشلت المحركات الأربعة. " +
+                        "قد يحتاج الرابط لتسجيل دخول أو يستخدم بثًا محميًا/غير مباشر.", false);
+            }
+        });
+    }
+
+    private void extractionSucceeded(String mediaUrl, String engine, int generation) {
+        if (generation != extractionGeneration || mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
+        currentPlayingVideoUrl = mediaUrl;
+        if (castActionButton != null) castActionButton.clearAnimation();
+        updateExtractionNotification("تم استخراج الفيديو", "نجح " + engine + "؛ جاري إرسال الرابط إلى Receiver…", true);
+        castExtractedUrlSilently(mediaUrl, generation);
+    }
+
+    private void castExtractedUrlSilently(String mediaUrl, int generation) {
+        if (receiverIp == null || receiverIp.trim().isEmpty()) {
+            updateExtractionNotification("تم استخراج الفيديو", "نجح الاستخراج، لكن حدّد عنوان IP للريسيفر لإرسال الفيديو.", false);
+            return;
+        }
+        final String ip = receiverIp.trim();
+        rememberCastUrl(mediaUrl);
+        CastingManager.send(ip, mediaUrl, (success, message) -> runOnUiThread(() -> {
+            if (generation != extractionGeneration || isFinishing()) return;
+            receiverConnected = success;
+            refreshConnectionLabel();
+            if (success) {
+                updateExtractionNotification("تم إرسال الفيديو", "تم إرسال الرابط إلى Receiver بنجاح.", false);
+                trackReceiverExtraction(ip);
+            } else {
+                updateExtractionNotification("فشل إرسال الفيديو", message == null
+                        ? "تعذر إرسال الرابط إلى Receiver." : message, false);
+            }
+        }));
     }
 
     private boolean isFastExtractorPlatform(String value) {
@@ -1825,12 +1908,19 @@ public class MainActivity extends Activity {
     }
 
     private void captureCurrentPlayingVideoFallback() {
+        captureCurrentPlayingVideoFallback(new ExtractionResult() {
+            @Override public void success(String mediaUrl, String engine) { castUrl(mediaUrl); }
+            @Override public void failure(String reason) {
+                updateExtractionNotification("فشل التقاط الفيديو", reason, false);
+            }
+        });
+    }
+
+    private void captureCurrentPlayingVideoFallback(ExtractionResult callback) {
         if (web == null || !"browser".equals(currentPage)) {
-            Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
+            callback.failure("المتصفح غير مفتوح.");
             return;
         }
-        // Some players expose a blob: URL to the DOM while their real HTTP(S)
-        // media segments are only visible to WebView's request sniffer.
         String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));"
                 + "var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2;})"
                 + "||vs.find(function(x){return !x.paused&&!x.ended;});"
@@ -1841,36 +1931,27 @@ public class MainActivity extends Activity {
                 String url = parsed == null ? "" : String.valueOf(parsed);
                 if (!url.isEmpty() && !url.startsWith("blob:") && isVideoCandidate(url)) {
                     currentPlayingVideoUrl = url;
-                    castUrl(url);
+                    callback.success(url, "WebView");
                     return;
                 }
-
-                // Fall back to the latest direct video URL detected from this browser's
-                // network requests. Do not send blob:, page URLs, audio, or images.
                 String candidate = null;
                 if (currentPlayingVideoUrl != null && isVideoCandidate(currentPlayingVideoUrl)
-                        && !currentPlayingVideoUrl.startsWith("blob:")) {
-                    candidate = currentPlayingVideoUrl;
-                }
+                        && !currentPlayingVideoUrl.startsWith("blob:")) candidate = currentPlayingVideoUrl;
                 if (candidate == null) {
                     for (int i = mediaOrder.size() - 1; i >= 0; i--) {
                         String found = mediaOrder.get(i);
                         if (isVideoCandidate(found) && !found.startsWith("blob:")
-                                && !found.startsWith("data:")) {
-                            candidate = found;
-                            break;
-                        }
+                                && !found.startsWith("data:")) { candidate = found; break; }
                     }
                 }
                 if (candidate != null) {
                     currentPlayingVideoUrl = candidate;
-                    Toast.makeText(this, "الفيديو يستخدم رابط بث مخفي داخل المشغّل؛ بجرب آخر رابط فيديو تم التقاطه…", Toast.LENGTH_SHORT).show();
-                    castUrl(candidate);
-                    return;
+                    callback.success(candidate, "WebView");
+                } else {
+                    callback.failure("لم يكشف مشغّل الصفحة عن رابط فيديو مباشر.");
                 }
-                Toast.makeText(this, "الفيديو شغال، لكن الموقع مخفي رابط البث عن المتصفح. جرّب من غير حماية DRM أو افتح رابط فيديو مباشر.", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                Toast.makeText(this, "مش قادر أحدد رابط الفيديو المشغّل. بعض المواقع تحمي البث أو تستخدم blob.", Toast.LENGTH_LONG).show();
+                callback.failure("تعذر تحليل مصدر الفيديو من WebView.");
             }
         });
     }
