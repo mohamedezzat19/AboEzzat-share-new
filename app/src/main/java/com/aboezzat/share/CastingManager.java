@@ -20,24 +20,37 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 public final class CastingManager {
     public interface Callback { void onResult(boolean success, String message); }
     public interface DiscoveryCallback { void onDevices(List<String> addresses); }
     private static final ExecutorService IO = Executors.newCachedThreadPool();
+    private static volatile int receiverPort = 8081;
+    private static final Map<String, Integer> DEVICE_PORTS = new ConcurrentHashMap<>();
+    public static void setReceiverPort(int port) { if (port >= 1024 && port <= 65535) receiverPort = port; }
+    public static int getReceiverPort() { return receiverPort; }
+    private static int getPortFor(String ip) {
+        Integer port = ip == null ? null : DEVICE_PORTS.get(ip);
+        return port == null ? receiverPort : port;
+    }
     private CastingManager() {}
 
-    // Verify the AboEzzat Receiver HTTP response, not just an open port.
+    // Verify the AboEzzat Receiver HTTP response, using the port announced by this device.
     public static boolean isReceiver(String ip) {
-        if (ip == null || !ip.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")) {
-            return false;
-        }
+        return isReceiver(ip, getPortFor(ip));
+    }
+
+    private static boolean isReceiver(String ip, int port) {
+        if (ip == null || !ip.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")
+                || port < 1024 || port > 65535) return false;
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip, 8081), 900);
+            socket.connect(new InetSocketAddress(ip, port), 900);
             socket.setSoTimeout(1200);
             OutputStream out = socket.getOutputStream();
-            out.write(("GET /?command=ping HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n")
-                    .getBytes(StandardCharsets.UTF_8));
+            out.write(("GET /?command=ping HTTP/1.1\r\nHost: " + ip + ":" + port
+                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
@@ -70,11 +83,11 @@ public final class CastingManager {
                 return;
             }
             try (Socket socket = new Socket()) {
-                socket.connect(new java.net.InetSocketAddress(ip, 8081), 3500);
+                socket.connect(new java.net.InetSocketAddress(ip, getPortFor(ip)), 3500);
                 socket.setSoTimeout(4000);
                 String target = "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
                 OutputStream out = socket.getOutputStream();
-                out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":" + getPortFor(ip) + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
@@ -101,13 +114,13 @@ public final class CastingManager {
                 return;
             }
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(ip, 8081), 3500);
+                socket.connect(new InetSocketAddress(ip, getPortFor(ip)), 3500);
                 socket.setSoTimeout(4000);
                 String target = "/?video=" + URLEncoder.encode(video, "UTF-8")
                         + "&audio=" + URLEncoder.encode(audio, "UTF-8");
                 OutputStream out = socket.getOutputStream();
                 out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip
-                        + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                        + ":" + getPortFor(ip) + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
@@ -143,11 +156,11 @@ public final class CastingManager {
                     return;
                 }
                 try (Socket socket = new Socket()) {
-                    socket.connect(new InetSocketAddress(ip, 8081), 2500);
+                    socket.connect(new InetSocketAddress(ip, getPortFor(ip)), 2500);
                     socket.setSoTimeout(3000);
                     String target = "/?command=" + URLEncoder.encode(command, "UTF-8");
                     OutputStream out = socket.getOutputStream();
-                    out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                    out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":" + getPortFor(ip) + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                     out.flush();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                     String status = reader.readLine();
@@ -163,6 +176,7 @@ public final class CastingManager {
     public static void discover(Context context, DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> found = new ArrayList<>();
+            Map<String, Integer> announcedPorts = new ConcurrentHashMap<>();
             // Android Wi-Fi filters multicast unless a MulticastLock is held.
             WifiManager.MulticastLock multicastLock = null;
             try {
@@ -186,12 +200,15 @@ public final class CastingManager {
                         String[] fields = message.split("\\|");
                         if (fields.length == 3 && "ABOEZZAT_RECEIVER".equals(fields[0])) {
                             String ip = fields[1].trim();
-                            if (ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
-                                synchronized (found) {
-                                    if (!found.contains(ip)) found.add(ip);
-                                }
-                                // Keep collecting multicast candidates; report once below so
-                                // the caller cannot accept a later fallback-scan result over this one.
+                            int announcedPort;
+                            try { announcedPort = Integer.parseInt(fields[2].trim()); }
+                            catch (NumberFormatException invalidPort) { continue; }
+                            if (announcedPort < 1024 || announcedPort > 65535
+                                    || !ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) continue;
+                            // Keep each receiver's port with its IP; different devices may use different ports.
+                            announcedPorts.put(ip, announcedPort);
+                            synchronized (found) {
+                                if (!found.contains(ip)) found.add(ip);
                             }
                         }
                     } catch (java.net.SocketTimeoutException timeout) {
@@ -209,10 +226,18 @@ public final class CastingManager {
             List<String> verifiedMulticast = new ArrayList<>();
             synchronized (found) {
                 for (String candidate : found) {
-                    if (isReceiver(candidate)) verifiedMulticast.add(candidate);
+                    int port = announcedPorts.getOrDefault(candidate, getReceiverPort());
+                    if (isReceiver(candidate, port)) {
+                        DEVICE_PORTS.put(candidate, port);
+                        setReceiverPort(port);
+                        verifiedMulticast.add(candidate);
+                    }
                 }
             }
             if (!verifiedMulticast.isEmpty()) {
+                context.getApplicationContext()
+                        .getSharedPreferences("aboezzat_browser", Context.MODE_PRIVATE)
+                        .edit().putInt("receiver_port", getReceiverPort()).apply();
                 callback.onDevices(verifiedMulticast);
                 return; // A verified receiver was found; avoid scanning the subnet.
             }

@@ -10,6 +10,8 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -34,6 +36,7 @@ import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -99,6 +102,11 @@ public class MainActivity extends Activity {
     private TextView pageTitle, connectionLabel, mediaLabel, castActionButton;
     private final LinkedHashMap<String,String> media = new LinkedHashMap<>();
     private final ArrayList<String> mediaOrder = new ArrayList<>();
+    // Keep readable page metadata beside each detected media URL, following the proven legacy browser flow.
+    private final LinkedHashMap<String,String> mediaTitles = new LinkedHashMap<>();
+    private final LinkedHashMap<String,String> mediaPosters = new LinkedHashMap<>();
+    private volatile String lastPageMediaTitle = "";
+    private volatile String lastPageMediaPoster = "";
     private final LinkedHashMap<String, Boolean> selectedTrackUrls = new LinkedHashMap<>();
     private String currentPage = "home";
     private String receiverIp = "";
@@ -152,6 +160,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        CastingManager.setReceiverPort(prefs.getInt("receiver_port", 8081));
         prepareExtractionNotifications();
         // Keep the user-selected Receiver across launches; never erase a valid selection on startup.
         receiverIp = prefs.getString("receiver_ip", "").trim();
@@ -162,7 +171,23 @@ public class MainActivity extends Activity {
         buildShell();
         setContentView(shellOverlay);
         showHome();
+        new AppUpdater(this).checkForUpdate(false);
         handleSharedIntent(getIntent());
+        // If Android killed the process while the browser was in the background,
+        // reopen the last page on a normal launcher restart (not on an incoming share).
+        Intent launchIntent = getIntent();
+        boolean incomingShare = launchIntent != null &&
+                (Intent.ACTION_VIEW.equals(launchIntent.getAction()) ||
+                 Intent.ACTION_SEND.equals(launchIntent.getAction()) ||
+                 Intent.ACTION_SEND_MULTIPLE.equals(launchIntent.getAction()));
+        if (state == null && !incomingShare &&
+                prefs.getBoolean("browser_was_active", false)) {
+            String lastUrl = prefs.getString("last_browser_url", "");
+            if (BrowserEngine.isWebUrl(lastUrl)) {
+                showBrowser();
+                if (web != null) web.loadUrl(lastUrl);
+            }
+        }
         receiverMonitorHandler.post(receiverMonitorRunnable);
     }
 
@@ -228,32 +253,63 @@ public class MainActivity extends Activity {
     private int authenticatedResolveGeneration = 0;
 
     private void sendPlatformLinkToScreen(String url) {
-        // YouTube is special: send its page URL directly to Receiver so SmartTube or
-        // another YouTube-compatible TV app can handle it. Receiver uses ExoPlayer only
-        // for a genuine direct media URL, not for a YouTube watch page.
-        if (isYouTubeUrl(url)) {
-            sendPlatformLinkToReceiver(url);
-            return;
-        }
-        // For other platforms, first use Share's persistent WebView so the user's own
-        // platform login session can resolve media URLs before the Receiver fallback.
-        if (!BrowserEngine.isWebUrl(url)) {
-            sendPlatformLinkToReceiver(url);
-            return;
-        }
-        final int generation = ++authenticatedResolveGeneration;
+        // Share owns remote extraction; Receiver remains a media playback endpoint.
         receiverMonitorHandler.removeCallbacks(autoCastDetectedMediaRunnable);
         pendingAutoCastPageUrl = "";
-        media.clear();
-        mediaOrder.clear();
-        selectedTrackUrls.clear();
-        currentPlayingVideoUrl = "";
-        showBrowser();
-        if (address != null) address.setText(url);
-        if (web == null) createWebView();
-        Toast.makeText(this, "جاري فتح الرابط بمتصفح Share واستخدام جلسة تسجيل الدخول المحفوظة…", Toast.LENGTH_LONG).show();
-        web.loadUrl(url);
-        receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(url, generation, 0), 250L);
+        if (url == null || !BrowserEngine.isWebUrl(url)) {
+            sendPlatformLinkToReceiver(url);
+            return;
+        }
+        String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+        if (apiKey.isEmpty()) {
+            promptForRapidApiKey(url);
+            return;
+        }
+        extractWithRapidApi(url, apiKey);
+    }
+
+    private void promptForRapidApiKey(String pageUrl) {
+        EditText keyInput = new EditText(this);
+        keyInput.setSingleLine(true);
+        keyInput.setHint("RapidAPI key");
+        keyInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout box = column();
+        box.setPadding(dp(20), dp(10), dp(20), 0);
+        box.addView(text("للاستخراج المباشر، أدخل مفتاح RapidAPI لخدمة Social Download All In One. سيُحفظ المفتاح على هذا الجهاز داخل Share فقط.", 13, MUTED, false));
+        box.addView(keyInput, lp(-1, 52));
+        new AlertDialog.Builder(this)
+                .setTitle("إعداد محرك استخراج Black Hole")
+                .setView(box)
+                .setPositiveButton("حفظ واستخراج", (dialog, which) -> {
+                    String key = keyInput.getText().toString().trim();
+                    if (key.isEmpty()) {
+                        Toast.makeText(this, "أدخل مفتاح RapidAPI أو أرسل الرابط للريسيفر بدون استخراج الخدمة.", Toast.LENGTH_LONG).show();
+                        sendPlatformLinkToReceiver(pageUrl);
+                        return;
+                    }
+                    prefs.edit().putString("rapid_api_key", key).apply();
+                    extractWithRapidApi(pageUrl, key);
+                })
+                .setNeutralButton("إرسال الرابط بدون استخراج", (dialog, which) -> sendPlatformLinkToReceiver(pageUrl))
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private void extractWithRapidApi(String pageUrl, String apiKey) {
+        Toast.makeText(this, "Share بيستخرج رابط الوسائط من خدمة Black Hole…", Toast.LENGTH_LONG).show();
+        RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> runOnUiThread(() -> {
+            if (isFinishing()) return;
+            if (mediaUrl != null && !mediaUrl.isEmpty()
+                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                currentPlayingVideoUrl = mediaUrl;
+                Toast.makeText(this, "تم استخراج " + mediaType + " مباشر؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
+                castUrl(mediaUrl);
+            } else {
+                Toast.makeText(this, message + " هبعت الرابط الأصلي للريسيفر من غير فتح متصفح Share.", Toast.LENGTH_LONG).show();
+                sendPlatformLinkToReceiver(pageUrl);
+            }
+        }));
     }
 
     private void resolveSharedVideoFromBrowser(String pageUrl, int generation, int attempt) {
@@ -1023,64 +1079,61 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams searchBarParams = lp(-1, 58);
         searchBarParams.setMargins(0, dp(6), 0, dp(10));
         page.addView(searchBar, searchBarParams);
-        addSection(page, "وصول سريع للمنصات", "اختار المنصة وافتحها مباشرة");
+        addSection(page, "منصاتك ومواقعك", "اضغط على البطاقة لفتح الموقع، واضغط + لإضافة أي موقع جديد");
+        LinearLayout siteGrid = null;
+        int siteCountInRow = 0;
         String[][] sites = {
-            {"▶", "YouTube", "https://m.youtube.com"},
-            {"f", "Facebook", "https://m.facebook.com"},
-            {"♪", "TikTok", "https://www.tiktok.com"},
-            {"◎", "Instagram", "https://www.instagram.com"},
-            {"𝕏", "X / Twitter", "https://x.com"},
-            {"＠", "Threads", "https://www.threads.net"}
+            {"YouTube", "https://m.youtube.com"},
+            {"Facebook", "https://m.facebook.com"},
+            {"TikTok", "https://www.tiktok.com"},
+            {"Instagram", "https://www.instagram.com"},
+            {"X / Twitter", "https://x.com"},
+            {"Threads", "https://www.threads.net"}
         };
-        for (int i = 0; i < sites.length; i += 3) {
-            LinearLayout r = row();
-            for (int j = i; j < Math.min(i + 3, sites.length); j++) {
-                final String url = sites[j][2];
-                LinearLayout card = column();
-                card.setGravity(Gravity.CENTER);
-                card.setPadding(dp(5), dp(10), dp(5), dp(10));
-                card.setBackground(shape(PANEL, PANEL2, 16));
-                TextView icon = makeSocialIcon(j);
-                LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
-                iconParams.gravity = Gravity.CENTER_HORIZONTAL;
-                card.addView(icon, iconParams);
-                TextView label = text(sites[j][1], 11, WHITE, true);
-                label.setGravity(Gravity.CENTER);
-                LinearLayout.LayoutParams labelParams = lp(-1, 22);
-                labelParams.topMargin = dp(5);
-                card.addView(label, labelParams);
-                card.setOnClickListener(v -> openQuickSite(url));
-                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(82), 1);
-                cp.setMargins(dp(3), dp(4), dp(3), dp(4));
-                r.addView(card, cp);
-            }
-            page.addView(r, lp(-1, -2));
+        for (String[] site : sites) {
+            if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+            addWebsiteCard(siteGrid, site[0], site[1], -1, false);
+            siteCountInRow = (siteCountInRow + 1) % 3;
         }
-
-        LinearLayout.LayoutParams customGap = lp(-1, 12); page.addView(new View(this), customGap);
-        addSection(page, "مواقعك المخصصة", "احفظ أي موقع تستخدمه كثيرًا وافتحه بضغطة واحدة");
-        TextView addCustom = button("＋ إضافة موقع مخصص", PANEL2, GOLD);
-        page.addView(addCustom, lp(-1, 44));
-        addCustom.setOnClickListener(v -> showAddCustomSiteDialog());
         JSONArray customSites = readCustomSites();
         for (int i = 0; i < customSites.length(); i++) {
             JSONObject item = customSites.optJSONObject(i);
             if (item == null) continue;
-            final int siteIndex = i;
-            final String siteUrl = item.optString("url", "");
-            String siteName = item.optString("name", "موقع محفوظ");
-            TextView site = button("↗  " + siteName + "    •    " + siteUrl, PANEL, WHITE);
-            LinearLayout.LayoutParams siteParams = lp(-1, 44);
-            siteParams.topMargin = dp(5);
-            page.addView(site, siteParams);
-            site.setOnClickListener(v -> openQuickSite(siteUrl));
-            site.setOnLongClickListener(v -> {
-                new AlertDialog.Builder(this).setTitle("حذف الموقع المخصص")
-                        .setMessage("هل تريد حذف «" + siteName + "» من المواقع المحفوظة؟")
-                        .setPositiveButton("حذف", (d, which) -> removeCustomSite(siteIndex))
-                        .setNegativeButton("إلغاء", null).show();
-                return true;
-            });
+            String siteUrl = item.optString("url", "").trim();
+            if (!BrowserEngine.isWebUrl(siteUrl)) continue;
+            String siteName = item.optString("name", "").trim();
+            if (siteName.isEmpty()) siteName = siteHostLabel(siteUrl);
+            if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+            addWebsiteCard(siteGrid, siteName, siteUrl, i, true);
+            siteCountInRow = (siteCountInRow + 1) % 3;
+        }
+        if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+        LinearLayout addSiteCard = column();
+        addSiteCard.setGravity(Gravity.CENTER);
+        addSiteCard.setPadding(dp(5), dp(8), dp(5), dp(8));
+        addSiteCard.setBackground(shape(PANEL, GOLD, 16));
+        TextView plus = text("+", 30, GOLD, true);
+        plus.setGravity(Gravity.CENTER);
+        plus.setBackground(shape(PANEL2, GOLD, 12));
+        LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        plusParams.gravity = Gravity.CENTER_HORIZONTAL;
+        addSiteCard.addView(plus, plusParams);
+        TextView addLabel = text("إضافة موقع", 11, WHITE, true);
+        addLabel.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams addLabelParams = lp(-1, 22);
+        addLabelParams.topMargin = dp(4);
+        addSiteCard.addView(addLabel, addLabelParams);
+        addSiteCard.setContentDescription("إضافة موقع جديد إلى بطاقات المنصات");
+        addSiteCard.setOnClickListener(v -> showAddCustomSiteDialog());
+        LinearLayout.LayoutParams addCardParams = new LinearLayout.LayoutParams(0, dp(94), 1);
+        addCardParams.setMargins(dp(3), dp(4), dp(3), dp(4));
+        siteGrid.addView(addSiteCard, addCardParams);
+        int cardsInFinalRow = siteCountInRow + 1;
+        for (int i = cardsInFinalRow; i < 3; i++) {
+            View spacer = new View(this);
+            LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, dp(94), 1);
+            spacerParams.setMargins(dp(3), dp(4), dp(3), dp(4));
+            siteGrid.addView(spacer, spacerParams);
         }
 
         // These tools already live in the sidebar; avoid duplicate home cards.
@@ -1095,29 +1148,22 @@ public class MainActivity extends Activity {
     }
 
     private void showAddCustomSiteDialog() {
-        LinearLayout form = column();
-        form.setPadding(dp(8), dp(4), dp(8), dp(4));
-        EditText name = new EditText(this);
-        name.setSingleLine(true);
-        name.setHint("اسم الموقع");
-        name.setTextColor(WHITE);
-        name.setHintTextColor(MUTED);
-        form.addView(name, lp(-1, 48));
         EditText url = new EditText(this);
         url.setSingleLine(true);
-        url.setHint("رابط الموقع (https://...)");
+        url.setHint("الصق رابط الموقع هنا");
         url.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         url.setTextColor(WHITE);
         url.setHintTextColor(MUTED);
-        form.addView(url, lp(-1, 48));
-        new AlertDialog.Builder(this).setTitle("إضافة موقع مخصص").setView(form)
-                .setPositiveButton("حفظ", (d, which) -> {
-                    String siteName = name.getText().toString().trim();
+        url.setPadding(dp(12), 0, dp(12), 0);
+        new AlertDialog.Builder(this).setTitle("إضافة موقع إلى البطاقات").setMessage("الصق الرابط فقط؛ سيُستخرج اسم الموقع وأيقونته تلقائيًا.")
+                .setView(url)
+                .setPositiveButton("إضافة", (d, which) -> {
                     String siteUrl = BrowserEngine.normalizeAddress(url.getText().toString().trim());
-                    if (siteName.isEmpty() || !BrowserEngine.isWebUrl(siteUrl)) {
-                        Toast.makeText(this, "اكتب اسمًا ورابطًا صحيحًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
+                    if (!BrowserEngine.isWebUrl(siteUrl)) {
+                        Toast.makeText(this, "اكتب رابطًا صحيحًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
                         return;
                     }
+                    String siteName = siteHostLabel(siteUrl);
                     JSONArray oldSites = readCustomSites();
                     JSONArray updated = new JSONArray();
                     for (int i = 0; i < oldSites.length(); i++) {
@@ -1131,8 +1177,115 @@ public class MainActivity extends Activity {
                     catch (org.json.JSONException ignored) { }
                     prefs.edit().putString("custom_sites_json", updated.toString()).apply();
                     showHome();
-                    Toast.makeText(this, "تم حفظ الموقع المخصص", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "اتضاف الموقع مع بطاقات المنصات", Toast.LENGTH_SHORT).show();
                 }).setNegativeButton("إلغاء", null).show();
+    }
+
+    private String siteHostLabel(String siteUrl) {
+        try {
+            String host = Uri.parse(siteUrl).getHost();
+            if (host == null || host.trim().isEmpty()) return "موقع جديد";
+            host = host.toLowerCase(Locale.ROOT);
+            if (host.startsWith("www.")) host = host.substring(4);
+            if (host.startsWith("m.")) host = host.substring(2);
+            String[] parts = host.split("\\.");
+            String base = parts.length > 1 ? parts[parts.length - 2] : parts[0];
+            if (base.isEmpty()) return host;
+            return base.substring(0, 1).toUpperCase(Locale.ROOT) + base.substring(1);
+        } catch (Exception ignored) { return "موقع جديد"; }
+    }
+
+    private void addWebsiteCard(LinearLayout parent, String name, String siteUrl, int customIndex, boolean custom) {
+        LinearLayout card = column();
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(5), dp(8), dp(5), dp(8));
+        card.setBackground(shape(PANEL, PANEL2, 16));
+        ImageView logo = new ImageView(this);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setPadding(dp(2), dp(2), dp(2), dp(2));
+        logo.setBackground(shape(Color.WHITE, Color.argb(50, 255, 255, 255), 12));
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        logoParams.gravity = Gravity.CENTER_HORIZONTAL;
+        card.addView(logo, logoParams);
+        loadWebsiteFavicon(logo, siteUrl);
+        TextView label = text(name, 11, WHITE, true);
+        label.setGravity(Gravity.CENTER);
+        label.setMaxLines(1);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams labelParams = lp(-1, 22);
+        labelParams.topMargin = dp(4);
+        card.addView(label, labelParams);
+        card.setContentDescription("فتح " + name);
+        card.setOnClickListener(v -> openQuickSite(siteUrl));
+        if (custom) {
+            card.setOnLongClickListener(v -> {
+                new AlertDialog.Builder(this).setTitle("إزالة الموقع")
+                        .setMessage("هل تريد إزالة «" + name + "» من بطاقات المواقع؟")
+                        .setPositiveButton("إزالة", (d, which) -> removeCustomSite(customIndex))
+                        .setNegativeButton("إلغاء", null).show();
+                return true;
+            });
+        }
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(94), 1);
+        cp.setMargins(dp(3), dp(4), dp(3), dp(4));
+        parent.addView(card, cp);
+    }
+
+    private void loadWebsiteFavicon(ImageView target, String siteUrl) {
+        target.setImageDrawable(null);
+        target.setTag(siteUrl);
+        Thread worker = new Thread(() -> {
+            HttpURLConnection connection = null;
+            Bitmap bitmap = null;
+            try {
+                String host = Uri.parse(siteUrl).getHost();
+                if (host == null || host.trim().isEmpty()) return;
+                URL iconUrl = new URL("https://www.google.com/s2/favicons?domain=" +
+                        URLEncoder.encode(host, "UTF-8") + "&sz=128");
+                connection = (HttpURLConnection) iconUrl.openConnection();
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (InputStream input = connection.getInputStream()) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            final Bitmap result = bitmap;
+            runOnUiThread(() -> {
+                if (target.getTag() == null || !siteUrl.equals(target.getTag())) return;
+                if (result != null) target.setImageBitmap(result);
+                else {
+                    TextView fallback = text("◉", 23, BLUE, true);
+                    fallback.setGravity(Gravity.CENTER);
+                    target.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(),
+                            createFallbackSiteBitmap(siteHostLabel(siteUrl))));
+                }
+            });
+        }, "site-favicon-loader");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private Bitmap createFallbackSiteBitmap(String label) {
+        int size = dp(96);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(BLUE);
+        canvas.drawRoundRect(0, 0, size, size, dp(18), dp(18), paint);
+        paint.setColor(Color.WHITE);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        paint.setTextSize(size * 0.42f);
+        String glyph = label == null || label.isEmpty() ? "W" : label.substring(0, 1).toUpperCase(Locale.ROOT);
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        paint.getTextBounds(glyph, 0, glyph.length(), bounds);
+        canvas.drawText(glyph, size / 2f, size / 2f - bounds.exactCenterY(), paint);
+        return bitmap;
     }
 
     private void removeCustomSite(int removeIndex) {
@@ -1515,6 +1668,10 @@ public class MainActivity extends Activity {
                             String candidate = tab.getUrl();
                             if (BrowserEngine.isWebUrl(candidate)) url = candidate;
                         } catch (Exception ignored) { }
+                        if (url.isEmpty() && i == activeBrowserTab) {
+                            String lastKnownUrl = prefs.getString("last_browser_url", "");
+                            if (BrowserEngine.isWebUrl(lastKnownUrl)) url = lastKnownUrl;
+                        }
                         savedUrls.add(url);
                         savedTitles.add(i < browserTabTitles.size() ? browserTabTitles.get(i) : "تبويب " + (i + 1));
                     }
@@ -1550,7 +1707,7 @@ public class MainActivity extends Activity {
                         }, 500L);
                     }
                     Toast.makeText(MainActivity.this,
-                            "تعطّل محرك الويب؛ أُعيد إنشاء التبويبات ومحاولة استعادة الصفحات",
+                            "أندرويد أوقف عملية عرض الصفحة؛ أعدنا تجهيز المتصفح ومحاولة استعادة الصفحة",
                             Toast.LENGTH_LONG).show();
                     return true;
                 }
@@ -1570,6 +1727,11 @@ public class MainActivity extends Activity {
                 return super.shouldInterceptRequest(view,request);
             }
             @Override public void onPageFinished(WebView view,String url){
+                if (BrowserEngine.isWebUrl(url)) {
+                    // Keep a lightweight recovery point so a renderer crash cannot erase
+                    // the only copy of the active page URL.
+                    prefs.edit().putString("last_browser_url", url).apply();
+                }
                 if (view == web) {
                     if(address!=null && "browser".equals(currentPage)) address.setText(url);
                     int tabIndex = browserTabs.indexOf(view);
@@ -1580,6 +1742,7 @@ public class MainActivity extends Activity {
                 }
                 try { CookieManager.getInstance().flush(); } catch (Exception ignored) { }
                 saveHistory(url);
+                saveHistoryTitle(url, view.getTitle());
                 // Restore the legacy browser's lightweight media sniffing and YouTube ad-skip helper.
                 scanPageMediaAndSkipAds(view);
                 if (view == web) refreshCurrentVideoIndicator();
@@ -1619,13 +1782,158 @@ public class MainActivity extends Activity {
         });
     }
 
+    private interface ExtractionResult {
+        void success(String mediaUrl, String engine);
+        void failure(String reason);
+    }
+
+    private int extractionGeneration = 0;
+
     private void captureCurrentPlayingVideo() {
         if (web == null || !"browser".equals(currentPage)) {
-            Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
+            updateExtractionNotification("AboEzzat Share", "افتح صفحة الفيديو في المتصفح أولًا.", false);
             return;
         }
-        // Some players expose a blob: URL to the DOM while their real HTTP(S)
-        // media segments are only visible to WebView's request sniffer.
+        final String pageUrl = web.getUrl();
+        if (!BrowserEngine.isWebUrl(pageUrl)) {
+            updateExtractionNotification("AboEzzat Share", "رابط الصفحة غير صالح.", false);
+            return;
+        }
+        final int generation = ++extractionGeneration;
+        if (castActionButton != null) {
+            castActionButton.clearAnimation();
+            android.view.animation.AlphaAnimation pulse = new android.view.animation.AlphaAnimation(1.0f, 0.25f);
+            pulse.setDuration(380);
+            pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
+            pulse.setRepeatCount(android.view.animation.Animation.INFINITE);
+            castActionButton.startAnimation(pulse);
+        }
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 1 من 4: المحرك السريع…", true);
+
+        // Engine 1: platform-aware extraction (OkHttp + social metadata/JSON).
+        FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+            @Override public void onSuccess(String videoUrl, String platform) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                extractionSucceeded(videoUrl, "FastMediaExtractor", generation);
+            }
+            @Override public void onError(String error) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                updateExtractionNotification("جاري استخراج الفيديو", "تجربة 2 من 4: تحليل الصفحة عبر OkHttp…", true);
+                // Engine 2: independent generic HTTP page parser.
+                OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+                    @Override public void onSuccess(String mediaUrl) {
+                        if (generation != extractionGeneration || isFinishing()) return;
+                        extractionSucceeded(mediaUrl, "OkHttp Page Parser", generation);
+                    }
+                    @Override public void onError(String reason) {
+                        if (generation != extractionGeneration || isFinishing()) return;
+                        tryRapidApiEngine(pageUrl, generation);
+                    }
+                });
+            }
+        });
+    }
+
+    private void tryRapidApiEngine(String pageUrl, int generation) {
+        if (generation != extractionGeneration || isFinishing()) return;
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 3 من 4: خدمة RapidAPI…", true);
+        String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+        if (apiKey.isEmpty()) {
+            tryWebViewEngine(generation, "لم يُضبط مفتاح RapidAPI");
+            return;
+        }
+        RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> runOnUiThread(() -> {
+            if (generation != extractionGeneration || isFinishing()) return;
+            if (mediaUrl != null && !mediaUrl.trim().isEmpty()
+                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                extractionSucceeded(mediaUrl, "RapidAPI", generation);
+            } else {
+                tryWebViewEngine(generation, message == null ? "لم يُعثر على رابط مباشر" : message);
+            }
+        }));
+    }
+
+    private void tryWebViewEngine(int generation, String previousFailure) {
+        if (generation != extractionGeneration || isFinishing()) return;
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 4 من 4: التقاط المصدر من مشغّل WebView…", true);
+        captureCurrentPlayingVideoFallback(new ExtractionResult() {
+            @Override public void success(String mediaUrl, String engine) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                extractionSucceeded(mediaUrl, "WebView Capture", generation);
+            }
+            @Override public void failure(String reason) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                if (castActionButton != null) castActionButton.clearAnimation();
+                updateExtractionNotification("فشل استخراج الفيديو", "فشلت المحركات الأربعة. " +
+                        "قد يحتاج الرابط لتسجيل دخول أو يستخدم بثًا محميًا/غير مباشر.", false);
+            }
+        });
+    }
+
+    private void extractionSucceeded(String mediaUrl, String engine, int generation) {
+        if (generation != extractionGeneration || mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
+        currentPlayingVideoUrl = mediaUrl;
+        if (castActionButton != null) castActionButton.clearAnimation();
+        updateExtractionNotification("تم استخراج الفيديو", "نجح " + engine + "؛ جاري إرسال الرابط إلى Receiver…", true);
+        castExtractedUrlSilently(mediaUrl, generation);
+    }
+
+    private void castExtractedUrlSilently(String mediaUrl, int generation) {
+        if (receiverIp == null || receiverIp.trim().isEmpty()) {
+            updateExtractionNotification("تم استخراج الفيديو", "نجح الاستخراج، لكن حدّد عنوان IP للريسيفر لإرسال الفيديو.", false);
+            return;
+        }
+        final String ip = receiverIp.trim();
+        rememberCastUrl(mediaUrl);
+        CastingManager.send(ip, mediaUrl, (success, message) -> runOnUiThread(() -> {
+            if (generation != extractionGeneration || isFinishing()) return;
+            receiverConnected = success;
+            refreshConnectionLabel();
+            if (success) {
+                updateExtractionNotification("تم إرسال الفيديو", "تم إرسال الرابط إلى Receiver بنجاح.", false);
+                trackReceiverExtraction(ip);
+            } else {
+                updateExtractionNotification("فشل إرسال الفيديو", message == null
+                        ? "تعذر إرسال الرابط إلى Receiver." : message, false);
+            }
+        }));
+    }
+
+    private boolean isFastExtractorPlatform(String value) {
+        if (value == null) return false;
+        try {
+            String host = Uri.parse(value).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("facebook.com") || host.endsWith(".facebook.com")
+                    || host.equals("fb.watch") || host.endsWith(".fb.watch")
+                    || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("threads.com") || host.endsWith(".threads.com")
+                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("tiktok.com") || host.endsWith(".tiktok.com");
+        } catch (Exception ignored) { return false; }
+    }
+
+    private void captureCurrentPlayingVideoFallback() {
+        captureCurrentPlayingVideoFallback(new ExtractionResult() {
+            @Override public void success(String mediaUrl, String engine) { castUrl(mediaUrl); }
+            @Override public void failure(String reason) {
+                updateExtractionNotification("فشل التقاط الفيديو", reason, false);
+            }
+        });
+    }
+
+    private void captureCurrentPlayingVideoFallback(ExtractionResult callback) {
+        final java.util.concurrent.atomic.AtomicBoolean completed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final android.os.Handler timeoutHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        Runnable timeout = () -> {
+            if (completed.compareAndSet(false, true)) callback.failure("انتهت مهلة التقاط WebView.");
+        };
+        if (web == null || !"browser".equals(currentPage)) {
+            if (completed.compareAndSet(false, true)) callback.failure("المتصفح غير مفتوح.");
+            return;
+        }
+        timeoutHandler.postDelayed(timeout, 7000L);
         String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));"
                 + "var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2;})"
                 + "||vs.find(function(x){return !x.paused&&!x.ended;});"
@@ -1636,36 +1944,33 @@ public class MainActivity extends Activity {
                 String url = parsed == null ? "" : String.valueOf(parsed);
                 if (!url.isEmpty() && !url.startsWith("blob:") && isVideoCandidate(url)) {
                     currentPlayingVideoUrl = url;
-                    castUrl(url);
+                    if (completed.compareAndSet(false, true)) {
+                        timeoutHandler.removeCallbacks(timeout);
+                        callback.success(url, "WebView");
+                    }
                     return;
                 }
-
-                // Fall back to the latest direct video URL detected from this browser's
-                // network requests. Do not send blob:, page URLs, audio, or images.
                 String candidate = null;
                 if (currentPlayingVideoUrl != null && isVideoCandidate(currentPlayingVideoUrl)
-                        && !currentPlayingVideoUrl.startsWith("blob:")) {
-                    candidate = currentPlayingVideoUrl;
-                }
+                        && !currentPlayingVideoUrl.startsWith("blob:")) candidate = currentPlayingVideoUrl;
                 if (candidate == null) {
                     for (int i = mediaOrder.size() - 1; i >= 0; i--) {
                         String found = mediaOrder.get(i);
                         if (isVideoCandidate(found) && !found.startsWith("blob:")
-                                && !found.startsWith("data:")) {
-                            candidate = found;
-                            break;
-                        }
+                                && !found.startsWith("data:")) { candidate = found; break; }
                     }
                 }
                 if (candidate != null) {
                     currentPlayingVideoUrl = candidate;
-                    Toast.makeText(this, "الفيديو يستخدم رابط بث مخفي داخل المشغّل؛ بجرب آخر رابط فيديو تم التقاطه…", Toast.LENGTH_SHORT).show();
-                    castUrl(candidate);
-                    return;
+                    if (completed.compareAndSet(false, true)) {
+                        timeoutHandler.removeCallbacks(timeout);
+                        callback.success(candidate, "WebView");
+                    }
+                } else {
+                    if (completed.compareAndSet(false, true)) { timeoutHandler.removeCallbacks(timeout); callback.failure("لم يكشف مشغّل الصفحة عن رابط فيديو مباشر."); }
                 }
-                Toast.makeText(this, "الفيديو شغال، لكن الموقع مخفي رابط البث عن المتصفح. جرّب من غير حماية DRM أو افتح رابط فيديو مباشر.", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                Toast.makeText(this, "مش قادر أحدد رابط الفيديو المشغّل. بعض المواقع تحمي البث أو تستخدم blob.", Toast.LENGTH_LONG).show();
+                if (completed.compareAndSet(false, true)) { timeoutHandler.removeCallbacks(timeout); callback.failure("تعذر تحليل مصدر الفيديو من WebView."); }
             }
         });
     }
@@ -1740,12 +2045,35 @@ public class MainActivity extends Activity {
                 "if(u&&/^https?:/i.test(u)&&out.indexOf(u)<0)out.push(u);}" +
                 "var meta=document.querySelector(\"meta[property='og:video'],meta[property='og:video:secure_url']\");" +
                 "if(meta&&meta.content&&/^https?:/i.test(meta.content)&&out.indexOf(meta.content)<0)out.push(meta.content);" +
-                "return JSON.stringify(out);}catch(e){return '[]';}})()";
+                "var title=(document.querySelector(\"meta[property='og:title'],meta[name='twitter:title']\")||{}).content||document.title||'';" +
+                "var poster=(document.querySelector(\"meta[property='og:image'],meta[name='twitter:image']\")||{}).content||'';" +
+                "return JSON.stringify({urls:out,title:title,poster:poster});}catch(e){return JSON.stringify({urls:[],title:'',poster:''});}})()";
         view.evaluateJavascript(js, value -> {
             try {
-                Object decoded = new org.json.JSONTokener(value == null ? "\"[]\"" : value).nextValue();
+                Object decoded = new org.json.JSONTokener(value == null ? "\"{}\"" : value).nextValue();
                 if (!(decoded instanceof String)) return;
-                org.json.JSONArray urls = new org.json.JSONArray((String) decoded);
+                org.json.JSONObject result = new org.json.JSONObject((String) decoded);
+                String title = result.optString("title", "").trim();
+                String poster = result.optString("poster", "").trim();
+                if (!title.isEmpty()) lastPageMediaTitle = title;
+                if (BrowserEngine.isWebUrl(poster)) lastPageMediaPoster = poster;
+                // Interception can discover a CDN URL before the DOM exposes its title/poster.
+                // Backfill metadata for those already-captured URLs so the list stays useful.
+                if (!title.isEmpty() || BrowserEngine.isWebUrl(poster)) {
+                    for (String existingUrl : mediaOrder) {
+                        if (!title.isEmpty()) {
+                            String oldTitle = mediaTitles.get(existingUrl);
+                            if (oldTitle == null || oldTitle.trim().isEmpty() || "فيديو مكتشف".equals(oldTitle)) {
+                                mediaTitles.put(existingUrl, title);
+                            }
+                        }
+                        if (BrowserEngine.isWebUrl(poster) && !mediaPosters.containsKey(existingUrl)) {
+                            mediaPosters.put(existingUrl, poster);
+                        }
+                    }
+                }
+                org.json.JSONArray urls = result.optJSONArray("urls");
+                if (urls == null) return;
                 for (int i = 0; i < urls.length(); i++) {
                     String url = urls.optString(i, "");
                     if (isVideoCandidate(url)) detectMedia(url);
@@ -1787,6 +2115,15 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
+            String pageTitle = lastPageMediaTitle;
+            if ((pageTitle == null || pageTitle.trim().isEmpty()) && web != null) {
+                try { pageTitle = web.getTitle(); } catch (Exception ignored) { }
+            }
+            if (pageTitle == null || pageTitle.trim().isEmpty()) pageTitle = "فيديو مكتشف";
+            mediaTitles.put(url, pageTitle.trim());
+            if (lastPageMediaPoster != null && BrowserEngine.isWebUrl(lastPageMediaPoster)) {
+                mediaPosters.put(url, lastPageMediaPoster);
+            }
             if (isVideoCandidate(url)) currentPlayingVideoUrl = url;
             autoSelectDetectedTrack(url);
             // Automatically cast a captured direct video from the current platform page.
@@ -1839,6 +2176,35 @@ public class MainActivity extends Activity {
                         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
                     }
                 }));
+    }
+
+    private void loadDetectedPoster(String posterUrl, ImageView target) {
+        if (posterUrl == null || posterUrl.trim().isEmpty() || target == null) return;
+        target.setTag(posterUrl);
+        Thread worker = new Thread(() -> {
+            Bitmap bitmap = null;
+            java.net.HttpURLConnection connection = null;
+            try {
+                URL url = new URL(posterUrl);
+                connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(4000);
+                connection.setReadTimeout(5000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (InputStream input = connection.getInputStream()) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            final Bitmap result = bitmap;
+            if (result != null && !isFinishing()) runOnUiThread(() -> {
+                if (posterUrl.equals(target.getTag())) target.setImageBitmap(result);
+            });
+        }, "media-poster-loader");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void showMedia(){
@@ -1943,7 +2309,21 @@ public class MainActivity extends Activity {
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
-            card.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,14,WHITE,true),lp(-1,28));
+            String posterUrl = mediaPosters.get(url);
+            if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) {
+                ImageView posterView = new ImageView(this);
+                posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                posterView.setBackground(shape(PANEL2, PANEL2, 10));
+                card.addView(posterView, lp(-1, dp(112)));
+                loadDetectedPoster(posterUrl, posterView);
+            }
+            String displayTitle = mediaTitles.get(url);
+            if (displayTitle == null || displayTitle.trim().isEmpty()) displayTitle = "فيديو مكتشف";
+            TextView titleView = text(displayTitle,14,WHITE,true);
+            titleView.setMaxLines(2);
+            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            card.addView(titleView,lp(-1,-2));
+            card.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,12,MUTED,false),lp(-1,24));
             TextView small=text(url,10,MUTED,false);small.setMaxLines(2);small.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(small,lp(-1,36));
             LinearLayout actions=row();
             TextView cast=button("إرسال",BLUE,WHITE);
@@ -2216,8 +2596,16 @@ public class MainActivity extends Activity {
             }));
         });
         box.addView(input,lp(-1,52));
+        EditText portInput = new EditText(this);
+        portInput.setSingleLine(true);
+        portInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        portInput.setHint("Port الريسيفر (افتراضي 8081)");
+        portInput.setText(String.valueOf(prefs.getInt("receiver_port", 8081)));
+        box.addView(text("اكتب نفس رقم البورت الظاهر في Receiver. مثال: 8080 أو 8081.",13,MUTED,false));
+        box.addView(portInput, lp(-1, 48));
         new AlertDialog.Builder(this).setTitle("إعداد جهاز الاستقبال").setView(box)
             .setPositiveButton("حفظ", (d,w)->{
+                if (!saveReceiverPort(portInput.getText().toString())) return;
                 String normalized = normalizeReceiverIp(input.getText().toString());
                 if (normalized == null) {
                     Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
@@ -2225,6 +2613,7 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(normalized);
             }).setNeutralButton("اختبار الاتصال",(d,w)->{
+                if (!saveReceiverPort(portInput.getText().toString())) return;
                 String ip = normalizeReceiverIp(input.getText().toString());
                 if (ip == null) {
                     Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
@@ -2232,6 +2621,20 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(ip);
             }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private boolean saveReceiverPort(String raw) {
+        int port;
+        try { port = Integer.parseInt(raw == null ? "" : raw.trim()); }
+        catch (Exception e) { port = -1; }
+        if (port < 1024 || port > 65535) {
+            Toast.makeText(this, "اختَر بورتًا بين 1024 و65535", Toast.LENGTH_LONG).show();
+            return false;
+        }
+        prefs.edit().putInt("receiver_port", port).apply();
+        CastingManager.setReceiverPort(port);
+        refreshConnectionLabel();
+        return true;
     }
 
     private void beginNativeVoiceSearch(EditText target) {
@@ -2509,7 +2912,7 @@ public class MainActivity extends Activity {
         if (receiverIp == null || receiverIp.isEmpty()) {
             connectionLabel.setText("● لا يوجد جهاز محدد — اضغط «جهاز الاستقبال» لاختيار شاشة");
         } else {
-            connectionLabel.setText((receiverConnected ? "● الريسيفر متاح: " : "● الجهاز المختار (إعادة المحاولة على نفس العنوان): ") + receiverIp + ":8081");
+            connectionLabel.setText((receiverConnected ? "● الريسيفر متاح: " : "● الجهاز المختار (إعادة المحاولة على نفس العنوان): ") + receiverIp + ":" + CastingManager.getReceiverPort());
         }
     }
 
@@ -2605,7 +3008,7 @@ public class MainActivity extends Activity {
                     // Preserve the current saved selection; do not replace it on a failed test.
                     refreshConnectionLabel();
                 }
-                Toast.makeText(this,result?"تم التحقق من الريسيفر وحفظ عنوانه للاستخدام لاحقًا":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ 8081. راجع الشبكة أو جرّب العنوان مرة أخرى.",Toast.LENGTH_LONG).show();
+                Toast.makeText(this,result?"تم التحقق من الريسيفر وحفظ عنوانه للاستخدام لاحقًا":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ " + CastingManager.getReceiverPort() + ". راجع الشبكة أو جرّب العنوان مرة أخرى.",Toast.LENGTH_LONG).show();
             });
         }).start();
     }
@@ -2936,21 +3339,81 @@ public class MainActivity extends Activity {
         boolean showHistory = focusKey == null || "history".equals(focusKey);
         String title = "bookmarks".equals(focusKey) ? "العلامات المرجعية"
                 : "history".equals(focusKey) ? "سجل التصفح" : "مكتبتك";
-        addSection(content, title, "افتح أي عنصر للرجوع إليه، واضغط مطولًا لحذفه");
 
-        if (showBookmarks) addUrlCollection(content, "☆ المفضلة", "bookmarks", focusKey);
+        // The history actions remain fixed while the list itself scrolls.
+        LinearLayout page = column();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        addSection(page, title, "افتح عنصرًا للرجوع إليه، واضغط مطولًا لحذفه");
+        if (showBookmarks) addUrlCollection(page, "☆ المفضلة", "bookmarks", focusKey);
+        if (showHistory) addUrlCollection(page, "◷ سجل التصفح", "history", focusKey);
+
         if (showHistory) {
-            addUrlCollection(content, "◷ سجل التصفح", "history", focusKey);
-            TextView clear = button("مسح سجل التصفح", PANEL2, MUTED);
-            LinearLayout.LayoutParams p = lp(-1, 44);
-            p.topMargin = dp(12);
+            TextView clear = button("🗑  مسح سجل التصفح بالكامل", PANEL2, WHITE);
+            clear.setContentDescription("مسح سجل التصفح بالكامل");
+            LinearLayout.LayoutParams p = lp(-1, 50);
+            p.topMargin = dp(8);
+            p.bottomMargin = dp(8);
             content.addView(clear, p);
-            clear.setOnClickListener(v -> {
-                prefs.edit().remove("history").apply();
-                showLibrary("history".equals(focusKey) ? "history" : null);
-                Toast.makeText(this, "تم مسح السجل", Toast.LENGTH_SHORT).show();
-            });
+            clear.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("مسح سجل التصفح")
+                    .setMessage("هل تريد حذف سجل التصفح بالكامل؟ لن يتم حذف المفضلة.")
+                    .setNegativeButton("إلغاء", null)
+                    .setPositiveButton("مسح الكل", (d, w) -> {
+                        prefs.edit().remove("history").remove("history_titles").apply();
+                        showLibrary("history".equals(focusKey) ? "history" : null);
+                        Toast.makeText(this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
+                    }).show());
         }
+    }
+
+    private void saveHistoryTitle(String url, String pageTitle) {
+        if (url == null || pageTitle == null || pageTitle.trim().isEmpty()) return;
+        try {
+            org.json.JSONObject titles = new org.json.JSONObject(prefs.getString("history_titles", "{}"));
+            titles.put(url, pageTitle.trim());
+            JSONArray history = new JSONArray(prefs.getString("history", "[]"));
+            org.json.JSONObject bounded = new org.json.JSONObject();
+            for (int i = 0; i < history.length(); i++) {
+                String historyUrl = history.optString(i, "");
+                if (titles.has(historyUrl)) bounded.put(historyUrl, titles.optString(historyUrl));
+            }
+            prefs.edit().putString("history_titles", bounded.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    private String historyDisplayName(String url, String key) {
+        if ("history".equals(key)) {
+            try {
+                org.json.JSONObject titles = new org.json.JSONObject(prefs.getString("history_titles", "{}"));
+                String pageTitle = titles.optString(url, "").trim();
+                if (!pageTitle.isEmpty() && !"null".equalsIgnoreCase(pageTitle)) return pageTitle;
+            } catch (Exception ignored) { }
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost();
+            String path = uri.getPath();
+            if (host == null || host.trim().isEmpty()) return url;
+            String cleanHost = host.toLowerCase(Locale.ROOT);
+            if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
+            if (path == null || path.isEmpty() || "/".equals(path)) return cleanHost;
+            String[] parts = path.split("/");
+            for (int i = parts.length - 1; i >= 0; i--) {
+                String part = parts[i].replace('-', ' ').replace('_', ' ').trim();
+                if (!part.isEmpty() && !part.matches("index\\.(html?|php)")) {
+                    try { part = java.net.URLDecoder.decode(part, "UTF-8"); } catch (Exception ignored) { }
+                    return part + " — " + cleanHost;
+                }
+            }
+            return cleanHost;
+        } catch (Exception ignored) { return url; }
     }
 
     private void addUrlCollection(LinearLayout parent, String title, String key, String focusKey){
@@ -2960,8 +3423,13 @@ public class MainActivity extends Activity {
         if(a.length()==0){parent.addView(text("لا توجد عناصر بعد",12,MUTED,false),lp(-1,30));return;}
         for(int i=0;i<a.length();i++){
             String url=a.optString(i);
-            TextView item=button(url,PANEL,WHITE);item.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);item.setMaxLines(2);item.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams p=lp(-1,44);p.setMargins(0,dp(3),0,dp(3));parent.addView(item,p);
+            String displayName=historyDisplayName(url,key);
+            TextView item=button(displayName,PANEL,WHITE);
+            item.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+            item.setMaxLines(2);
+            item.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            item.setContentDescription(displayName + " — " + url);
+            LinearLayout.LayoutParams p=lp(-1,52);p.setMargins(0,dp(3),0,dp(3));parent.addView(item,p);
             item.setOnClickListener(v->{showBrowser();address.setText(url);loadAddress();});
             item.setOnLongClickListener(v->{new AlertDialog.Builder(this).setMessage("حذف من القائمة؟").setPositiveButton("حذف",(d,w)->{removeSaved(key,url);showLibrary(focusKey);}).setNegativeButton("إلغاء",null).show();return true;});
         }
@@ -3628,6 +4096,52 @@ public class MainActivity extends Activity {
         if("browser".equals(currentPage)&&web!=null&&web.canGoBack()){web.goBack();return;}
         if(!"home".equals(currentPage)){showHome();return;}
         super.onBackPressed();
+    }
+
+    @Override protected void onPause() {
+        // Pause visual interaction for each tab, but do NOT call WebView.pauseTimers().
+        // pauseTimers() is process-wide for WebViews and can freeze unrelated WebViews
+        // or leave background/return transitions in a bad state. Android may reclaim a
+        // renderer under memory pressure; onRenderProcessGone handles that separately.
+        for (WebView tab : new ArrayList<>(browserTabs)) {
+            try { tab.onPause(); } catch (Exception ignored) { }
+        }
+        if ("browser".equals(currentPage) && web != null) {
+            try {
+                String url = web.getUrl();
+                if (BrowserEngine.isWebUrl(url)) {
+                    prefs.edit().putString("last_browser_url", url).apply();
+                }
+            } catch (Exception ignored) { }
+        }
+        super.onPause();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        for (WebView tab : new ArrayList<>(browserTabs)) {
+            try { tab.onResume(); } catch (Exception ignored) { }
+        }
+        // Do not reload the current page on every resume: preserve the live session and
+        // avoid restarting media/login flows unless Android actually killed the renderer.
+        prefs.edit().putBoolean("browser_was_active", false).apply();
+    }
+
+    @Override protected void onStop() {
+        if ("browser".equals(currentPage) && web != null) {
+            try {
+                String url = web.getUrl();
+                if (BrowserEngine.isWebUrl(url)) {
+                    prefs.edit()
+                            .putString("last_browser_url", url)
+                            .putBoolean("browser_was_active", true)
+                            .apply();
+                }
+            } catch (Exception ignored) { }
+        } else {
+            prefs.edit().putBoolean("browser_was_active", false).apply();
+        }
+        super.onStop();
     }
 
     @Override protected void onDestroy(){

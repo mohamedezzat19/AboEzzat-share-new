@@ -5,19 +5,20 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     name: Build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
     steps:
       - name: Download repository
         uses: actions/checkout@v4
@@ -49,10 +50,63 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug
 
-      - name: Upload APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: AboEzzatShare-debug-APK
+          name: AboEzzatShareNew-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Detect signing configuration
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE }}
+          STORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS_PASSWORD }}
+        shell: bash
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
+            echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
+            echo "Signing secrets missing or unavailable; building debug APK only."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release-keystore.jks"
+          ALIAS="$(keytool -list -keystore "$RUNNER_TEMP/release-keystore.jks" -storepass "$STORE_PASSWORD" -v 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
+          if [[ -z "$ALIAS" ]]; then
+            echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
+            echo "::warning::Could not read an alias from the keystore; check the keystore and store password."
+            exit 0
+          fi
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release-keystore.jks" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+          echo "HAS_SIGNING=true" >> "$GITHUB_ENV"
+          echo "Signing configuration detected; secret values are not printed."
+
+      - name: Build signed release APK
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS_PASSWORD }}
+        run: gradle assembleRelease
+
+      - name: Upload signed release APK
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: AboEzzatShareNew-release-${{ github.run_number }}
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish signed APK to GitHub Release
+        if: ${{ github.ref == 'refs/heads/main' && env.HAS_SIGNING == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          body: "versionCode: ${{ github.run_number }}\nAutomated signed APK build."
+          files: app/build/outputs/apk/release/app-release.apk
+          generate_release_notes: true
