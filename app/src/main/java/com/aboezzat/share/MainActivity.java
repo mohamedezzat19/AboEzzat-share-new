@@ -946,10 +946,13 @@ public class MainActivity extends Activity {
                     && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
             if (granted) {
                 if (request != null) {
-                    // A WebView permission request can expire while Android's runtime
-                    // permission dialog is open. Try to grant the original request first;
-                    // if it expired, tell the user to reload so the site can request again.
-                    confirmWebsiteMicrophonePermission(request);
+                    // WebView PermissionRequest is short-lived and may expire while
+                    // Android displays its runtime permission dialog. Do not reuse it:
+                    // deny the old request safely and let the user trigger a fresh one.
+                    try { request.deny(); } catch (Exception ignored) { }
+                    Toast.makeText(this,
+                            "تم السماح بميكروفون التطبيق. ارجع للموقع واضغط زر الميكروفون مرة أخرى للسماح للموقع.",
+                            Toast.LENGTH_LONG).show();
                 } else {
                     Toast.makeText(this,
                             "تم السماح بميكروفون التطبيق. ارجع للصفحة واضغط البحث الصوتي مرة أخرى.",
@@ -997,8 +1000,7 @@ public class MainActivity extends Activity {
     }
 
     private TextView cardAsText(LinearLayout card) {
-        // A card is embedded in a TextView-compatible click surface through its parent.
-        TextView proxy = text("", 1, WHITE, false);
+        // A card is embedded in a TextView-compatible click surface through its parent.        TextView proxy = text("", 1, WHITE, false);
         proxy.setVisibility(View.GONE);
         card.setTag(proxy);
         return proxy;
@@ -1997,8 +1999,7 @@ public class MainActivity extends Activity {
             return host.equals("facebook.com") || host.endsWith(".facebook.com")
                     || host.equals("fb.watch") || host.endsWith(".fb.watch")
                     || host.equals("threads.net") || host.endsWith(".threads.net")
-                    || host.equals("threads.com") || host.endsWith(".threads.com")
-                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("threads.com") || host.endsWith(".threads.com")                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
                     || host.equals("tiktok.com") || host.endsWith(".tiktok.com");
         } catch (Exception ignored) { return false; }
     }
@@ -2928,14 +2929,11 @@ public class MainActivity extends Activity {
                                     .setMessage("إذن المايك للتطبيق مسموح من Android. لازم كمان توافق على طلب الموقع نفسه عند استخدام البحث أو التسجيل الصوتي.")
                                     .setPositiveButton("حسنًا", null)
                                     .setNeutralButton("إعدادات Android", (d, w) -> openAppPermissionSettings()).show();
-                        } else if (android.os.Build.VERSION.SDK_INT >= 23
-                                && shouldShowRequestPermissionRationale(android.Manifest.permission.RECORD_AUDIO)) {
+                        } else if (android.os.Build.VERSION.SDK_INT >= 23) {
+                            // Request runtime permission on first use as well. Android
+                            // returns immediately when permission is permanently denied;
+                            // the result callback then guides the user to app settings.
                             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
-                        } else {
-                            new AlertDialog.Builder(this).setTitle("السماح بالمايك")
-                                    .setMessage("لو رفضت الإذن قبل كده، افتح إعدادات التطبيق وفعّل الميكروفون ثم ارجع للمتصفح وأعد تحميل YouTube.")
-                                    .setPositiveButton("فتح إعدادات التطبيق", (d, w) -> openAppPermissionSettings())
-                                    .setNegativeButton("إلغاء", null).show();
                         }
                     } else if (which == 1) {
                         new AlertDialog.Builder(this).setTitle("إذن المايك للمواقع")
@@ -2997,8 +2995,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private String normalizeReceiverIp(String raw) {
-        if (raw == null) return null;
+    private String normalizeReceiverIp(String raw) {        if (raw == null) return null;
         String ip = raw.trim().replace("http://", "").replace("https://", "");
         int slash = ip.indexOf('/');
         if (slash >= 0) ip = ip.substring(0, slash);
@@ -3997,8 +3994,7 @@ public class MainActivity extends Activity {
             intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*", "image/*"});
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-            startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);
-        } catch (Exception e) {
+            startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);        } catch (Exception e) {
             Toast.makeText(this, "تعذّر فتح مستعرض الملفات", Toast.LENGTH_LONG).show();
         }
     }
