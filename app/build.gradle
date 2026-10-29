@@ -2,6 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
+def ciVersionCode = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+def ciVersionName = "1.0.${ciVersionCode}"
+
 android {
     namespace 'com.aboezzat.share'
     compileSdk 34
@@ -10,8 +13,8 @@ android {
         applicationId 'com.aboezzat.share'
         minSdk 23
         targetSdk 34
-        versionCode (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
-        versionName "1.0.${System.getenv('GITHUB_RUN_NUMBER') ?: '1'}"
+        versionCode ciVersionCode
+        versionName ciVersionName
     }
 
     compileOptions {
