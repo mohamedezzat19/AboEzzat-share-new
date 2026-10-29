@@ -438,7 +438,7 @@ public class MainActivity extends Activity {
             return;
         }
         pendingPlatformUrl = url;
-        Toast.makeText(this, "جاري العثور على عنوان الريسيفر وإرسال الفيديو…", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, isImageUrl(url) ? "جاري العثور على Receiver لإرسال الصورة…" : "جاري العثور على Receiver لإرسال الوسائط…", Toast.LENGTH_LONG).show();
         discoverReceiverInBackground();
     }
 
@@ -3480,7 +3480,13 @@ public class MainActivity extends Activity {
             receiverConnected = success;
             refreshConnectionLabel();
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-            if (success) trackReceiverExtraction(ip);
+            if (success) {
+                if (isImageUrl(url)) {
+                    updateExtractionNotification("تم إرسال الصورة", "تم إرسال رابط الصورة مباشرة إلى Receiver لعرضها.", false);
+                } else {
+                    trackReceiverExtraction(ip);
+                }
+            }
             if (!success && (receiverIp == null || receiverIp.trim().isEmpty())) discoverReceiverInBackground();
         }));
     }
