@@ -102,6 +102,11 @@ public class MainActivity extends Activity {
     private TextView pageTitle, connectionLabel, mediaLabel, castActionButton;
     private final LinkedHashMap<String,String> media = new LinkedHashMap<>();
     private final ArrayList<String> mediaOrder = new ArrayList<>();
+    // Keep readable page metadata beside each detected media URL, following the proven legacy browser flow.
+    private final LinkedHashMap<String,String> mediaTitles = new LinkedHashMap<>();
+    private final LinkedHashMap<String,String> mediaPosters = new LinkedHashMap<>();
+    private volatile String lastPageMediaTitle = "";
+    private volatile String lastPageMediaPoster = "";
     private final LinkedHashMap<String, Boolean> selectedTrackUrls = new LinkedHashMap<>();
     private String currentPage = "home";
     private String receiverIp = "";
@@ -2038,12 +2043,35 @@ public class MainActivity extends Activity {
                 "if(u&&/^https?:/i.test(u)&&out.indexOf(u)<0)out.push(u);}" +
                 "var meta=document.querySelector(\"meta[property='og:video'],meta[property='og:video:secure_url']\");" +
                 "if(meta&&meta.content&&/^https?:/i.test(meta.content)&&out.indexOf(meta.content)<0)out.push(meta.content);" +
-                "return JSON.stringify(out);}catch(e){return '[]';}})()";
+                "var title=(document.querySelector(\"meta[property='og:title'],meta[name='twitter:title']\")||{}).content||document.title||'';" +
+                "var poster=(document.querySelector(\"meta[property='og:image'],meta[name='twitter:image']\")||{}).content||'';" +
+                "return JSON.stringify({urls:out,title:title,poster:poster});}catch(e){return JSON.stringify({urls:[],title:'',poster:''});}})()";
         view.evaluateJavascript(js, value -> {
             try {
-                Object decoded = new org.json.JSONTokener(value == null ? "\"[]\"" : value).nextValue();
+                Object decoded = new org.json.JSONTokener(value == null ? "\"{}\"" : value).nextValue();
                 if (!(decoded instanceof String)) return;
-                org.json.JSONArray urls = new org.json.JSONArray((String) decoded);
+                org.json.JSONObject result = new org.json.JSONObject((String) decoded);
+                String title = result.optString("title", "").trim();
+                String poster = result.optString("poster", "").trim();
+                if (!title.isEmpty()) lastPageMediaTitle = title;
+                if (BrowserEngine.isWebUrl(poster)) lastPageMediaPoster = poster;
+                // Interception can discover a CDN URL before the DOM exposes its title/poster.
+                // Backfill metadata for those already-captured URLs so the list stays useful.
+                if (!title.isEmpty() || BrowserEngine.isWebUrl(poster)) {
+                    for (String existingUrl : mediaOrder) {
+                        if (!title.isEmpty()) {
+                            String oldTitle = mediaTitles.get(existingUrl);
+                            if (oldTitle == null || oldTitle.trim().isEmpty() || "فيديو مكتشف".equals(oldTitle)) {
+                                mediaTitles.put(existingUrl, title);
+                            }
+                        }
+                        if (BrowserEngine.isWebUrl(poster) && !mediaPosters.containsKey(existingUrl)) {
+                            mediaPosters.put(existingUrl, poster);
+                        }
+                    }
+                }
+                org.json.JSONArray urls = result.optJSONArray("urls");
+                if (urls == null) return;
                 for (int i = 0; i < urls.length(); i++) {
                     String url = urls.optString(i, "");
                     if (isVideoCandidate(url)) detectMedia(url);
@@ -2085,6 +2113,15 @@ public class MainActivity extends Activity {
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
+            String pageTitle = lastPageMediaTitle;
+            if ((pageTitle == null || pageTitle.trim().isEmpty()) && web != null) {
+                try { pageTitle = web.getTitle(); } catch (Exception ignored) { }
+            }
+            if (pageTitle == null || pageTitle.trim().isEmpty()) pageTitle = "فيديو مكتشف";
+            mediaTitles.put(url, pageTitle.trim());
+            if (lastPageMediaPoster != null && BrowserEngine.isWebUrl(lastPageMediaPoster)) {
+                mediaPosters.put(url, lastPageMediaPoster);
+            }
             if (isVideoCandidate(url)) currentPlayingVideoUrl = url;
             autoSelectDetectedTrack(url);
             // Automatically cast a captured direct video from the current platform page.
@@ -2137,6 +2174,35 @@ public class MainActivity extends Activity {
                         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
                     }
                 }));
+    }
+
+    private void loadDetectedPoster(String posterUrl, ImageView target) {
+        if (posterUrl == null || posterUrl.trim().isEmpty() || target == null) return;
+        target.setTag(posterUrl);
+        Thread worker = new Thread(() -> {
+            Bitmap bitmap = null;
+            java.net.HttpURLConnection connection = null;
+            try {
+                URL url = new URL(posterUrl);
+                connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(4000);
+                connection.setReadTimeout(5000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (InputStream input = connection.getInputStream()) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            final Bitmap result = bitmap;
+            if (result != null && !isFinishing()) runOnUiThread(() -> {
+                if (posterUrl.equals(target.getTag())) target.setImageBitmap(result);
+            });
+        }, "media-poster-loader");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void showMedia(){
@@ -2241,7 +2307,21 @@ public class MainActivity extends Activity {
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
-            card.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,14,WHITE,true),lp(-1,28));
+            String posterUrl = mediaPosters.get(url);
+            if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) {
+                ImageView posterView = new ImageView(this);
+                posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                posterView.setBackground(shape(PANEL2, PANEL2, 10));
+                card.addView(posterView, lp(-1, dp(112)));
+                loadDetectedPoster(posterUrl, posterView);
+            }
+            String displayTitle = mediaTitles.get(url);
+            if (displayTitle == null || displayTitle.trim().isEmpty()) displayTitle = "فيديو مكتشف";
+            TextView titleView = text(displayTitle,14,WHITE,true);
+            titleView.setMaxLines(2);
+            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            card.addView(titleView,lp(-1,-2));
+            card.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,12,MUTED,false),lp(-1,24));
             TextView small=text(url,10,MUTED,false);small.setMaxLines(2);small.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(small,lp(-1,36));
             LinearLayout actions=row();
             TextView cast=button("إرسال",BLUE,WHITE);
