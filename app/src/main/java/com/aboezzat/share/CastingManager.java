@@ -49,8 +49,8 @@ public final class CastingManager {
             socket.connect(new InetSocketAddress(ip, port), 900);
             socket.setSoTimeout(1200);
             OutputStream out = socket.getOutputStream();
-            out.write(("GET /?command=ping HTTP/1.1\\r\\nHost: " + ip + ":" + port
-                    + "\\r\\nConnection: close\\r\\n\\r\\n").getBytes(StandardCharsets.UTF_8));
+            out.write(("GET /?command=ping HTTP/1.1\r\nHost: " + ip + ":" + port
+                    + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
