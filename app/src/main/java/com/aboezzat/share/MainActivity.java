@@ -243,32 +243,12 @@ public class MainActivity extends Activity {
     private int authenticatedResolveGeneration = 0;
 
     private void sendPlatformLinkToScreen(String url) {
-        // YouTube is special: send its page URL directly to Receiver so SmartTube or
-        // another YouTube-compatible TV app can handle it. Receiver uses ExoPlayer only
-        // for a genuine direct media URL, not for a YouTube watch page.
-        if (isYouTubeUrl(url)) {
-            sendPlatformLinkToReceiver(url);
-            return;
-        }
-        // For other platforms, first use Share's persistent WebView so the user's own
-        // platform login session can resolve media URLs before the Receiver fallback.
-        if (!BrowserEngine.isWebUrl(url)) {
-            sendPlatformLinkToReceiver(url);
-            return;
-        }
-        final int generation = ++authenticatedResolveGeneration;
+        // Keep Share out of the browsing path: send the original URL to Receiver.
+        // Receiver tries direct media resolution and ExoPlayer first. Its embedded
+        // website player is an explicit, optional fallback chosen on the TV.
         receiverMonitorHandler.removeCallbacks(autoCastDetectedMediaRunnable);
         pendingAutoCastPageUrl = "";
-        media.clear();
-        mediaOrder.clear();
-        selectedTrackUrls.clear();
-        currentPlayingVideoUrl = "";
-        showBrowser();
-        if (address != null) address.setText(url);
-        if (web == null) createWebView();
-        Toast.makeText(this, "جاري فتح الرابط بمتصفح Share واستخدام جلسة تسجيل الدخول المحفوظة…", Toast.LENGTH_LONG).show();
-        web.loadUrl(url);
-        receiverMonitorHandler.postDelayed(() -> resolveSharedVideoFromBrowser(url, generation, 0), 250L);
+        sendPlatformLinkToReceiver(url);
     }
 
     private void resolveSharedVideoFromBrowser(String pageUrl, int generation, int attempt) {
