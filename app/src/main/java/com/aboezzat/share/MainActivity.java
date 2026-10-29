@@ -1780,6 +1780,55 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
             return;
         }
+        String pageUrl = web.getUrl();
+        if (pageUrl != null && isFastExtractorPlatform(pageUrl)) {
+            if (castActionButton != null) {
+                castActionButton.clearAnimation();
+                android.view.animation.AlphaAnimation pulse = new android.view.animation.AlphaAnimation(1.0f, 0.25f);
+                pulse.setDuration(380);
+                pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
+                pulse.setRepeatCount(5);
+                castActionButton.startAnimation(pulse);
+            }
+            Toast.makeText(this, "بجرب استخراج الرابط المباشر بسرعة…", Toast.LENGTH_SHORT).show();
+            FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+                @Override public void onSuccess(String videoUrl, String platform) {
+                    if (castActionButton != null) castActionButton.clearAnimation();
+                    currentPlayingVideoUrl = videoUrl;
+                    Toast.makeText(MainActivity.this, "تم التقاط رابط " + platform + "، جاري إرساله للشاشة…", Toast.LENGTH_SHORT).show();
+                    castUrl(videoUrl);
+                }
+                @Override public void onError(String error) {
+                    if (castActionButton != null) castActionButton.clearAnimation();
+                    Toast.makeText(MainActivity.this, error + " — بجرب الالتقاط من مشغل الصفحة", Toast.LENGTH_LONG).show();
+                    captureCurrentPlayingVideoFallback();
+                }
+            });
+            return;
+        }
+        captureCurrentPlayingVideoFallback();
+    }
+
+    private boolean isFastExtractorPlatform(String value) {
+        if (value == null) return false;
+        try {
+            String host = Uri.parse(value).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("facebook.com") || host.endsWith(".facebook.com")
+                    || host.equals("fb.watch") || host.endsWith(".fb.watch")
+                    || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("threads.com") || host.endsWith(".threads.com")
+                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("tiktok.com") || host.endsWith(".tiktok.com");
+        } catch (Exception ignored) { return false; }
+    }
+
+    private void captureCurrentPlayingVideoFallback() {
+        if (web == null || !"browser".equals(currentPage)) {
+            Toast.makeText(this, "افتح الفيديو في المتصفح أولًا", Toast.LENGTH_SHORT).show();
+            return;
+        }
         // Some players expose a blob: URL to the DOM while their real HTTP(S)
         // media segments are only visible to WebView's request sniffer.
         String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));"
