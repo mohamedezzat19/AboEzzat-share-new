@@ -858,10 +858,12 @@ public class MainActivity extends Activity {
     private void showAppSettings() {
         new AlertDialog.Builder(this)
                 .setTitle("إعدادات AboEzzat Share")
-                .setItems(new String[]{"المحركات", "البحث عن التحديثات", "إعدادات أندرويد للتطبيق"},
+                .setItems(new String[]{"المحركات", "إعدادات المتصفح", "جهاز الاستقبال", "البحث عن التحديثات", "إعدادات أندرويد للتطبيق"},
                         (dialog, which) -> {
                             if (which == 0) showExtractorEngines();
-                            else if (which == 1) new AppUpdater(this).checkForUpdate(true);
+                            else if (which == 1) showBrowserSettingsDialog();
+                            else if (which == 2) showReceiverPicker();
+                            else if (which == 3) new AppUpdater(this).checkForUpdate(true);
                             else openAppPermissionSettings();
                         })
                 .setNegativeButton("إغلاق", null)
@@ -2368,7 +2370,7 @@ public class MainActivity extends Activity {
         r3.addView(volumeUp,remoteButtonParams());
         r3.addView(stop,remoteButtonParams());
         LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(38));
-        remoteRowParams.topMargin=dp(4);
+        remoteRowParams.topMargin=0;
         remote.addView(r3,remoteRowParams);
         previous.setOnClickListener(v -> sendRemoteCommand("previous"));
         next.setOnClickListener(v -> sendRemoteCommand("next"));
