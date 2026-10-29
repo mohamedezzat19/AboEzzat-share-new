@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      HAS_SIGNING: ${{ env.HAS_SIGNING == 'true' }}
+      HAS_SIGNING: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - name: Download repository
         uses: actions/checkout@v4
@@ -88,7 +88,7 @@ jobs:
           retention-days: 30
 
       - name: Publish signed APK to GitHub Release
-        if: ${{ github.ref == 'refs/heads/main' && secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        if: ${{ github.ref == 'refs/heads/main' && env.HAS_SIGNING == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
