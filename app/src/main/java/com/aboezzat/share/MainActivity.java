@@ -1949,88 +1949,148 @@ public class MainActivity extends Activity {
             castActionButton.setTextColor(WHITE);
             castActionButton.setBackground(shape(GOLD, GOLD, 50));
         }
-        updateExtractionNotification("جاري استخراج الفيديو", "تجهيز المحركات المفعّلة…", true);
-        if (!isEngineEnabled("fast")) {
-            tryOkHttpEngine(pageUrl, generation);
-            return;
-        }
-        updateExtractionNotification("جاري استخراج الفيديو", "تجربة المحرك السريع…", true);
 
-        // Engine 1: platform-aware extraction (OkHttp + social metadata/JSON).
-        FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
-            @Override public void onSuccess(String videoUrl, String platform) {
-                if (generation != extractionGeneration || isFinishing()) return;
-                extractionSucceeded(videoUrl, "FastMediaExtractor", generation);
-            }
-            @Override public void onError(String error) {
-                if (generation != extractionGeneration || isFinishing()) return;
-                tryOkHttpEngine(pageUrl, generation);
-            }
-        });
-    }
+        int enabled = 0;
+        if (isEngineEnabled("fast")) enabled++;
+        if (isEngineEnabled("okhttp")) enabled++;
+        if (isEngineEnabled("rapidapi")) enabled++;
+        if (isEngineEnabled("webview")) enabled++;
+        if (enabled == 0) {
+            updateExtractionNotification("فشل استخراج الفيديو",
+                    "كل محركات الاستخراج متوقفة. فعّل محركًا واحدًا على الأقل من الإعدادات.", false);
+            return;
+        }
 
-    private void tryOkHttpEngine(String pageUrl, int generation) {
-        if (generation != extractionGeneration || isFinishing()) return;
-        if (!isEngineEnabled("okhttp")) {
-            tryRapidApiEngine(pageUrl, generation);
-            return;
-        }
-        updateExtractionNotification("جاري استخراج الفيديو", "تحليل الصفحة عبر OkHttp…", true);
-        OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
-            @Override public void onSuccess(String mediaUrl) {
-                if (generation != extractionGeneration || isFinishing()) return;
-                extractionSucceeded(mediaUrl, "OkHttp Page Parser", generation);
-            }
-            @Override public void onError(String reason) {
-                if (generation != extractionGeneration || isFinishing()) return;
-                tryRapidApiEngine(pageUrl, generation);
-            }
-        });
-    }
+        updateExtractionNotification("جاري استخراج الفيديو",
+                "تشغيل " + enabled + " محرك/محركات بالتوازي…", true);
+        final ParallelExtractionRun run = new ParallelExtractionRun(pageUrl, generation, enabled);
 
-    private void tryRapidApiEngine(String pageUrl, int generation) {
-        if (generation != extractionGeneration || isFinishing()) return;
-        if (!isEngineEnabled("rapidapi")) {
-            tryWebViewEngine(generation, "تم إيقاف محرك RapidAPI من الإعدادات");
-            return;
+        // Start every enabled extractor without waiting for another one to fail.
+        if (isEngineEnabled("fast")) {
+            FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+                @Override public void onSuccess(String videoUrl, String platform) {
+                    run.candidate(videoUrl, "FastMediaExtractor");
+                }
+                @Override public void onError(String error) { run.failed(); }
+            });
         }
-        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 3 من 4: خدمة RapidAPI…", true);
-        String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
-        if (apiKey.isEmpty()) {
-            tryWebViewEngine(generation, "لم يُضبط مفتاح RapidAPI");
-            return;
+        if (isEngineEnabled("okhttp")) {
+            OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+                @Override public void onSuccess(String mediaUrl) {
+                    run.candidate(mediaUrl, "OkHttp Page Parser");
+                }
+                @Override public void onError(String reason) { run.failed(); }
+            });
         }
-        RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> runOnUiThread(() -> {
-            if (generation != extractionGeneration || isFinishing()) return;
-            if (mediaUrl != null && !mediaUrl.trim().isEmpty()
-                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
-                extractionSucceeded(mediaUrl, "RapidAPI", generation);
+        if (isEngineEnabled("rapidapi")) {
+            String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+            if (apiKey.isEmpty()) {
+                run.failed();
             } else {
-                tryWebViewEngine(generation, message == null ? "لم يُعثر على رابط مباشر" : message);
+                RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> {
+                    if (mediaUrl != null && !mediaUrl.trim().isEmpty()
+                            && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                        run.candidate(mediaUrl, "RapidAPI");
+                    } else {
+                        run.failed();
+                    }
+                });
             }
-        }));
+        }
+        if (isEngineEnabled("webview")) {
+            captureCurrentPlayingVideoFallback(new ExtractionResult() {
+                @Override public void success(String mediaUrl, String engine) {
+                    run.candidate(mediaUrl, "WebView Capture");
+                }
+                @Override public void failure(String reason) { run.failed(); }
+            });
+        }
     }
 
-    private void tryWebViewEngine(int generation, String previousFailure) {
-        if (generation != extractionGeneration || isFinishing()) return;
-        if (!isEngineEnabled("webview")) {
-            if (castActionButton != null) castActionButton.clearAnimation();
-            updateExtractionNotification("فشل استخراج الفيديو", "لم ينجح أي محرك من المحركات المفعّلة. راجع إعدادات المحركات.", false);
-            return;
+    /**
+     * Collects parallel results briefly, then selects the candidate with the
+     * clearest quality hint in its URL. Unknown-quality candidates remain valid.
+     * Late callbacks are ignored after the winning result is dispatched.
+     */
+    private final class ParallelExtractionRun {
+        private final String pageUrl;
+        private final int generation;
+        private int pending;
+        private String bestUrl;
+        private String bestEngine;
+        private int bestScore = -1;
+        private boolean finishScheduled;
+        private boolean finished;
+        private final android.os.Handler handler =
+                new android.os.Handler(android.os.Looper.getMainLooper());
+        private final Runnable finishRunnable = this::finish;
+
+        ParallelExtractionRun(String pageUrl, int generation, int pending) {
+            this.pageUrl = pageUrl;
+            this.generation = generation;
+            this.pending = pending;
         }
-        updateExtractionNotification("جاري استخراج الفيديو", "التقاط المصدر من مشغّل WebView…", true);
-        captureCurrentPlayingVideoFallback(new ExtractionResult() {
-            @Override public void success(String mediaUrl, String engine) {
-                if (generation != extractionGeneration || isFinishing()) return;
-                extractionSucceeded(mediaUrl, "WebView Capture", generation);
+
+        void candidate(String url, String engine) {
+            runOnUiThread(() -> {
+                if (finished || generation != extractionGeneration || isFinishing()) return;
+                if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(pageUrl)) {
+                    failedOnMain();
+                    return;
+                }
+                int score = mediaQualityHintScore(url);
+                if (bestUrl == null || score > bestScore) {
+                    bestUrl = url;
+                    bestEngine = engine;
+                    bestScore = score;
+                }
+                // Give other in-flight engines a short chance to return a better hinted quality.
+                if (!finishScheduled) {
+                    finishScheduled = true;
+                    handler.postDelayed(finishRunnable, 1100L);
+                }
+                if (pending <= 0) finish();
+            });
+        }
+
+        void failed() {
+            runOnUiThread(this::failedOnMain);
+        }
+
+        private void failedOnMain() {
+            if (finished || generation != extractionGeneration || isFinishing()) return;
+            if (pending > 0) pending--;
+            if (pending == 0) finish();
+        }
+
+        private void finish() {
+            if (finished || generation != extractionGeneration || isFinishing()) return;
+            finished = true;
+            handler.removeCallbacks(finishRunnable);
+            if (bestUrl != null) {
+                extractionSucceeded(bestUrl, bestEngine, generation);
+                return;
             }
-            @Override public void failure(String reason) {
-                if (generation != extractionGeneration || isFinishing()) return;
-                if (castActionButton != null) castActionButton.clearAnimation();
-                updateExtractionNotification("فشل استخراج الفيديو", "فشلت المحركات الأربعة. " +
-                        "قد يحتاج الرابط لتسجيل دخول أو يستخدم بثًا محميًا/غير مباشر.", false);
+            if (castActionButton != null) castActionButton.clearAnimation();
+            updateExtractionNotification("فشل استخراج الفيديو",
+                    "لم يعثر أي محرك مفعّل على رابط فيديو مباشر. قد يحتاج الموقع لتسجيل دخول أو يستخدم بثًا محميًا/غير مباشر.",
+                    false);
+        }
+    }
+
+    private int mediaQualityHintScore(String mediaUrl) {
+        String value = mediaUrl == null ? "" : mediaUrl.toLowerCase(Locale.ROOT);
+        int[] heights = {2160, 1440, 1080, 720, 540, 480, 360, 240};
+        for (int height : heights) {
+            String number = String.valueOf(height);
+            if (value.contains(number + "p") || value.contains("height=" + number)
+                    || value.contains("quality=" + number) || value.contains("res=" + number)) {
+                return height;
             }
-        });
+        }
+        if (value.contains("quality=hd") || value.contains("high")) return 700;
+        if (value.contains("quality=sd") || value.contains("medium")) return 400;
+        return 0;
     }
 
     private void extractionSucceeded(String mediaUrl, String engine, int generation) {
