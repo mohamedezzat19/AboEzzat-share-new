@@ -1,6 +1,8 @@
 package com.aboezzat.share;
 
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 
 import java.io.IOException;
 import java.net.Proxy;
@@ -25,6 +27,7 @@ final class OkHttpPageExtractor {
         void onError(String reason);
     }
 
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .proxy(Proxy.NO_PROXY)
             .followRedirects(true)
@@ -66,7 +69,7 @@ final class OkHttpPageExtractor {
                     .get().build();
             CLIENT.newCall(request).enqueue(new CallbackAdapter(callback));
         } catch (Exception e) {
-            callback.onError("رابط الصفحة غير صالح");
+            MAIN.post(() -> callback.onError("رابط الصفحة غير صالح"));
         }
     }
 
@@ -75,13 +78,13 @@ final class OkHttpPageExtractor {
         CallbackAdapter(Callback callback) { this.callback = callback; }
 
         @Override public void onFailure(Call call, IOException e) {
-            callback.onError("تعذر جلب الصفحة");
+            MAIN.post(() -> callback.onError("تعذر جلب الصفحة"));
         }
 
         @Override public void onResponse(Call call, Response response) {
             try (Response res = response) {
                 if (!res.isSuccessful() || res.body() == null) {
-                    callback.onError("الصفحة غير متاحة بدون تسجيل دخول");
+                    MAIN.post(() -> callback.onError("الصفحة غير متاحة بدون تسجيل دخول"));
                     return;
                 }
                 String html = res.body().string();
@@ -89,10 +92,14 @@ final class OkHttpPageExtractor {
                 if (found == null) found = findVideoOrSource(html);
                 if (found == null) found = findMp4(html);
                 found = clean(found);
-                if (isHttp(found)) callback.onSuccess(found);
-                else callback.onError("لم يظهر رابط وسائط مباشر في HTML");
+                if (isHttp(found)) {
+                    final String result = found;
+                    MAIN.post(() -> callback.onSuccess(result));
+                } else {
+                    MAIN.post(() -> callback.onError("لم يظهر رابط وسائط مباشر في HTML"));
+                }
             } catch (Exception e) {
-                callback.onError("تعذر تحليل HTML");
+                MAIN.post(() -> callback.onError("تعذر تحليل HTML"));
             }
         }
     }
