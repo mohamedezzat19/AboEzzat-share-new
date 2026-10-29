@@ -1000,7 +1000,8 @@ public class MainActivity extends Activity {
     }
 
     private TextView cardAsText(LinearLayout card) {
-        // A card is embedded in a TextView-compatible click surface through its parent.        TextView proxy = text("", 1, WHITE, false);
+        // A card is embedded in a TextView-compatible click surface through its parent.
+        TextView proxy = text("", 1, WHITE, false);
         proxy.setVisibility(View.GONE);
         card.setTag(proxy);
         return proxy;
@@ -1999,7 +2000,8 @@ public class MainActivity extends Activity {
             return host.equals("facebook.com") || host.endsWith(".facebook.com")
                     || host.equals("fb.watch") || host.endsWith(".fb.watch")
                     || host.equals("threads.net") || host.endsWith(".threads.net")
-                    || host.equals("threads.com") || host.endsWith(".threads.com")                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("threads.com") || host.endsWith(".threads.com")
+                    || host.equals("instagram.com") || host.endsWith(".instagram.com")
                     || host.equals("tiktok.com") || host.endsWith(".tiktok.com");
         } catch (Exception ignored) { return false; }
     }
@@ -2995,7 +2997,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private String normalizeReceiverIp(String raw) {        if (raw == null) return null;
+    private String normalizeReceiverIp(String raw) {
+        if (raw == null) return null;
         String ip = raw.trim().replace("http://", "").replace("https://", "");
         int slash = ip.indexOf('/');
         if (slash >= 0) ip = ip.substring(0, slash);
@@ -3994,7 +3997,8 @@ public class MainActivity extends Activity {
             intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"video/*", "audio/*", "image/*"});
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-            startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);        } catch (Exception e) {
+            startActivityForResult(intent, PICK_LOCAL_MEDIA_REQUEST);
+        } catch (Exception e) {
             Toast.makeText(this, "تعذّر فتح مستعرض الملفات", Toast.LENGTH_LONG).show();
         }
     }
