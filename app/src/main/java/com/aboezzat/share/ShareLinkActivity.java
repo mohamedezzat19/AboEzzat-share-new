@@ -60,8 +60,18 @@ public class ShareLinkActivity extends Activity {
         String apiKey = getSharedPreferences("aboezzat_browser", MODE_PRIVATE)
                 .getString("rapid_api_key", "").trim();
         if (apiKey.isEmpty()) {
-            sendResolvedToReceiver(receiverIp, url, wasSelected, false,
-                    "مفيش مفتاح RapidAPI محفوظ؛ تم تجاوز الاستخراج");
+            // First-time setup must happen in Share, where the key prompt is shown.
+            // After the user saves a key, future shares can be resolved in the background.
+            try {
+                Intent setupIntent = new Intent(this, MainActivity.class);
+                setupIntent.setAction(Intent.ACTION_VIEW);
+                setupIntent.setData(Uri.parse(url));
+                setupIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                startActivity(setupIntent);
+                finish();
+            } catch (Exception e) {
+                finishWithMessage("افتح Share مرة واحدة واضبط مفتاح RapidAPI لاستخدام استخراج Black Hole.");
+            }
             return;
         }
         RapidApiExtractor.resolve(apiKey, url, (mediaUrl, mediaType, message) -> {
