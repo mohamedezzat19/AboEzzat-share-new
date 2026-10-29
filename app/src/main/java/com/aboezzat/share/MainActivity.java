@@ -150,7 +150,8 @@ public class MainActivity extends Activity {
             selectedImageUri = slideshowQueue.get(currentSlideIndex);
             showPhoneGallery();
             serveSelectedImageAndCast();
-            slideshowHandler.postDelayed(this, 5000);
+            slideshowHandler.postDelayed(this,
+                    Math.max(1, prefs.getInt("slideshow_interval_seconds", 5)) * 1000L);
         }
     };
     private int currentLocalMediaIndex = 0;
@@ -222,6 +223,16 @@ public class MainActivity extends Activity {
                 return;
             }
         } else if (android.content.Intent.ACTION_SEND.equals(action)) {
+            // A shared image/file attachment takes precedence over any accompanying text URL.
+            Uri attachedStream = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
+            String sharedMime = intent.getType();
+            if (attachedStream != null && sharedMime != null
+                    && (sharedMime.toLowerCase(Locale.ROOT).startsWith("image/")
+                    || sharedMime.toLowerCase(Locale.ROOT).startsWith("video/")
+                    || sharedMime.toLowerCase(Locale.ROOT).startsWith("audio/"))) {
+                acceptSharedMedia(java.util.Collections.singletonList(attachedStream));
+                return;
+            }
             CharSequence sharedText = intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
             String shared = sharedText == null ? null : sharedText.toString();
             if (shared != null && !shared.trim().isEmpty()) {
@@ -1461,20 +1472,28 @@ public class MainActivity extends Activity {
             }
             serveSelectedImageAndCast();
         });
+        TextView slideSettings = button("⚙ إعدادات عرض الصور", PANEL2, WHITE);
+        LinearLayout.LayoutParams settingsLp = lp(-1, 42);
+        settingsLp.topMargin = dp(8);
+        content.addView(slideSettings, settingsLp);
+        slideSettings.setOnClickListener(v -> showSlideshowSettings());
+
         if (slideshowQueue.size() > 1) {
-            TextView slide = button(slideshowRunning ? "إيقاف عرض الشرائح" : "عرض الشرائح تلقائيًا كل 5 ثوانٍ", PANEL2, GOLD);
+            int slideSeconds = Math.max(1, prefs.getInt("slideshow_interval_seconds", 5));
+            TextView slide = button(slideshowRunning ? "إيقاف عرض الشرائح" : "عرض الشرائح تلقائيًا كل " + slideSeconds + " ثوانٍ", PANEL2, GOLD);
             LinearLayout.LayoutParams slp=lp(-1,46); slp.topMargin=dp(8); content.addView(slide,slp);
             slide.setOnClickListener(v -> {
                 if (slideshowRunning) {
                     slideshowRunning = false;
                     slideshowHandler.removeCallbacks(slideshowRunnable);
-                    slide.setText("عرض الشرائح تلقائيًا كل 5 ثوانٍ");
+                    slide.setText("عرض الشرائح تلقائيًا كل " + Math.max(1, prefs.getInt("slideshow_interval_seconds", 5)) + " ثوانٍ");
                 } else {
                     slideshowRunning = true;
                     currentSlideIndex = 0;
                     selectedImageUri = slideshowQueue.get(0);
                     serveSelectedImageAndCast();
-                    slideshowHandler.postDelayed(slideshowRunnable, 5000);
+                    slideshowHandler.postDelayed(slideshowRunnable,
+                            Math.max(1, prefs.getInt("slideshow_interval_seconds", 5)) * 1000L);
                     slide.setText("إيقاف عرض الشرائح");
                 }
             });
@@ -1483,6 +1502,24 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams bp = lp(-1, 44); bp.topMargin = dp(8);
         content.addView(back, bp);
         back.setOnClickListener(v -> showHome());
+    }
+
+    private void showSlideshowSettings() {
+        final String[] labels = {"3 ثوانٍ", "5 ثوانٍ", "10 ثوانٍ", "15 ثانية", "30 ثانية", "60 ثانية"};
+        final int[] values = {3, 5, 10, 15, 30, 60};
+        int selected = 1;
+        int current = Math.max(1, prefs.getInt("slideshow_interval_seconds", 5));
+        for (int i = 0; i < values.length; i++) if (values[i] == current) selected = i;
+        new AlertDialog.Builder(this)
+                .setTitle("مدة عرض كل صورة")
+                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
+                    prefs.edit().putInt("slideshow_interval_seconds", values[which]).apply();
+                    dialog.dismiss();
+                    showPhoneGallery();
+                    Toast.makeText(this, "تم ضبط مدة الصورة على " + labels[which], Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
     }
 
     private void quickLink(LinearLayout parent,String title,String url) {
@@ -4186,7 +4223,11 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "اتأكد إن الموبايل والتلفزيون على نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
                 return;
             }
-            String url = "http://" + phoneIp + ":8082/media?id=" + mediaSessionId;
+            String mediaType = getContentResolver().getType(mediaToPlay);
+            boolean imageMedia = mediaType != null
+                    && mediaType.toLowerCase(Locale.ROOT).startsWith("image/");
+            String url = "http://" + phoneIp + ":8082/media?id=" + mediaSessionId
+                    + (imageMedia ? "&media_type=" + Uri.encode(mediaType) : "");
             CastingManager.send(receiverIp.trim(), url, (success, message) -> runOnUiThread(() -> {
                 receiverConnected = success;
                 refreshConnectionLabel();
