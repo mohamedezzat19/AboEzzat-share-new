@@ -243,12 +243,63 @@ public class MainActivity extends Activity {
     private int authenticatedResolveGeneration = 0;
 
     private void sendPlatformLinkToScreen(String url) {
-        // Keep Share out of the browsing path: send the original URL to Receiver.
-        // Receiver tries direct media resolution and ExoPlayer first. Its embedded
-        // website player is an explicit, optional fallback chosen on the TV.
+        // Share owns remote extraction; Receiver remains a media playback endpoint.
         receiverMonitorHandler.removeCallbacks(autoCastDetectedMediaRunnable);
         pendingAutoCastPageUrl = "";
-        sendPlatformLinkToReceiver(url);
+        if (url == null || !BrowserEngine.isWebUrl(url)) {
+            sendPlatformLinkToReceiver(url);
+            return;
+        }
+        String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+        if (apiKey.isEmpty()) {
+            promptForRapidApiKey(url);
+            return;
+        }
+        extractWithRapidApi(url, apiKey);
+    }
+
+    private void promptForRapidApiKey(String pageUrl) {
+        EditText keyInput = new EditText(this);
+        keyInput.setSingleLine(true);
+        keyInput.setHint("RapidAPI key");
+        keyInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout box = column();
+        box.setPadding(dp(20), dp(10), dp(20), 0);
+        box.addView(text("للاستخراج المباشر، أدخل مفتاح RapidAPI لخدمة Social Download All In One. سيُحفظ المفتاح على هذا الجهاز داخل Share فقط.", 13, MUTED, false));
+        box.addView(keyInput, lp(-1, 52));
+        new AlertDialog.Builder(this)
+                .setTitle("إعداد محرك استخراج Black Hole")
+                .setView(box)
+                .setPositiveButton("حفظ واستخراج", (dialog, which) -> {
+                    String key = keyInput.getText().toString().trim();
+                    if (key.isEmpty()) {
+                        Toast.makeText(this, "أدخل مفتاح RapidAPI أو أرسل الرابط للريسيفر بدون استخراج الخدمة.", Toast.LENGTH_LONG).show();
+                        sendPlatformLinkToReceiver(pageUrl);
+                        return;
+                    }
+                    prefs.edit().putString("rapid_api_key", key).apply();
+                    extractWithRapidApi(pageUrl, key);
+                })
+                .setNeutralButton("إرسال الرابط بدون استخراج", (dialog, which) -> sendPlatformLinkToReceiver(pageUrl))
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private void extractWithRapidApi(String pageUrl, String apiKey) {
+        Toast.makeText(this, "Share بيستخرج رابط الوسائط من خدمة Black Hole…", Toast.LENGTH_LONG).show();
+        RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> runOnUiThread(() -> {
+            if (isFinishing()) return;
+            if (mediaUrl != null && !mediaUrl.isEmpty()
+                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                currentPlayingVideoUrl = mediaUrl;
+                Toast.makeText(this, "تم استخراج " + mediaType + " مباشر؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
+                castUrl(mediaUrl);
+            } else {
+                Toast.makeText(this, message + " هبعت الرابط الأصلي للريسيفر من غير فتح متصفح Share.", Toast.LENGTH_LONG).show();
+                sendPlatformLinkToReceiver(pageUrl);
+            }
+        }));
     }
 
     private void resolveSharedVideoFromBrowser(String pageUrl, int generation, int attempt) {
