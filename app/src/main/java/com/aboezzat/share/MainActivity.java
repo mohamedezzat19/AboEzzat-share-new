@@ -260,13 +260,13 @@ public class MainActivity extends Activity {
             sendPlatformLinkToReceiver(url);
             return;
         }
+        if (!isEngineEnabled("rapidapi")) {
+            sendPlatformLinkToReceiver(url);
+            return;
+        }
         String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
         if (apiKey.isEmpty()) {
             promptForRapidApiKey(url);
-            return;
-        }
-        if (!isEngineEnabled("rapidapi")) {
-            sendPlatformLinkToReceiver(url);
             return;
         }
         extractWithRapidApi(url, apiKey);
