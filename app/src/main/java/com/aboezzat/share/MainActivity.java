@@ -1600,7 +1600,7 @@ public class MainActivity extends Activity {
                         }, 500L);
                     }
                     Toast.makeText(MainActivity.this,
-                            "تعطّل محرك الويب؛ أُعيد إنشاء التبويبات ومحاولة استعادة الصفحات",
+                            "أندرويد أوقف عملية عرض الصفحة؛ أعدنا تجهيز المتصفح ومحاولة استعادة الصفحة",
                             Toast.LENGTH_LONG).show();
                     return true;
                 }
@@ -3752,14 +3752,13 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
-        // Pause JavaScript timers and WebView activity while the app is backgrounded.
-        // This reduces unnecessary work and memory pressure without clearing cookies or page data.
-        try {
-            for (WebView tab : new ArrayList<>(browserTabs)) {
-                try { tab.onPause(); } catch (Exception ignored) { }
-            }
-            if (web != null) web.pauseTimers();
-        } catch (Exception ignored) { }
+        // Pause visual interaction for each tab, but do NOT call WebView.pauseTimers().
+        // pauseTimers() is process-wide for WebViews and can freeze unrelated WebViews
+        // or leave background/return transitions in a bad state. Android may reclaim a
+        // renderer under memory pressure; onRenderProcessGone handles that separately.
+        for (WebView tab : new ArrayList<>(browserTabs)) {
+            try { tab.onPause(); } catch (Exception ignored) { }
+        }
         if ("browser".equals(currentPage) && web != null) {
             try {
                 String url = web.getUrl();
@@ -3773,13 +3772,11 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        try {
-            if (web != null) web.resumeTimers();
-            for (WebView tab : new ArrayList<>(browserTabs)) {
-                try { tab.onResume(); } catch (Exception ignored) { }
-            }
-        } catch (Exception ignored) { }
-        // The process survived backgrounding, so a future cold start should not need recovery.
+        for (WebView tab : new ArrayList<>(browserTabs)) {
+            try { tab.onResume(); } catch (Exception ignored) { }
+        }
+        // Do not reload the current page on every resume: preserve the live session and
+        // avoid restarting media/login flows unless Android actually killed the renderer.
         prefs.edit().putBoolean("browser_was_active", false).apply();
     }
 
