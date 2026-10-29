@@ -97,6 +97,7 @@ public class MainActivity extends Activity {
     private EditText address;
     private WebView web;
     private android.widget.ProgressBar browserProgressBar;
+    private static final LinkedHashMap<String, Bitmap> SITE_ICON_CACHE = new LinkedHashMap<>();
     private final ArrayList<WebView> browserTabs = new ArrayList<>();
     private final ArrayList<String> browserTabTitles = new ArrayList<>();
     private int activeBrowserTab = -1;
@@ -1364,6 +1365,11 @@ public class MainActivity extends Activity {
     }
 
     private Bitmap createFallbackSiteBitmap(String label) {
+        String cacheKey = label == null ? "" : label.toLowerCase(Locale.ROOT);
+        synchronized (SITE_ICON_CACHE) {
+            Bitmap cached = SITE_ICON_CACHE.get(cacheKey);
+            if (cached != null) return cached;
+        }
         int size = dp(96);
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
@@ -1391,6 +1397,10 @@ public class MainActivity extends Activity {
         android.graphics.Rect bounds = new android.graphics.Rect();
         paint.getTextBounds(glyph, 0, glyph.length(), bounds);
         canvas.drawText(glyph, size / 2f, size / 2f - bounds.exactCenterY(), paint);
+        synchronized (SITE_ICON_CACHE) {
+            if (SITE_ICON_CACHE.size() >= 24) SITE_ICON_CACHE.remove(SITE_ICON_CACHE.keySet().iterator().next());
+            SITE_ICON_CACHE.put(cacheKey, bitmap);
+        }
         return bitmap;
     }
 
@@ -1507,6 +1517,7 @@ public class MainActivity extends Activity {
         capture.setTextSize(16);
         capture.setIncludeFontPadding(false);
         capture.setGravity(Gravity.CENTER);
+        capture.setPadding(0,0,0,0);
         capture.setContentDescription("التقاط الفيديو المشغّل حاليًا وإرساله للتلفزيون");
         capture.setBackground(shape(GOLD,GOLD,50));
         LinearLayout.LayoutParams cap=lp(38,38);cap.setMargins(0,0,dp(5),0);addressRow.addView(capture,cap);
@@ -1516,6 +1527,7 @@ public class MainActivity extends Activity {
         voice.setTextSize(18);
         voice.setIncludeFontPadding(false);
         voice.setGravity(Gravity.CENTER);
+        voice.setPadding(0,0,0,0);
         voice.setContentDescription("البحث الصوتي باستخدام الميكروفون");
         LinearLayout.LayoutParams voiceParams=lp(42,42);voiceParams.setMargins(0,0,dp(4),0);
         addressRow.addView(voice,voiceParams);
