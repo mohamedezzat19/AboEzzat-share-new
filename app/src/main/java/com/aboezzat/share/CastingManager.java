@@ -36,10 +36,10 @@ public final class CastingManager {
             return false;
         }
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip, 8081), 900);
+            socket.connect(new InetSocketAddress(ip, getReceiverPort()), 900);
             socket.setSoTimeout(1200);
             OutputStream out = socket.getOutputStream();
-            out.write(("GET /?command=ping HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n")
+            out.write(("GET /?command=ping HTTP/1.1\r\nHost: " + ip + ":" + getReceiverPort() + "\r\nConnection: close\r\n\r\n")
                     .getBytes(StandardCharsets.UTF_8));
             out.flush();
             BufferedReader reader = new BufferedReader(
@@ -73,11 +73,11 @@ public final class CastingManager {
                 return;
             }
             try (Socket socket = new Socket()) {
-                socket.connect(new java.net.InetSocketAddress(ip, 8081), 3500);
+                socket.connect(new java.net.InetSocketAddress(ip, getReceiverPort()), 3500);
                 socket.setSoTimeout(4000);
                 String target = "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
                 OutputStream out = socket.getOutputStream();
-                out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":" + getReceiverPort() + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
@@ -104,13 +104,13 @@ public final class CastingManager {
                 return;
             }
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(ip, 8081), 3500);
+                socket.connect(new InetSocketAddress(ip, getReceiverPort()), 3500);
                 socket.setSoTimeout(4000);
                 String target = "/?video=" + URLEncoder.encode(video, "UTF-8")
                         + "&audio=" + URLEncoder.encode(audio, "UTF-8");
                 OutputStream out = socket.getOutputStream();
                 out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip
-                        + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                        + ":" + getReceiverPort() + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                 out.flush();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                 String status = reader.readLine();
@@ -146,11 +146,11 @@ public final class CastingManager {
                     return;
                 }
                 try (Socket socket = new Socket()) {
-                    socket.connect(new InetSocketAddress(ip, 8081), 2500);
+                    socket.connect(new InetSocketAddress(ip, getReceiverPort()), 2500);
                     socket.setSoTimeout(3000);
                     String target = "/?command=" + URLEncoder.encode(command, "UTF-8");
                     OutputStream out = socket.getOutputStream();
-                    out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":8081\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                    out.write(("GET " + target + " HTTP/1.1\r\nHost: " + ip + ":" + getReceiverPort() + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
                     out.flush();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                     String status = reader.readLine();
