@@ -265,6 +265,10 @@ public class MainActivity extends Activity {
             promptForRapidApiKey(url);
             return;
         }
+        if (!isEngineEnabled("rapidapi")) {
+            sendPlatformLinkToReceiver(url);
+            return;
+        }
         extractWithRapidApi(url, apiKey);
     }
 
@@ -645,6 +649,7 @@ public class MainActivity extends Activity {
             {"📜", "سجل التصفح", "history"},
             {"🔥", "المواقع الأكثر زيارة", "popular"},
             {"📥", "التنزيلات", "downloads"},
+            {"⚙️", "الإعدادات", "settings"},
             {"💾", "نسخة احتياطية واستعادة", "backup"},
             {"🚪", "خروج", "exit"}
         };
@@ -723,7 +728,7 @@ public class MainActivity extends Activity {
         else if ("popular".equals(key)) showPopularSites();
         else if ("downloads".equals(key)) openDownloads();
         else if ("receiver".equals(key)) showReceiverPicker();
-        else if ("settings".equals(key)) openAppPermissionSettings();
+        else if ("settings".equals(key)) showAppSettings();
         else if ("backup".equals(key)) showBackupOptions();
         else if ("exit".equals(key)) finish();
     }
@@ -844,6 +849,66 @@ public class MainActivity extends Activity {
 
     private void showToolsMenu() {
         openSideDrawer();
+    }
+
+    private boolean isEngineEnabled(String key) {
+        return prefs == null || prefs.getBoolean("engine_enabled_" + key, true);
+    }
+
+    private void showAppSettings() {
+        new AlertDialog.Builder(this)
+                .setTitle("إعدادات AboEzzat Share")
+                .setItems(new String[]{"المحركات", "البحث عن التحديثات", "إعدادات أندرويد للتطبيق"},
+                        (dialog, which) -> {
+                            if (which == 0) showExtractorEngines();
+                            else if (which == 1) new AppUpdater(this).checkForUpdate(true);
+                            else openAppPermissionSettings();
+                        })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void showExtractorEngines() {
+        String[] keys = {"fast", "okhttp", "rapidapi", "webview"};
+        String[] labels = {"FastMediaExtractor — المحرك السريع",
+                "OkHttp Page Parser — تحليل الصفحة",
+                "RapidAPI — محرك الاستخراج الخارجي",
+                "WebView Capture — التقاط البث من المتصفح"};
+        LinearLayout panel = column();
+        panel.setPadding(dp(16), dp(8), dp(16), dp(4));
+        for (int i = 0; i < keys.length; i++) {
+            final String key = keys[i];
+            LinearLayout line = row();
+            line.setPadding(0, dp(6), 0, dp(6));
+            TextView label = text(labels[i], 13, WHITE, true);
+            line.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
+            android.widget.Switch toggle = new android.widget.Switch(this);
+            toggle.setText(isEngineEnabled(key) ? "شغال" : "متوقف");
+            toggle.setTextColor(isEngineEnabled(key) ? Color.rgb(92, 230, 154) : MUTED);
+            toggle.setChecked(isEngineEnabled(key));
+            toggle.setOnCheckedChangeListener((buttonView, checked) -> {
+                prefs.edit().putBoolean("engine_enabled_" + key, checked).apply();
+                buttonView.setText(checked ? "شغال" : "متوقف");
+                buttonView.setTextColor(checked ? Color.rgb(92, 230, 154) : MUTED);
+            });
+            line.addView(toggle);
+            panel.addView(line, lp(-1, 54));
+            if (i < keys.length - 1) {
+                View divider = new View(this);
+                divider.setBackgroundColor(PANEL2);
+                panel.addView(divider, lp(-1, 1));
+            }
+        }
+        TextView note = text("الأزرار الخضراء مفعّلة. لو أوقفت محركًا، سيتخطاه التطبيق أثناء الاستخراج.", 11, MUTED, false);
+        panel.addView(note, lp(-1, -2));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(panel);
+        new AlertDialog.Builder(this)
+                .setTitle("محركات استخراج الفيديو")
+                .setView(scroll)
+                .setPositiveButton("تم", null)
+                .setNeutralButton("البحث عن التحديثات", (d, w) -> new AppUpdater(this).checkForUpdate(true))
+                .show();
     }
 
     private void exitVideoFullscreen() {
@@ -1808,7 +1873,12 @@ public class MainActivity extends Activity {
             pulse.setRepeatCount(android.view.animation.Animation.INFINITE);
             castActionButton.startAnimation(pulse);
         }
-        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 1 من 4: المحرك السريع…", true);
+        updateExtractionNotification("جاري استخراج الفيديو", "تجهيز المحركات المفعّلة…", true);
+        if (!isEngineEnabled("fast")) {
+            tryOkHttpEngine(pageUrl, generation);
+            return;
+        }
+        updateExtractionNotification("جاري استخراج الفيديو", "تجربة المحرك السريع…", true);
 
         // Engine 1: platform-aware extraction (OkHttp + social metadata/JSON).
         FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
@@ -1818,24 +1888,36 @@ public class MainActivity extends Activity {
             }
             @Override public void onError(String error) {
                 if (generation != extractionGeneration || isFinishing()) return;
-                updateExtractionNotification("جاري استخراج الفيديو", "تجربة 2 من 4: تحليل الصفحة عبر OkHttp…", true);
-                // Engine 2: independent generic HTTP page parser.
-                OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
-                    @Override public void onSuccess(String mediaUrl) {
-                        if (generation != extractionGeneration || isFinishing()) return;
-                        extractionSucceeded(mediaUrl, "OkHttp Page Parser", generation);
-                    }
-                    @Override public void onError(String reason) {
-                        if (generation != extractionGeneration || isFinishing()) return;
-                        tryRapidApiEngine(pageUrl, generation);
-                    }
-                });
+                tryOkHttpEngine(pageUrl, generation);
+            }
+        });
+    }
+
+    private void tryOkHttpEngine(String pageUrl, int generation) {
+        if (generation != extractionGeneration || isFinishing()) return;
+        if (!isEngineEnabled("okhttp")) {
+            tryRapidApiEngine(pageUrl, generation);
+            return;
+        }
+        updateExtractionNotification("جاري استخراج الفيديو", "تحليل الصفحة عبر OkHttp…", true);
+        OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+            @Override public void onSuccess(String mediaUrl) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                extractionSucceeded(mediaUrl, "OkHttp Page Parser", generation);
+            }
+            @Override public void onError(String reason) {
+                if (generation != extractionGeneration || isFinishing()) return;
+                tryRapidApiEngine(pageUrl, generation);
             }
         });
     }
 
     private void tryRapidApiEngine(String pageUrl, int generation) {
         if (generation != extractionGeneration || isFinishing()) return;
+        if (!isEngineEnabled("rapidapi")) {
+            tryWebViewEngine(generation, "تم إيقاف محرك RapidAPI من الإعدادات");
+            return;
+        }
         updateExtractionNotification("جاري استخراج الفيديو", "تجربة 3 من 4: خدمة RapidAPI…", true);
         String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
         if (apiKey.isEmpty()) {
@@ -1855,7 +1937,12 @@ public class MainActivity extends Activity {
 
     private void tryWebViewEngine(int generation, String previousFailure) {
         if (generation != extractionGeneration || isFinishing()) return;
-        updateExtractionNotification("جاري استخراج الفيديو", "تجربة 4 من 4: التقاط المصدر من مشغّل WebView…", true);
+        if (!isEngineEnabled("webview")) {
+            if (castActionButton != null) castActionButton.clearAnimation();
+            updateExtractionNotification("فشل استخراج الفيديو", "لم ينجح أي محرك من المحركات المفعّلة. راجع إعدادات المحركات.", false);
+            return;
+        }
+        updateExtractionNotification("جاري استخراج الفيديو", "التقاط المصدر من مشغّل WebView…", true);
         captureCurrentPlayingVideoFallback(new ExtractionResult() {
             @Override public void success(String mediaUrl, String engine) {
                 if (generation != extractionGeneration || isFinishing()) return;
@@ -2149,9 +2236,9 @@ public class MainActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams remoteButtonParams() {
-        // Compact, equal-width controls: keep labels inside the button bounds.
+        // No gaps between remote buttons; equal-width controls touch edge-to-edge.
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(36), 1f);
-        p.setMargins(dp(4), dp(1), dp(4), dp(1));
+        p.setMargins(0, 0, 0, 0);
         return p;
     }
 
