@@ -25,6 +25,9 @@ public final class CastingManager {
     public interface Callback { void onResult(boolean success, String message); }
     public interface DiscoveryCallback { void onDevices(List<String> addresses); }
     private static final ExecutorService IO = Executors.newCachedThreadPool();
+    private static volatile int receiverPort = 8081;
+    public static void setReceiverPort(int port) { if (port >= 1024 && port <= 65535) receiverPort = port; }
+    public static int getReceiverPort() { return receiverPort; }
     private CastingManager() {}
 
     // Verify the AboEzzat Receiver HTTP response, not just an open port.
