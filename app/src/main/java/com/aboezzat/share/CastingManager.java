@@ -20,14 +20,21 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 public final class CastingManager {
     public interface Callback { void onResult(boolean success, String message); }
     public interface DiscoveryCallback { void onDevices(List<String> addresses); }
     private static final ExecutorService IO = Executors.newCachedThreadPool();
     private static volatile int receiverPort = 8081;
+    private static final Map<String, Integer> DEVICE_PORTS = new ConcurrentHashMap<>();
     public static void setReceiverPort(int port) { if (port >= 1024 && port <= 65535) receiverPort = port; }
     public static int getReceiverPort() { return receiverPort; }
+    private static int getPortFor(String ip) {
+        Integer port = ip == null ? null : DEVICE_PORTS.get(ip);
+        return port == null ? receiverPort : port;
+    }
     private CastingManager() {}
 
     // Verify the AboEzzat Receiver HTTP response, not just an open port.
@@ -73,7 +80,7 @@ public final class CastingManager {
                 return;
             }
             try (Socket socket = new Socket()) {
-                socket.connect(new java.net.InetSocketAddress(ip, getReceiverPort()), 3500);
+                socket.connect(new java.net.InetSocketAddress(ip, getPortFor(ip)), 3500);
                 socket.setSoTimeout(4000);
                 String target = "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
                 OutputStream out = socket.getOutputStream();
@@ -166,6 +173,7 @@ public final class CastingManager {
     public static void discover(Context context, DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> found = new ArrayList<>();
+            Map<String, Integer> announcedPorts = new ConcurrentHashMap<>();
             // Android Wi-Fi filters multicast unless a MulticastLock is held.
             WifiManager.MulticastLock multicastLock = null;
             try {
@@ -194,8 +202,8 @@ public final class CastingManager {
                             catch (NumberFormatException invalidPort) { continue; }
                             if (announcedPort < 1024 || announcedPort > 65535
                                     || !ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) continue;
-                            // Use the listening port advertised by Receiver, not a fixed 8081.
-                            setReceiverPort(announcedPort);
+                            // Keep each receiver's port with its IP; different devices may use different ports.
+                            announcedPorts.put(ip, announcedPort);
                             synchronized (found) {
                                 if (!found.contains(ip)) found.add(ip);
                             }
@@ -215,7 +223,12 @@ public final class CastingManager {
             List<String> verifiedMulticast = new ArrayList<>();
             synchronized (found) {
                 for (String candidate : found) {
-                    if (isReceiver(candidate)) verifiedMulticast.add(candidate);
+                    int port = announcedPorts.getOrDefault(candidate, getReceiverPort());
+                    if (isReceiver(candidate, port)) {
+                        DEVICE_PORTS.put(candidate, port);
+                        setReceiverPort(port);
+                        verifiedMulticast.add(candidate);
+                    }
                 }
             }
             if (!verifiedMulticast.isEmpty()) {
