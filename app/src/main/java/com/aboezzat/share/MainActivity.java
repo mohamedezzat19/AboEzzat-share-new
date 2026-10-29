@@ -1937,7 +1937,10 @@ public class MainActivity extends Activity {
                 String url = parsed == null ? "" : String.valueOf(parsed);
                 if (!url.isEmpty() && !url.startsWith("blob:") && isVideoCandidate(url)) {
                     currentPlayingVideoUrl = url;
-                    callback.success(url, "WebView");
+                    if (completed.compareAndSet(false, true)) {
+                        timeoutHandler.removeCallbacks(timeout);
+                        callback.success(url, "WebView");
+                    }
                     return;
                 }
                 String candidate = null;
@@ -1952,7 +1955,10 @@ public class MainActivity extends Activity {
                 }
                 if (candidate != null) {
                     currentPlayingVideoUrl = candidate;
-                    callback.success(candidate, "WebView");
+                    if (completed.compareAndSet(false, true)) {
+                        timeoutHandler.removeCallbacks(timeout);
+                        callback.success(candidate, "WebView");
+                    }
                 } else {
                     if (completed.compareAndSet(false, true)) { timeoutHandler.removeCallbacks(timeout); callback.failure("لم يكشف مشغّل الصفحة عن رابط فيديو مباشر."); }
                 }
