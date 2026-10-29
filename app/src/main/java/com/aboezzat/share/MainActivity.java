@@ -170,6 +170,7 @@ public class MainActivity extends Activity {
         buildShell();
         setContentView(shellOverlay);
         showHome();
+        new AppUpdater(this).checkForUpdate(false);
         handleSharedIntent(getIntent());
         // If Android killed the process while the browser was in the background,
         // reopen the last page on a normal launcher restart (not on an incoming share).
