@@ -1917,10 +1917,16 @@ public class MainActivity extends Activity {
     }
 
     private void captureCurrentPlayingVideoFallback(ExtractionResult callback) {
+        final java.util.concurrent.atomic.AtomicBoolean completed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        final android.os.Handler timeoutHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        Runnable timeout = () -> {
+            if (completed.compareAndSet(false, true)) callback.failure("انتهت مهلة التقاط WebView.");
+        };
         if (web == null || !"browser".equals(currentPage)) {
-            callback.failure("المتصفح غير مفتوح.");
+            if (completed.compareAndSet(false, true)) callback.failure("المتصفح غير مفتوح.");
             return;
         }
+        timeoutHandler.postDelayed(timeout, 7000L);
         String js = "(function(){var vs=[].slice.call(document.querySelectorAll('video'));"
                 + "var v=vs.find(function(x){return !x.paused&&!x.ended&&x.readyState>=2;})"
                 + "||vs.find(function(x){return !x.paused&&!x.ended;});"
@@ -1948,10 +1954,10 @@ public class MainActivity extends Activity {
                     currentPlayingVideoUrl = candidate;
                     callback.success(candidate, "WebView");
                 } else {
-                    callback.failure("لم يكشف مشغّل الصفحة عن رابط فيديو مباشر.");
+                    if (completed.compareAndSet(false, true)) { timeoutHandler.removeCallbacks(timeout); callback.failure("لم يكشف مشغّل الصفحة عن رابط فيديو مباشر."); }
                 }
             } catch (Exception e) {
-                callback.failure("تعذر تحليل مصدر الفيديو من WebView.");
+                if (completed.compareAndSet(false, true)) { timeoutHandler.removeCallbacks(timeout); callback.failure("تعذر تحليل مصدر الفيديو من WebView."); }
             }
         });
     }
