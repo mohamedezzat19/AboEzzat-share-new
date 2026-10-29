@@ -2239,7 +2239,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout.LayoutParams remoteButtonParams() {
         // No gaps between remote buttons; equal-width controls touch edge-to-edge.
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(36), 1f);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(32), 1f);
         p.setMargins(0, 0, 0, 0);
         return p;
     }
@@ -2334,12 +2334,12 @@ public class MainActivity extends Activity {
             now.setPadding(dp(4),dp(8),dp(4),dp(8)); content.addView(now,lp(-1,-2));
         }
         LinearLayout remote = column();
-        // Keep the controls physically edge-to-edge: no inner horizontal padding.
-        remote.setPadding(0,dp(4),0,dp(4));
+        // Compact TV remote: zero horizontal padding, zero row spacing, no rounded gaps.
+        remote.setPadding(0,0,0,0);
         remote.setBackground(shape(PANEL2,PANEL,0));
-        TextView remoteTitle = text("ريموت التشغيل",13,WHITE,true);
+        TextView remoteTitle = text("ريموت التشغيل",12,WHITE,true);
         remoteTitle.setPadding(dp(6),0,dp(6),0);
-        remote.addView(remoteTitle,lp(-1,dp(22)));
+        remote.addView(remoteTitle,lp(-1,dp(20)));
         LinearLayout r1 = row();
         TextView rw = button("⏪ 10 ث",PANEL,WHITE);
         TextView play = button("▶ / ⏸",BLUE,WHITE);
@@ -2353,7 +2353,7 @@ public class MainActivity extends Activity {
         r1.addView(rw,remoteButtonParams());
         r1.addView(play,remoteButtonParams());
         r1.addView(ff,remoteButtonParams());
-        remote.addView(r1,lp(-1,dp(38)));
+        remote.addView(r1,lp(-1,dp(32)));
         LinearLayout r2 = row();
         TextView previous = button("⏮ السابق",PANEL,WHITE);
         TextView next = button("التالي ⏭",PANEL,WHITE);
@@ -2363,7 +2363,7 @@ public class MainActivity extends Activity {
         next.setBackground(shape(PANEL, PANEL, 0));
         r2.addView(previous, remoteButtonParams());
         r2.addView(next, remoteButtonParams());
-        remote.addView(r2, lp(-1, dp(38)));
+        remote.addView(r2, lp(-1, dp(32)));
         LinearLayout r3 = row();
         TextView volumeDown = button("− صوت",PANEL,WHITE);
         TextView mute = button("🔇 كتم",PANEL2,GOLD);
@@ -2381,7 +2381,7 @@ public class MainActivity extends Activity {
         r3.addView(mute,remoteButtonParams());
         r3.addView(volumeUp,remoteButtonParams());
         r3.addView(stop,remoteButtonParams());
-        LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(38));
+        LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(32));
         remoteRowParams.topMargin=0;
         remote.addView(r3,remoteRowParams);
         previous.setOnClickListener(v -> sendRemoteCommand("previous"));
