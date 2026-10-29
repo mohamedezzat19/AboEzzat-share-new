@@ -160,6 +160,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        CastingManager.setReceiverPort(prefs.getInt("receiver_port", 8081));
         prepareExtractionNotifications();
         // Keep the user-selected Receiver across launches; never erase a valid selection on startup.
         receiverIp = prefs.getString("receiver_ip", "").trim();
@@ -2595,8 +2596,16 @@ public class MainActivity extends Activity {
             }));
         });
         box.addView(input,lp(-1,52));
+        EditText portInput = new EditText(this);
+        portInput.setSingleLine(true);
+        portInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        portInput.setHint("Port الريسيفر (افتراضي 8081)");
+        portInput.setText(String.valueOf(prefs.getInt("receiver_port", 8081)));
+        box.addView(text("اكتب نفس رقم البورت الظاهر في Receiver. مثال: 8080 أو 8081.",13,MUTED,false));
+        box.addView(portInput, lp(-1, 48));
         new AlertDialog.Builder(this).setTitle("إعداد جهاز الاستقبال").setView(box)
             .setPositiveButton("حفظ", (d,w)->{
+                if (!saveReceiverPort(portInput.getText().toString())) return;
                 String normalized = normalizeReceiverIp(input.getText().toString());
                 if (normalized == null) {
                     Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
@@ -2604,6 +2613,7 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(normalized);
             }).setNeutralButton("اختبار الاتصال",(d,w)->{
+                if (!saveReceiverPort(portInput.getText().toString())) return;
                 String ip = normalizeReceiverIp(input.getText().toString());
                 if (ip == null) {
                     Toast.makeText(this, "اكتب عنوان IPv4 صحيح مثل 192.168.1.20", Toast.LENGTH_LONG).show();
@@ -2611,6 +2621,20 @@ public class MainActivity extends Activity {
                 }
                 testReceiver(ip);
             }).setNegativeButton("إلغاء",null).show();
+    }
+
+    private boolean saveReceiverPort(String raw) {
+        int port;
+        try { port = Integer.parseInt(raw == null ? "" : raw.trim()); }
+        catch (Exception e) { port = -1; }
+        if (port < 1024 || port > 65535) {
+            Toast.makeText(this, "اختَر بورتًا بين 1024 و65535", Toast.LENGTH_LONG).show();
+            return false;
+        }
+        prefs.edit().putInt("receiver_port", port).apply();
+        CastingManager.setReceiverPort(port);
+        refreshConnectionLabel();
+        return true;
     }
 
     private void beginNativeVoiceSearch(EditText target) {
@@ -2888,7 +2912,7 @@ public class MainActivity extends Activity {
         if (receiverIp == null || receiverIp.isEmpty()) {
             connectionLabel.setText("● لا يوجد جهاز محدد — اضغط «جهاز الاستقبال» لاختيار شاشة");
         } else {
-            connectionLabel.setText((receiverConnected ? "● الريسيفر متاح: " : "● الجهاز المختار (إعادة المحاولة على نفس العنوان): ") + receiverIp + ":8081");
+            connectionLabel.setText((receiverConnected ? "● الريسيفر متاح: " : "● الجهاز المختار (إعادة المحاولة على نفس العنوان): ") + receiverIp + ":" + CastingManager.getReceiverPort());
         }
     }
 
@@ -2984,7 +3008,7 @@ public class MainActivity extends Activity {
                     // Preserve the current saved selection; do not replace it on a failed test.
                     refreshConnectionLabel();
                 }
-                Toast.makeText(this,result?"تم التحقق من الريسيفر وحفظ عنوانه للاستخدام لاحقًا":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ 8081. راجع الشبكة أو جرّب العنوان مرة أخرى.",Toast.LENGTH_LONG).show();
+                Toast.makeText(this,result?"تم التحقق من الريسيفر وحفظ عنوانه للاستخدام لاحقًا":"العنوان لا يستجيب كتطبيق AboEzzat Receiver على المنفذ " + CastingManager.getReceiverPort() + ". راجع الشبكة أو جرّب العنوان مرة أخرى.",Toast.LENGTH_LONG).show();
             });
         }).start();
     }
