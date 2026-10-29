@@ -25,7 +25,7 @@ public class ShareLinkActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        mainHandler.postDelayed(timeoutTask, 18000L);
+        mainHandler.postDelayed(timeoutTask, 40000L);
         String url = extractUrl(getIntent());
         if (url == null) {
             finish();
@@ -57,13 +57,34 @@ public class ShareLinkActivity extends Activity {
 
 
     private void sendToReceiver(String receiverIp, String url, boolean wasSelected) {
+        String apiKey = getSharedPreferences("aboezzat_browser", MODE_PRIVATE)
+                .getString("rapid_api_key", "").trim();
+        if (apiKey.isEmpty()) {
+            sendResolvedToReceiver(receiverIp, url, wasSelected, false,
+                    "مفيش مفتاح RapidAPI محفوظ؛ تم تجاوز الاستخراج");
+            return;
+        }
+        RapidApiExtractor.resolve(apiKey, url, (mediaUrl, mediaType, message) -> {
+            if (completed.get()) return;
+            if (mediaUrl != null && !mediaUrl.trim().isEmpty() && !mediaUrl.equals(url)) {
+                sendResolvedToReceiver(receiverIp, mediaUrl, wasSelected, true,
+                        "تم استخراج " + mediaType + " مباشر");
+            } else {
+                sendResolvedToReceiver(receiverIp, url, wasSelected, false, message);
+            }
+        });
+    }
+
+    private void sendResolvedToReceiver(String receiverIp, String url, boolean wasSelected,
+                                        boolean extracted, String extractionMessage) {
         CastingManager.send(receiverIp, url, (success, message) -> {
             if (success) {
-                finishWithMessage("اتبعَت الرابط للشاشة؛ لو المنصة مدعومة هيبدأ التشغيل تلقائيًا.");
+                finishWithMessage((extracted ? extractionMessage + "؛ " : "")
+                        + "اتبعَت الوسائط للشاشة.");
             } else if (wasSelected) {
                 finishWithMessage("الجهاز المختار " + receiverIp + " لم يستجب. احتفظنا بعنوانه؛ افتح إعداد IP في Share لاختبار الاتصال أو اختيار جهاز آخر. " + message);
             } else {
-                finishWithMessage("ماقدرتش أبعت الرابط للشاشة: " + message);
+                finishWithMessage("ماقدرتش أبعت الوسائط للشاشة: " + message);
             }
         });
     }
