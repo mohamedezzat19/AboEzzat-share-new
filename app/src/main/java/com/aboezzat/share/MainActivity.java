@@ -2334,9 +2334,12 @@ public class MainActivity extends Activity {
             now.setPadding(dp(4),dp(8),dp(4),dp(8)); content.addView(now,lp(-1,-2));
         }
         LinearLayout remote = column();
-        remote.setPadding(dp(6),dp(4),dp(6),dp(4));
-        remote.setBackground(shape(PANEL2,PANEL,14));
-        remote.addView(text("ريموت التشغيل",13,WHITE,true),lp(-1,dp(22)));
+        // Keep the controls physically edge-to-edge: no inner horizontal padding.
+        remote.setPadding(0,dp(4),0,dp(4));
+        remote.setBackground(shape(PANEL2,PANEL,0));
+        TextView remoteTitle = text("ريموت التشغيل",13,WHITE,true);
+        remoteTitle.setPadding(dp(6),0,dp(6),0);
+        remote.addView(remoteTitle,lp(-1,dp(22)));
         LinearLayout r1 = row();
         TextView rw = button("⏪ 10 ث",PANEL,WHITE);
         TextView play = button("▶ / ⏸",BLUE,WHITE);
@@ -2344,6 +2347,9 @@ public class MainActivity extends Activity {
         compactRemoteButton(rw);
         compactRemoteButton(play);
         compactRemoteButton(ff);
+        for (TextView remoteButton : new TextView[]{rw, play, ff}) {
+            remoteButton.setBackground(shape(remoteButton == play ? BLUE : PANEL, remoteButton == play ? BLUE : PANEL, 0));
+        }
         r1.addView(rw,remoteButtonParams());
         r1.addView(play,remoteButtonParams());
         r1.addView(ff,remoteButtonParams());
@@ -2353,6 +2359,8 @@ public class MainActivity extends Activity {
         TextView next = button("التالي ⏭",PANEL,WHITE);
         compactRemoteButton(previous);
         compactRemoteButton(next);
+        previous.setBackground(shape(PANEL, PANEL, 0));
+        next.setBackground(shape(PANEL, PANEL, 0));
         r2.addView(previous, remoteButtonParams());
         r2.addView(next, remoteButtonParams());
         remote.addView(r2, lp(-1, dp(38)));
@@ -2365,6 +2373,10 @@ public class MainActivity extends Activity {
         compactRemoteButton(mute);
         compactRemoteButton(volumeUp);
         compactRemoteButton(stop);
+        volumeDown.setBackground(shape(PANEL, PANEL, 0));
+        mute.setBackground(shape(PANEL2, PANEL2, 0));
+        volumeUp.setBackground(shape(PANEL, PANEL, 0));
+        stop.setBackground(shape(PANEL, PANEL, 0));
         r3.addView(volumeDown,remoteButtonParams());
         r3.addView(mute,remoteButtonParams());
         r3.addView(volumeUp,remoteButtonParams());
