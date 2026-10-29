@@ -272,7 +272,11 @@ public final class CastingManager {
                     for (int i = 1; i < 255; i++) {
                         String host = prefix + i;
                         tasks.add(() -> {
-                            if (isReceiver(host)) {
+                            // Prefer this host's announced port when multicast was received
+                            // but the initial verification timed out; otherwise use the saved default.
+                            int port = announcedPorts.getOrDefault(host, getReceiverPort());
+                            if (isReceiver(host, port)) {
+                                DEVICE_PORTS.put(host, port);
                                 synchronized (found) {
                                     if (!found.contains(host)) found.add(host);
                                 }
