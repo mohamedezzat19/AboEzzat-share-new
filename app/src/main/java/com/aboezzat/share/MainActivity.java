@@ -10,6 +10,8 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -34,6 +36,7 @@ import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -1069,64 +1072,62 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams searchBarParams = lp(-1, 58);
         searchBarParams.setMargins(0, dp(6), 0, dp(10));
         page.addView(searchBar, searchBarParams);
-        addSection(page, "وصول سريع للمنصات", "اختار المنصة وافتحها مباشرة");
+        addSection(page, "منصاتك ومواقعك", "اضغط على البطاقة لفتح الموقع، واضغط + لإضافة أي موقع جديد");
+        LinearLayout siteGrid = null;
+        int siteCountInRow = 0;
         String[][] sites = {
-            {"▶", "YouTube", "https://m.youtube.com"},
-            {"f", "Facebook", "https://m.facebook.com"},
-            {"♪", "TikTok", "https://www.tiktok.com"},
-            {"◎", "Instagram", "https://www.instagram.com"},
-            {"𝕏", "X / Twitter", "https://x.com"},
-            {"＠", "Threads", "https://www.threads.net"}
+            {"YouTube", "https://m.youtube.com"},
+            {"Facebook", "https://m.facebook.com"},
+            {"TikTok", "https://www.tiktok.com"},
+            {"Instagram", "https://www.instagram.com"},
+            {"X / Twitter", "https://x.com"},
+            {"Threads", "https://www.threads.net"}
         };
-        for (int i = 0; i < sites.length; i += 3) {
-            LinearLayout r = row();
-            for (int j = i; j < Math.min(i + 3, sites.length); j++) {
-                final String url = sites[j][2];
-                LinearLayout card = column();
-                card.setGravity(Gravity.CENTER);
-                card.setPadding(dp(5), dp(10), dp(5), dp(10));
-                card.setBackground(shape(PANEL, PANEL2, 16));
-                TextView icon = makeSocialIcon(j);
-                LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
-                iconParams.gravity = Gravity.CENTER_HORIZONTAL;
-                card.addView(icon, iconParams);
-                TextView label = text(sites[j][1], 11, WHITE, true);
-                label.setGravity(Gravity.CENTER);
-                LinearLayout.LayoutParams labelParams = lp(-1, 22);
-                labelParams.topMargin = dp(5);
-                card.addView(label, labelParams);
-                card.setOnClickListener(v -> openQuickSite(url));
-                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(82), 1);
-                cp.setMargins(dp(3), dp(4), dp(3), dp(4));
-                r.addView(card, cp);
-            }
-            page.addView(r, lp(-1, -2));
+        for (String[] site : sites) {
+            if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+            addWebsiteCard(siteGrid, site[0], site[1], -1, false);
+            siteCountInRow = (siteCountInRow + 1) % 3;
         }
-
-        LinearLayout.LayoutParams customGap = lp(-1, 12); page.addView(new View(this), customGap);
-        addSection(page, "مواقعك المخصصة", "احفظ أي موقع تستخدمه كثيرًا وافتحه بضغطة واحدة");
-        TextView addCustom = button("＋ إضافة موقع مخصص", PANEL2, GOLD);
-        page.addView(addCustom, lp(-1, 44));
-        addCustom.setOnClickListener(v -> showAddCustomSiteDialog());
         JSONArray customSites = readCustomSites();
         for (int i = 0; i < customSites.length(); i++) {
             JSONObject item = customSites.optJSONObject(i);
             if (item == null) continue;
-            final int siteIndex = i;
-            final String siteUrl = item.optString("url", "");
-            String siteName = item.optString("name", "موقع محفوظ");
-            TextView site = button("↗  " + siteName + "    •    " + siteUrl, PANEL, WHITE);
-            LinearLayout.LayoutParams siteParams = lp(-1, 44);
-            siteParams.topMargin = dp(5);
-            page.addView(site, siteParams);
-            site.setOnClickListener(v -> openQuickSite(siteUrl));
-            site.setOnLongClickListener(v -> {
-                new AlertDialog.Builder(this).setTitle("حذف الموقع المخصص")
-                        .setMessage("هل تريد حذف «" + siteName + "» من المواقع المحفوظة؟")
-                        .setPositiveButton("حذف", (d, which) -> removeCustomSite(siteIndex))
-                        .setNegativeButton("إلغاء", null).show();
-                return true;
-            });
+            String siteUrl = item.optString("url", "").trim();
+            if (!BrowserEngine.isWebUrl(siteUrl)) continue;
+            String siteName = item.optString("name", "").trim();
+            if (siteName.isEmpty()) siteName = siteHostLabel(siteUrl);
+            if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+            addWebsiteCard(siteGrid, siteName, siteUrl, i, true);
+            siteCountInRow = (siteCountInRow + 1) % 3;
+        }
+        if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+        LinearLayout addSiteCard = column();
+        addSiteCard.setGravity(Gravity.CENTER);
+        addSiteCard.setPadding(dp(5), dp(8), dp(5), dp(8));
+        addSiteCard.setBackground(shape(PANEL, GOLD, 16));
+        TextView plus = text("+", 30, GOLD, true);
+        plus.setGravity(Gravity.CENTER);
+        plus.setBackground(shape(PANEL2, GOLD, 12));
+        LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        plusParams.gravity = Gravity.CENTER_HORIZONTAL;
+        addSiteCard.addView(plus, plusParams);
+        TextView addLabel = text("إضافة موقع", 11, WHITE, true);
+        addLabel.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams addLabelParams = lp(-1, 22);
+        addLabelParams.topMargin = dp(4);
+        addSiteCard.addView(addLabel, addLabelParams);
+        addSiteCard.setContentDescription("إضافة موقع جديد إلى بطاقات المنصات");
+        addSiteCard.setOnClickListener(v -> showAddCustomSiteDialog());
+        LinearLayout.LayoutParams addCardParams = new LinearLayout.LayoutParams(0, dp(94), 1);
+        addCardParams.setMargins(dp(3), dp(4), dp(3), dp(4));
+        siteGrid.addView(addSiteCard, addCardParams);
+        if (siteCountInRow != 0) {
+            for (int i = siteCountInRow; i < 3; i++) {
+                View spacer = new View(this);
+                LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, dp(94), 1);
+                spacerParams.setMargins(dp(3), dp(4), dp(3), dp(4));
+                siteGrid.addView(spacer, spacerParams);
+            }
         }
 
         // These tools already live in the sidebar; avoid duplicate home cards.
@@ -1141,29 +1142,22 @@ public class MainActivity extends Activity {
     }
 
     private void showAddCustomSiteDialog() {
-        LinearLayout form = column();
-        form.setPadding(dp(8), dp(4), dp(8), dp(4));
-        EditText name = new EditText(this);
-        name.setSingleLine(true);
-        name.setHint("اسم الموقع");
-        name.setTextColor(WHITE);
-        name.setHintTextColor(MUTED);
-        form.addView(name, lp(-1, 48));
         EditText url = new EditText(this);
         url.setSingleLine(true);
-        url.setHint("رابط الموقع (https://...)");
+        url.setHint("الصق رابط الموقع هنا");
         url.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         url.setTextColor(WHITE);
         url.setHintTextColor(MUTED);
-        form.addView(url, lp(-1, 48));
-        new AlertDialog.Builder(this).setTitle("إضافة موقع مخصص").setView(form)
-                .setPositiveButton("حفظ", (d, which) -> {
-                    String siteName = name.getText().toString().trim();
+        url.setPadding(dp(12), 0, dp(12), 0);
+        new AlertDialog.Builder(this).setTitle("إضافة موقع إلى البطاقات").setMessage("الصق الرابط فقط؛ سيُستخرج اسم الموقع وأيقونته تلقائيًا.")
+                .setView(url)
+                .setPositiveButton("إضافة", (d, which) -> {
                     String siteUrl = BrowserEngine.normalizeAddress(url.getText().toString().trim());
-                    if (siteName.isEmpty() || !BrowserEngine.isWebUrl(siteUrl)) {
-                        Toast.makeText(this, "اكتب اسمًا ورابطًا صحيحًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
+                    if (!BrowserEngine.isWebUrl(siteUrl)) {
+                        Toast.makeText(this, "اكتب رابطًا صحيحًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
                         return;
                     }
+                    String siteName = siteHostLabel(siteUrl);
                     JSONArray oldSites = readCustomSites();
                     JSONArray updated = new JSONArray();
                     for (int i = 0; i < oldSites.length(); i++) {
@@ -1177,8 +1171,115 @@ public class MainActivity extends Activity {
                     catch (org.json.JSONException ignored) { }
                     prefs.edit().putString("custom_sites_json", updated.toString()).apply();
                     showHome();
-                    Toast.makeText(this, "تم حفظ الموقع المخصص", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "اتضاف الموقع مع بطاقات المنصات", Toast.LENGTH_SHORT).show();
                 }).setNegativeButton("إلغاء", null).show();
+    }
+
+    private String siteHostLabel(String siteUrl) {
+        try {
+            String host = Uri.parse(siteUrl).getHost();
+            if (host == null || host.trim().isEmpty()) return "موقع جديد";
+            host = host.toLowerCase(Locale.ROOT);
+            if (host.startsWith("www.")) host = host.substring(4);
+            if (host.startsWith("m.")) host = host.substring(2);
+            String[] parts = host.split("\\.");
+            String base = parts.length > 1 ? parts[parts.length - 2] : parts[0];
+            if (base.isEmpty()) return host;
+            return base.substring(0, 1).toUpperCase(Locale.ROOT) + base.substring(1);
+        } catch (Exception ignored) { return "موقع جديد"; }
+    }
+
+    private void addWebsiteCard(LinearLayout parent, String name, String siteUrl, int customIndex, boolean custom) {
+        LinearLayout card = column();
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(5), dp(8), dp(5), dp(8));
+        card.setBackground(shape(PANEL, PANEL2, 16));
+        ImageView logo = new ImageView(this);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        logo.setPadding(dp(2), dp(2), dp(2), dp(2));
+        logo.setBackground(shape(Color.WHITE, Color.argb(50, 255, 255, 255), 12));
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        logoParams.gravity = Gravity.CENTER_HORIZONTAL;
+        card.addView(logo, logoParams);
+        loadWebsiteFavicon(logo, siteUrl);
+        TextView label = text(name, 11, WHITE, true);
+        label.setGravity(Gravity.CENTER);
+        label.setMaxLines(1);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams labelParams = lp(-1, 22);
+        labelParams.topMargin = dp(4);
+        card.addView(label, labelParams);
+        card.setContentDescription("فتح " + name);
+        card.setOnClickListener(v -> openQuickSite(siteUrl));
+        if (custom) {
+            card.setOnLongClickListener(v -> {
+                new AlertDialog.Builder(this).setTitle("إزالة الموقع")
+                        .setMessage("هل تريد إزالة «" + name + "» من بطاقات المواقع؟")
+                        .setPositiveButton("إزالة", (d, which) -> removeCustomSite(customIndex))
+                        .setNegativeButton("إلغاء", null).show();
+                return true;
+            });
+        }
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(94), 1);
+        cp.setMargins(dp(3), dp(4), dp(3), dp(4));
+        parent.addView(card, cp);
+    }
+
+    private void loadWebsiteFavicon(ImageView target, String siteUrl) {
+        target.setImageDrawable(null);
+        target.setTag(siteUrl);
+        Thread worker = new Thread(() -> {
+            HttpURLConnection connection = null;
+            Bitmap bitmap = null;
+            try {
+                String host = Uri.parse(siteUrl).getHost();
+                if (host == null || host.trim().isEmpty()) return;
+                URL iconUrl = new URL("https://www.google.com/s2/favicons?domain=" +
+                        URLEncoder.encode(host, "UTF-8") + "&sz=128");
+                connection = (HttpURLConnection) iconUrl.openConnection();
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (InputStream input = connection.getInputStream()) {
+                    bitmap = BitmapFactory.decodeStream(input);
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            final Bitmap result = bitmap;
+            runOnUiThread(() -> {
+                if (target.getTag() == null || !siteUrl.equals(target.getTag())) return;
+                if (result != null) target.setImageBitmap(result);
+                else {
+                    TextView fallback = text("◉", 23, BLUE, true);
+                    fallback.setGravity(Gravity.CENTER);
+                    target.setImageDrawable(new android.graphics.drawable.BitmapDrawable(getResources(),
+                            createFallbackSiteBitmap(siteHostLabel(siteUrl))));
+                }
+            });
+        }, "site-favicon-loader");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private Bitmap createFallbackSiteBitmap(String label) {
+        int size = dp(96);
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(BLUE);
+        canvas.drawRoundRect(0, 0, size, size, dp(18), dp(18), paint);
+        paint.setColor(Color.WHITE);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        paint.setTextSize(size * 0.42f);
+        String glyph = label == null || label.isEmpty() ? "W" : label.substring(0, 1).toUpperCase(Locale.ROOT);
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        paint.getTextBounds(glyph, 0, glyph.length(), bounds);
+        canvas.drawText(glyph, size / 2f, size / 2f - bounds.exactCenterY(), paint);
+        return bitmap;
     }
 
     private void removeCustomSite(int removeIndex) {
