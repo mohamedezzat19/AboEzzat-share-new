@@ -1635,6 +1635,7 @@ public class MainActivity extends Activity {
                 }
                 try { CookieManager.getInstance().flush(); } catch (Exception ignored) { }
                 saveHistory(url);
+                saveHistoryTitle(url, view.getTitle());
                 // Restore the legacy browser's lightweight media sniffing and YouTube ad-skip helper.
                 scanPageMediaAndSkipAds(view);
                 if (view == web) refreshCurrentVideoIndicator();
@@ -2991,21 +2992,81 @@ public class MainActivity extends Activity {
         boolean showHistory = focusKey == null || "history".equals(focusKey);
         String title = "bookmarks".equals(focusKey) ? "العلامات المرجعية"
                 : "history".equals(focusKey) ? "سجل التصفح" : "مكتبتك";
-        addSection(content, title, "افتح أي عنصر للرجوع إليه، واضغط مطولًا لحذفه");
 
-        if (showBookmarks) addUrlCollection(content, "☆ المفضلة", "bookmarks", focusKey);
+        // The history actions remain fixed while the list itself scrolls.
+        LinearLayout page = column();
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        scroll.addView(page, new ScrollView.LayoutParams(-1, -2));
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        addSection(page, title, "افتح عنصرًا للرجوع إليه، واضغط مطولًا لحذفه");
+        if (showBookmarks) addUrlCollection(page, "☆ المفضلة", "bookmarks", focusKey);
+        if (showHistory) addUrlCollection(page, "◷ سجل التصفح", "history", focusKey);
+
         if (showHistory) {
-            addUrlCollection(content, "◷ سجل التصفح", "history", focusKey);
-            TextView clear = button("مسح سجل التصفح", PANEL2, MUTED);
-            LinearLayout.LayoutParams p = lp(-1, 44);
-            p.topMargin = dp(12);
+            TextView clear = button("🗑  مسح سجل التصفح بالكامل", PANEL2, WHITE);
+            clear.setContentDescription("مسح سجل التصفح بالكامل");
+            LinearLayout.LayoutParams p = lp(-1, 50);
+            p.topMargin = dp(8);
+            p.bottomMargin = dp(8);
             content.addView(clear, p);
-            clear.setOnClickListener(v -> {
-                prefs.edit().remove("history").apply();
-                showLibrary("history".equals(focusKey) ? "history" : null);
-                Toast.makeText(this, "تم مسح السجل", Toast.LENGTH_SHORT).show();
-            });
+            clear.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("مسح سجل التصفح")
+                    .setMessage("هل تريد حذف سجل التصفح بالكامل؟ لن يتم حذف المفضلة.")
+                    .setNegativeButton("إلغاء", null)
+                    .setPositiveButton("مسح الكل", (d, w) -> {
+                        prefs.edit().remove("history").remove("history_titles").apply();
+                        showLibrary("history".equals(focusKey) ? "history" : null);
+                        Toast.makeText(this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
+                    }).show());
         }
+    }
+
+    private void saveHistoryTitle(String url, String pageTitle) {
+        if (url == null || pageTitle == null || pageTitle.trim().isEmpty()) return;
+        try {
+            org.json.JSONObject titles = new org.json.JSONObject(prefs.getString("history_titles", "{}"));
+            titles.put(url, pageTitle.trim());
+            JSONArray history = new JSONArray(prefs.getString("history", "[]"));
+            org.json.JSONObject bounded = new org.json.JSONObject();
+            for (int i = 0; i < history.length(); i++) {
+                String historyUrl = history.optString(i, "");
+                if (titles.has(historyUrl)) bounded.put(historyUrl, titles.optString(historyUrl));
+            }
+            prefs.edit().putString("history_titles", bounded.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    private String historyDisplayName(String url, String key) {
+        if ("history".equals(key)) {
+            try {
+                org.json.JSONObject titles = new org.json.JSONObject(prefs.getString("history_titles", "{}"));
+                String pageTitle = titles.optString(url, "").trim();
+                if (!pageTitle.isEmpty() && !"null".equalsIgnoreCase(pageTitle)) return pageTitle;
+            } catch (Exception ignored) { }
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost();
+            String path = uri.getPath();
+            if (host == null || host.trim().isEmpty()) return url;
+            String cleanHost = host.toLowerCase(Locale.ROOT);
+            if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
+            if (path == null || path.isEmpty() || "/".equals(path)) return cleanHost;
+            String[] parts = path.split("/");
+            for (int i = parts.length - 1; i >= 0; i--) {
+                String part = parts[i].replace('-', ' ').replace('_', ' ').trim();
+                if (!part.isEmpty() && !part.matches("index\\.(html?|php)")) {
+                    try { part = java.net.URLDecoder.decode(part, "UTF-8"); } catch (Exception ignored) { }
+                    return part + " — " + cleanHost;
+                }
+            }
+            return cleanHost;
+        } catch (Exception ignored) { return url; }
     }
 
     private void addUrlCollection(LinearLayout parent, String title, String key, String focusKey){
@@ -3015,8 +3076,13 @@ public class MainActivity extends Activity {
         if(a.length()==0){parent.addView(text("لا توجد عناصر بعد",12,MUTED,false),lp(-1,30));return;}
         for(int i=0;i<a.length();i++){
             String url=a.optString(i);
-            TextView item=button(url,PANEL,WHITE);item.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);item.setMaxLines(2);item.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams p=lp(-1,44);p.setMargins(0,dp(3),0,dp(3));parent.addView(item,p);
+            String displayName=historyDisplayName(url,key);
+            TextView item=button(displayName,PANEL,WHITE);
+            item.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+            item.setMaxLines(2);
+            item.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            item.setContentDescription(displayName + " — " + url);
+            LinearLayout.LayoutParams p=lp(-1,52);p.setMargins(0,dp(3),0,dp(3));parent.addView(item,p);
             item.setOnClickListener(v->{showBrowser();address.setText(url);loadAddress();});
             item.setOnLongClickListener(v->{new AlertDialog.Builder(this).setMessage("حذف من القائمة؟").setPositiveButton("حذف",(d,w)->{removeSaved(key,url);showLibrary(focusKey);}).setNegativeButton("إلغاء",null).show();return true;});
         }
