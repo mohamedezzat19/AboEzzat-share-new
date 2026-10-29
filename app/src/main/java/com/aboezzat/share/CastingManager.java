@@ -189,12 +189,15 @@ public final class CastingManager {
                         String[] fields = message.split("\\|");
                         if (fields.length == 3 && "ABOEZZAT_RECEIVER".equals(fields[0])) {
                             String ip = fields[1].trim();
-                            if (ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
-                                synchronized (found) {
-                                    if (!found.contains(ip)) found.add(ip);
-                                }
-                                // Keep collecting multicast candidates; report once below so
-                                // the caller cannot accept a later fallback-scan result over this one.
+                            int announcedPort;
+                            try { announcedPort = Integer.parseInt(fields[2].trim()); }
+                            catch (NumberFormatException invalidPort) { continue; }
+                            if (announcedPort < 1024 || announcedPort > 65535
+                                    || !ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) continue;
+                            // Use the listening port advertised by Receiver, not a fixed 8081.
+                            setReceiverPort(announcedPort);
+                            synchronized (found) {
+                                if (!found.contains(ip)) found.add(ip);
                             }
                         }
                     } catch (java.net.SocketTimeoutException timeout) {
@@ -216,6 +219,9 @@ public final class CastingManager {
                 }
             }
             if (!verifiedMulticast.isEmpty()) {
+                context.getApplicationContext()
+                        .getSharedPreferences("aboezzat_browser", Context.MODE_PRIVATE)
+                        .edit().putInt("receiver_port", getReceiverPort()).apply();
                 callback.onDevices(verifiedMulticast);
                 return; // A verified receiver was found; avoid scanning the subnet.
             }
