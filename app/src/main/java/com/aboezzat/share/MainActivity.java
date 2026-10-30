@@ -4148,7 +4148,6 @@ public class MainActivity extends Activity {
                 .setStyle(new Notification.BigTextStyle().bigText(message))
                 .setOngoing(ongoing)
                 .setOnlyAlertOnce(true)
-                .setSilent(true)
                 .setCategory(Notification.CATEGORY_STATUS)
                 .setAutoCancel(!ongoing);
         // Reuse one notification ID for the whole share operation. Progress stays
@@ -4159,7 +4158,7 @@ public class MainActivity extends Activity {
 
     private void trackReceiverExtraction(String ip) {
         extractionTracking = true;
-        updateExtractionNotification("تم إرسال الرابط", "Receiver استلم الطلب؛ في انتظار تأكيد بدء التشغيل…", false);
+        updateExtractionNotification("تم إرسال الرابط", "Receiver استلم الطلب؛ في انتظار تأكيد بدء التشغيل…", true);
         Thread tracker = new Thread(() -> {
             long deadline = System.currentTimeMillis() + 25000L;
             boolean receivedStatus = false;
@@ -4202,7 +4201,7 @@ public class MainActivity extends Activity {
                         }
                         if ("preparing".equals(stage) || "buffering".equals(stage) || "resolved".equals(stage)) {
                             updateExtractionNotification("Receiver استلم الرابط",
-                                    detail.isEmpty() ? "جاري تجهيز الفيديو وبدء تشغيله…" : detail, false);
+                                    detail.isEmpty() ? "جاري تجهيز الفيديو وبدء تشغيله…" : detail, true);
                         }
                     }
                 } catch (Exception ignored) {
