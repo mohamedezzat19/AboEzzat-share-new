@@ -75,15 +75,28 @@ public final class AppUpdater {
             File apk = new File(activity.getExternalFilesDir(null), "aboezzat-update-" + version + ".apk");
             try {
                 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                c.setConnectTimeout(15000); c.setReadTimeout(30000); c.setRequestProperty("User-Agent", "AboEzzat-Android-Updater");
+                c.setConnectTimeout(15000); c.setReadTimeout(30000);
+                c.setInstanceFollowRedirects(true);
+                c.setRequestProperty("User-Agent", "AboEzzat-Android-Updater");
                 if (c.getResponseCode() != HttpURLConnection.HTTP_OK) throw new IllegalStateException("HTTP " + c.getResponseCode());
                 try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
                     byte[] b = new byte[8192]; int n; while ((n = in.read(b)) != -1) out.write(b, 0, n);
                 } finally { c.disconnect(); }
+                PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(
+                        apk.getAbsolutePath(), android.content.pm.PackageManager.GET_META_DATA);
+                if (archive == null || !activity.getPackageName().equals(archive.packageName)) {
+                    throw new IllegalStateException("Downloaded APK is not the Share package");
+                }
+                long downloadedCode = Build.VERSION.SDK_INT >= 28
+                        ? archive.getLongVersionCode() : archive.versionCode;
+                if (downloadedCode <= installedVersionCode() || downloadedCode < version) {
+                    throw new IllegalStateException("Downloaded APK is not a newer expected build");
+                }
                 MAIN.post(() -> install(apk));
             } catch (Exception e) {
                 if (apk.exists()) apk.delete();
-                MAIN.post(() -> Toast.makeText(activity, "فشل تنزيل التحديث. حاول مرة أخرى لاحقًا.", Toast.LENGTH_LONG).show());
+                android.util.Log.e("AboEzzatUpdater", "Update download/validation failed", e);
+                MAIN.post(() -> Toast.makeText(activity, "فشل تنزيل التحديث أو التحقق من ملفه. لم يتم تثبيت شيء.", Toast.LENGTH_LONG).show());
             }
         });
     }
@@ -103,6 +116,7 @@ public final class AppUpdater {
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
             activity.startActivity(i);
         } catch (Exception e) {
+            android.util.Log.e("AboEzzatUpdater", "Could not launch package installer", e);
             Toast.makeText(activity, "تعذر فتح مثبت التحديث.", Toast.LENGTH_LONG).show();
         }
     }
