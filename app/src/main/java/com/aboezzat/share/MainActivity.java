@@ -1961,6 +1961,8 @@ public class MainActivity extends Activity {
         browserSettings.setMediaPlaybackRequiresUserGesture(
                 !browserPrefs.getBoolean("browser_autoplay", true));
         web.setBackgroundColor(BG);
+        // Compatibility bridge for the proven legacy BrowserActivity media-capture hooks.
+        web.addJavascriptInterface(new LegacyMediaCaptureBridge(), "AboEzzatBridge");
         web.setWebChromeClient(new WebChromeClient(){
             @Override public void onShowCustomView(View view, CustomViewCallback callback) {
                 if (fullscreenVideoView != null) { callback.onCustomViewHidden(); return; }
@@ -2099,6 +2101,7 @@ public class MainActivity extends Activity {
                 browserProgressBar.setProgress(progress);
                 browserProgressBar.setVisibility(progress >= 100 ? View.GONE : View.VISIBLE);
                 if(pageTitle!=null) pageTitle.setText(progress<100?"تحميل الصفحة… "+progress+"%":"تم تحميل الصفحة");
+                if (progress >= 85) installLegacyMediaCaptureHooks(view);
             }
         });
         web.setWebViewClient(new WebViewClient(){
@@ -2206,7 +2209,8 @@ public class MainActivity extends Activity {
                 try { CookieManager.getInstance().flush(); } catch (Exception ignored) { }
                 saveHistory(url);
                 saveHistoryTitle(url, view.getTitle());
-                // Restore the legacy browser's lightweight media sniffing and YouTube ad-skip helper.
+                // Reuse the legacy BrowserActivity's play() hook alongside the current page scanner.
+                installLegacyMediaCaptureHooks(view);
                 scanPageMediaAndSkipAds(view);
                 if (view == web) refreshCurrentVideoIndicator();
             }
@@ -2678,6 +2682,56 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Receives metadata and HTMLMediaElement.play() callbacks from the working legacy browser flow. */
+    private final class LegacyMediaCaptureBridge {
+        @android.webkit.JavascriptInterface
+        public void onMetaFound(String title, String posterUrl) {
+            if (title != null && !title.trim().isEmpty()) {
+                lastPageMediaTitle = title.replace("Instagram: ", "").replace("on Instagram", "").trim();
+            }
+            if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) {
+                lastPageMediaPoster = posterUrl;
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
+            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
+            if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
+            if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
+            if (isVideoCandidate(mediaUrl)) detectMedia(mediaUrl);
+        }
+    }
+
+    /** Legacy BrowserActivity capture mechanism: OG metadata + HTMLMediaElement.play() hook. */
+    private void installLegacyMediaCaptureHooks(WebView view) {
+        if (view == null) return;
+        String js = "(function(){try{"
+                + "var title='',poster='';"
+                + "var mt=document.querySelector('meta[property=\\"og:title\\"],meta[name=\\"twitter:title\\"]');"
+                + "if(mt&&mt.content)title=mt.content;"
+                + "var mi=document.querySelector('meta[property=\\"og:image\\"],meta[name=\\"twitter:image\\"]');"
+                + "if(mi&&mi.content)poster=mi.content;"
+                + "if(window.AboEzzatBridge)window.AboEzzatBridge.onMetaFound(title,poster);"
+                + "if(!window.__aboEzzatLegacyPlayHook&&window.HTMLMediaElement){"
+                + "window.__aboEzzatLegacyPlayHook=true;"
+                + "var originalPlay=HTMLMediaElement.prototype.play;"
+                + "HTMLMediaElement.prototype.play=function(){try{"
+                + "var src=this.currentSrc||this.src||'';"
+                + "if(/^https?:/i.test(src)&&!this.classList.contains('ad-interrupting')&&window.AboEzzatBridge)"
+                + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);"
+                + "}catch(e){}return originalPlay.apply(this,arguments);};}"
+                + "var videos=document.querySelectorAll('video');"
+                + "for(var i=0;i<videos.length;i++){var src=videos[i].currentSrc||videos[i].src||'';"
+                + "if(/^https?:/i.test(src)&&window.AboEzzatBridge)"
+                + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);}"
+                + "var ov=document.querySelector('meta[property=\\"og:video\\"],meta[property=\\"og:video:secure_url\\"]');"
+                + "if(ov&&ov.content&&window.AboEzzatBridge)"
+                + "window.AboEzzatBridge.onVideoPlayingWithPoster(ov.content,title||document.title,poster);"
+                + "}catch(e){}})()";
+        try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
+    }
+
     private void scanPageMediaAndSkipAds(WebView view) {
         if (view == null) return;
         String js = "(function(){try{" +
@@ -2737,7 +2791,7 @@ public class MainActivity extends Activity {
         String path=Uri.parse(url).getPath();
         String lower=(path==null?url:path).toLowerCase(Locale.ROOT);
         boolean ok=false;
-        String[] exts={".mp4",".m4v",".webm",".mov",".avi",".mkv",".3gp",".ts",".m3u8",".mpd",".mp3",".m4a",".aac",".ogg",".oga",".opus",".wav",".flac",".mid",".midi",".jpg",".jpeg",".png",".webp",".gif",".bmp",".avif"};
+        String[] exts={".mp4",".m4v",".webm",".mov",".avi",".mkv",".3gp",".flv",".ts",".m3u8",".mpd",".mp3",".m4a",".aac",".ogg",".oga",".opus",".wav",".flac",".mid",".midi",".jpg",".jpeg",".png",".webp",".gif",".bmp",".avif"};
         for(String e:exts){if(lower.endsWith(e)){ok=true;break;}}
         // Some services expose media through extensionless endpoints or signed URLs.
         // Use known media-specific URL markers without treating every generic request as media.
@@ -2756,7 +2810,10 @@ public class MainActivity extends Activity {
                     || lowerUrl.contains("contenttype=video") || lowerUrl.contains("content-type=video")
                     || lowerUrl.contains("video") || lowerUrl.contains("playback")
                     || lowerUrl.contains("bytevc") || lowerUrl.contains("avc1")
-                    || lowerUrl.contains("hevc") || lowerUrl.contains("dash");
+                    || lowerUrl.contains("hevc") || lowerUrl.contains("dash")
+                    || lowerUrl.contains(".flv") || lowerUrl.contains("pull-")
+                    || lowerUrl.contains("/v/t42.") || lowerUrl.contains("/v/t39.")
+                    || lowerUrl.contains("/v/t16.") || lowerUrl.contains("/v/t15.");
             ok = (socialVideoHost && videoMarker)
                     || lowerUrl.contains("mime=audio") || lowerUrl.contains("type=audio");
         }
@@ -3695,7 +3752,7 @@ public class MainActivity extends Activity {
         String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
         if (lowerPath.endsWith(".mp4") || lowerPath.endsWith(".m4v")
                 || lowerPath.endsWith(".webm") || lowerPath.endsWith(".mov")
-                || lowerPath.endsWith(".m3u8") || lowerPath.endsWith(".mpd")) return true;
+                || lowerPath.endsWith(".flv") || lowerPath.endsWith(".m3u8") || lowerPath.endsWith(".mpd")) return true;
         if (lowerPath.endsWith(".mp3") || lowerPath.endsWith(".m4a")
                 || lowerPath.endsWith(".aac") || lowerPath.endsWith(".ogg")
                 || lowerPath.endsWith(".oga") || lowerPath.endsWith(".opus")
@@ -3710,7 +3767,7 @@ public class MainActivity extends Activity {
         if (lower.contains("mime=video") || lower.contains("video_playback")
                 || lower.contains("/videoplayback") || lower.contains("format=mp4")
                 || lower.contains("type=video") || lower.contains("contenttype=video")
-                || lower.contains("content-type=video") || lower.contains("bytevc")
+                || lower.contains("content-type=video") || lower.contains("pull-") || lower.contains(".flv") || lower.contains("bytevc")
                 || lower.contains("avc1") || lower.contains("hevc") || lower.contains("dash")) return true;
         String host = uri.getHost();
         String lowerHost = host == null ? "" : host.toLowerCase(Locale.ROOT);
@@ -3732,7 +3789,9 @@ public class MainActivity extends Activity {
                 || lower.contains("v/t42") || lower.contains("v/t15") || knownVideoPath;
         // Facebook's signed CDN paths commonly use /v/t15, /v/t39 or /v/t42;
         // Instagram/TikTok/X use their own video path/codec markers.
-        return (socialCdn && hasVideoMarker)
+        // The legacy browser accepted Facebook CDN URLs even when the path omitted a codec marker.
+        // Keep that fallback; explicit image/audio checks above still exclude obvious non-video files.
+        return (socialCdn && (hasVideoMarker || lowerHost.contains("fbcdn.net")))
                 || ("video.twimg.com".equals(lowerHost) && knownVideoPath);
     }
 
