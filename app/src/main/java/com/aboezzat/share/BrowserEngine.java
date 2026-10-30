@@ -28,7 +28,9 @@ public final class BrowserEngine {
         s.setBuiltInZoomControls(true);
         s.setDisplayZoomControls(false);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setJavaScriptCanOpenWindowsAutomatically(true);
+        // Keep user-initiated target=_blank windows working, but disallow
+        // JavaScript-created popups that do not follow a user gesture.
+        s.setJavaScriptCanOpenWindowsAutomatically(false);
         s.setSupportMultipleWindows(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
     }
