@@ -287,14 +287,10 @@ public class MainActivity extends Activity {
         startSharedLinkExtraction(url);
     }
 
-    /** The original Share browser capture runs first; optional engines are delayed fallbacks. */
+    /** The background legacy capture owns its timeout and starts optional fallbacks only once. */
     private void startSharedLinkExtraction(String pageUrl) {
         final int generation = ++extractionGeneration;
         openSharedPageForCapture(pageUrl, generation);
-        receiverMonitorHandler.postDelayed(() -> {
-            if (generation != extractionGeneration || isFinishing()) return;
-            if (mediaOrder.isEmpty()) startConfiguredFallbackExtractors(pageUrl, generation);
-        }, 35000L);
     }
 
     /** External shares use all configured Share extractors; RapidAPI remains optional. */
