@@ -1361,6 +1361,10 @@ public class MainActivity extends Activity {
         } else if (host.equals("threads.net") || host.endsWith(".threads.net")
                 || host.equals("threads.com") || host.endsWith(".threads.com")) {
             icon = R.drawable.app_icon_threads;
+        } else if (host.equals("web.whatsapp.com") || host.endsWith(".whatsapp.com") || host.equals("whatsapp.com")) {
+            icon = R.drawable.app_icon_whatsapp;
+        } else if (host.equals("telegram.org") || host.endsWith(".telegram.org") || host.equals("t.me")) {
+            icon = R.drawable.app_icon_telegram;
         }
         if (icon != 0) {
             target.setPadding(dp(3), dp(3), dp(3), dp(3));
