@@ -1360,7 +1360,7 @@ public class MainActivity extends Activity {
             icon = R.drawable.app_icon_x;
         } else if (host.equals("threads.net") || host.endsWith(".threads.net")
                 || host.equals("threads.com") || host.endsWith(".threads.com")) {
-            icon = R.drawable.quick_threads;
+            icon = R.drawable.app_icon_threads;
         }
         if (icon != 0) {
             target.setPadding(dp(3), dp(3), dp(3), dp(3));
