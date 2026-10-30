@@ -52,8 +52,11 @@ final class OkHttpPageExtractor {
     private static final Pattern KEY_ATTR =
             Pattern.compile("(?:property|name)\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]",
                     Pattern.CASE_INSENSITIVE);
-    private static final Pattern MP4 =
-            Pattern.compile("https?://[^\\\"'\\s<>]+?\\.mp4(?:\\?[^\\\"'\\s<>]*)?",
+    private static final Pattern STREAM_URL =
+            Pattern.compile("https?:\\\\?/\\\\?/[^\\\"'\\s<>]+?\\.(?:mp4|m3u8|mpd|webm)(?:\\?[^\\\"'\\s<>]*)?",
+                    Pattern.CASE_INSENSITIVE);
+    private static final Pattern STRUCTURED_MEDIA =
+            Pattern.compile("['\\\"](contentUrl|content_url|videoUrl|video_url|playbackUrl|playback_url|hlsUrl|manifestUrl)['\\\"]\\\\s*:\\\\s*['\\\"]((?:\\\\\\\\.|[^'\\\"])*)['\\\"]",
                     Pattern.CASE_INSENSITIVE);
 
     private OkHttpPageExtractor() {}
@@ -90,6 +93,7 @@ final class OkHttpPageExtractor {
                 String html = res.body().string();
                 String found = findOpenGraph(html);
                 if (found == null) found = findVideoOrSource(html);
+                if (found == null) found = findStructuredMedia(html);
                 if (found == null) found = findMp4(html);
                 found = clean(found);
                 if (isHttp(found)) {
