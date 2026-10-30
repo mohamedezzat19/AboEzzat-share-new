@@ -614,13 +614,15 @@ public class MainActivity extends Activity {
     private void scanSharedCapturePage(WebView view, int generation) {
         if (view == null || view != sharedCaptureWebView || generation != extractionGeneration) return;
         installLegacyMediaCaptureHooks(view);
-        String js = "(function(){try{var vs=document.querySelectorAll('video');"
-                + "for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=true;v.playsInline=true;"
-                + "var p=v.play();if(p&&p.catch)p.catch(function(){});}catch(e){}"
-                + "var u=v.currentSrc||v.src||'';if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
-                + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',v.poster||'');}"
-                + "var m=document.querySelector('meta[property=\\\"og:video\\\"],meta[property=\\\"og:video:secure_url\\\"]');"
-                + "if(m&&m.content&&window.AboEzzatBridge)window.AboEzzatBridge.onVideoPlayingWithPoster(m.content,document.title||'','');"
+        String js = "(function(){try{var vs=document.querySelectorAll('video');var best=null;var bestArea=0;"
+                + "for(var i=0;i<vs.length;i++){var v=vs[i];var r=v.getBoundingClientRect();"
+                + "var visible=r.width>80&&r.height>60&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;"
+                + "var ad=!!v.closest('[class*=\\\"ad-\\\"],[id*=\\\"ad-\\\"],[data-ad-preview]');"
+                + "var active=!v.paused&&!v.ended&&v.currentTime>0&&v.readyState>=2;"
+                + "var area=Math.min(r.width,innerWidth)*Math.min(r.height,innerHeight);"
+                + "if(visible&&!ad&&active&&area>bestArea){best=v;bestArea=area;}}"
+                + "if(best){var u=best.currentSrc||best.src||'';if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
+                + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',best.poster||'');}"
                 + "}catch(e){}})()";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
         receiverMonitorHandler.postDelayed(() -> {
