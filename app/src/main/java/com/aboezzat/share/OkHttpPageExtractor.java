@@ -62,11 +62,20 @@ final class OkHttpPageExtractor {
     private OkHttpPageExtractor() {}
 
     static void extract(String pageUrl, Callback callback) {
+        extract(pageUrl, null, callback);
+    }
+
+    static void extract(String pageUrl, String cookies, Callback callback) {
         if (callback == null) return;
         try {
-            Request request = new Request.Builder()
+            Request.Builder requestBuilder = new Request.Builder()
                     .url(pageUrl)
-                    .header("User-Agent", USER_AGENT)
+                    .header("Referer", pageUrl)
+                    .header("User-Agent", USER_AGENT);
+            if (cookies != null && !cookies.trim().isEmpty()) {
+                requestBuilder.header("Cookie", cookies);
+            }
+            Request request = requestBuilder
                     .header("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
                     .header("Accept-Language", "en-US,en;q=0.8")
                     .get().build();
