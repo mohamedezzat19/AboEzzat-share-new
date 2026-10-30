@@ -1350,7 +1350,7 @@ public class MainActivity extends Activity {
         if (host.equals("youtube.com") || host.endsWith(".youtube.com") || host.equals("youtu.be")) {
             icon = R.drawable.app_icon_youtube;
         } else if (host.equals("facebook.com") || host.endsWith(".facebook.com")) {
-            icon = R.drawable.quick_facebook;
+            icon = R.drawable.app_icon_facebook;
         } else if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) {
             icon = R.drawable.app_icon_tiktok;
         } else if (host.equals("instagram.com") || host.endsWith(".instagram.com")) {
