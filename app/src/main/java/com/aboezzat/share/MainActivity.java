@@ -107,6 +107,8 @@ public class MainActivity extends Activity {
     // Keep readable page metadata beside each detected media URL, following the proven legacy browser flow.
     private final LinkedHashMap<String,String> mediaTitles = new LinkedHashMap<>();
     private final LinkedHashMap<String,String> mediaPosters = new LinkedHashMap<>();
+    private final LinkedHashMap<String, java.util.Map<String,String>> mediaRequestHeaders = new LinkedHashMap<>();
+    private volatile boolean pendingExternalShareCapture = false;
     private volatile String lastPageMediaTitle = "";
     private volatile String lastPageMediaPoster = "";
     private final LinkedHashMap<String, Boolean> selectedTrackUrls = new LinkedHashMap<>();
@@ -295,15 +297,15 @@ public class MainActivity extends Activity {
                 + (useRapid ? 1 : 0) + (usePlatformApi ? 1 : 0);
 
         if (enabled == 0) {
-            updateExtractionNotification("لا توجد محركات استخراج مفعّلة",
-                    "فعّل Social Engine أو أحد المحركات البديلة من إعدادات Share. لم يتم إرسال صفحة الموقع إلى Receiver.", false);
+            openSharedPageForCapture(pageUrl, generation);
             return;
         }
 
         updateExtractionNotification("استخراج رابط المشاركة",
                 "تشغيل " + enabled + " محرك/محركات متاحة بالتوازي…", true);
         final ParallelExtractionRun run =
-                new ParallelExtractionRun(pageUrl, generation, enabled, false);
+                new ParallelExtractionRun(pageUrl, generation, enabled, false, true);
+        run.setTimeout(9000L);
 
         if (useFast) {
             FastMediaExtractor.extractDirectMedia(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new FastMediaExtractor.ExtractorCallback() {
@@ -504,6 +506,26 @@ public class MainActivity extends Activity {
                     || lowerQuery.matches(".*(?:format|fm|type)=(?:jpg|jpeg|png|webp|gif|bmp|avif|heic|heif)(?:&.*)?")
                     || value.toLowerCase(Locale.ROOT).contains("mime=image%2f");
         } catch (Exception ignored) { return false; }
+    }
+
+    /** Opens a shared social page inside Share only after direct extractors fail, then sniffs its real media requests. */
+    private void openSharedPageForCapture(String pageUrl, int generation) {
+        if (generation != extractionGeneration || isFinishing()) return;
+        if (isYouTubeUrl(pageUrl)) {
+            updateExtractionNotification("تعذر استخراج YouTube", "اترك رابط YouTube لمسار SmartTube أو تطبيق YouTube على الشاشة.", false);
+            sendPlatformLinkToReceiver(pageUrl);
+            return;
+        }
+        pendingExternalShareCapture = true;
+        media.clear();
+        mediaOrder.clear();
+        mediaRequestHeaders.clear();
+        updateExtractionNotification("فتح صفحة الفيديو", "لم يظهر رابط مباشر بعد؛ جاري فتح الصفحة داخل متصفح Share والتقاط طلبات الفيديو تلقائيًا…", true);
+        runOnUiThread(() -> {
+            if (generation != extractionGeneration || isFinishing()) return;
+            showBrowser();
+            if (web != null) web.loadUrl(pageUrl);
+        });
     }
 
     private void sendPlatformLinkToReceiver(String url) {
@@ -2163,7 +2185,8 @@ public class MainActivity extends Activity {
                 if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(requestUrl)) {
                     return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
-                detectMedia(requestUrl);
+                java.util.Map<String,String> requestHeaders = request.getRequestHeaders();
+                detectMedia(requestUrl, requestHeaders);
                 return super.shouldInterceptRequest(view,request);
             }
             @Override public void onPageFinished(WebView view,String url){
@@ -2336,6 +2359,7 @@ public class MainActivity extends Activity {
         private boolean finishScheduled;
         private boolean finished;
         private final boolean fallbackToReceiver;
+        private final boolean autoSend;
         private final android.os.Handler handler =
                 new android.os.Handler(android.os.Looper.getMainLooper());
         private final Runnable finishRunnable = this::finish;
@@ -2348,14 +2372,19 @@ public class MainActivity extends Activity {
         }
 
         ParallelExtractionRun(String pageUrl, int generation, int pending) {
-            this(pageUrl, generation, pending, false);
+            this(pageUrl, generation, pending, false, false);
         }
 
         ParallelExtractionRun(String pageUrl, int generation, int pending, boolean fallbackToReceiver) {
+            this(pageUrl, generation, pending, fallbackToReceiver, false);
+        }
+
+        ParallelExtractionRun(String pageUrl, int generation, int pending, boolean fallbackToReceiver, boolean autoSend) {
             this.pageUrl = pageUrl;
             this.generation = generation;
             this.pending = pending;
             this.fallbackToReceiver = fallbackToReceiver;
+            this.autoSend = autoSend;
         }
 
         void candidate(String url, String engine) {
@@ -2404,6 +2433,10 @@ public class MainActivity extends Activity {
             finished = true;
             handler.removeCallbacks(finishRunnable);
             if (!candidateUrls.isEmpty()) {
+                if (autoSend) {
+                    extractionSucceeded(bestUrl, bestEngine, generation, bestHeaders);
+                    return;
+                }
                 final String[] labels = new String[candidateUrls.size()];
                 for (int i = 0; i < candidateUrls.size(); i++) {
                     int quality = mediaQualityHintScore(candidateUrls.get(i));
@@ -2428,6 +2461,10 @@ public class MainActivity extends Activity {
                         .show();
                 updateExtractionNotification("تم العثور على فيديوهات",
                         "تم التقاط " + candidateUrls.size() + " مصدر. اختار الفيديو والجودة لإرسالهما إلى Receiver.", false);
+                return;
+            }
+            if (autoSend) {
+                openSharedPageForCapture(pageUrl, generation);
                 return;
             }
             if (fallbackToReceiver) {
@@ -2692,7 +2729,9 @@ public class MainActivity extends Activity {
         });
     }
 
-    private synchronized void detectMedia(String url){
+    private synchronized void detectMedia(String url){ detectMedia(url, java.util.Collections.emptyMap()); }
+
+    private synchronized void detectMedia(String url, java.util.Map<String,String> requestHeaders){
         if(url==null||url.trim().isEmpty()||url.startsWith("blob:")||url.startsWith("data:"))return;
         // Match the media extension in the URL path, not in unrelated query parameters.
         String path=Uri.parse(url).getPath();
@@ -2722,6 +2761,18 @@ public class MainActivity extends Activity {
                     || lowerUrl.contains("mime=audio") || lowerUrl.contains("type=audio");
         }
         if(!ok||media.containsKey(url))return;
+        if (requestHeaders != null && !requestHeaders.isEmpty()) {
+            java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
+            for (java.util.Map.Entry<String,String> entry : requestHeaders.entrySet()) {
+                String key = entry.getKey() == null ? "" : entry.getKey().toLowerCase(Locale.ROOT);
+                String value = entry.getValue();
+                if (("user-agent".equals(key) || "referer".equals(key) || "origin".equals(key)
+                        || "accept".equals(key) || "accept-language".equals(key))
+                        && value != null && value.length() <= 2048
+                        && !value.contains("\\r") && !value.contains("\\n")) safe.put(key, value);
+            }
+            if (!safe.isEmpty()) mediaRequestHeaders.put(url, safe);
+        }
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
@@ -3711,7 +3762,14 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "ملقيناش مصدر فيديو مباشر مناسب للاختيار التلقائي. اختار مصدرًا من القائمة أو جرّب تشغيل المقطع من الموقع أولًا.", Toast.LENGTH_LONG).show();
             return;
         }
-        castUrl(best);
+        if (pendingExternalShareCapture) {
+            pendingExternalShareCapture = false;
+            int generation = extractionGeneration;
+            java.util.Map<String,String> headers = mediaRequestHeaders.get(best);
+            updateExtractionNotification("تم التقاط بث الفيديو", "تم العثور على طلب وسائط مباشر من صفحة الموقع؛ جاري إرساله إلى Receiver…", true);
+            extractionSucceeded(best, "WebView Network Capture", generation,
+                    headers == null ? java.util.Collections.emptyMap() : headers);
+        } else castUrl(best);
     }
 
     private void castCurrent(){
