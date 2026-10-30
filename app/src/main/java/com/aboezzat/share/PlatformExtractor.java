@@ -11,7 +11,17 @@ import okhttp3.Response;
 
 /** Private AboEzzat Social Engine client. Secrets and cookies are never logged or forwarded to Receiver. */
 final class PlatformExtractor {
-    interface Callback { void onResult(String mediaUrl, String message); }
+    static final class MediaResult {
+        final String url;
+        final String type;
+        final String quality;
+        final java.util.Map<String, String> headers;
+        MediaResult(String url, String type, String quality, java.util.Map<String, String> headers) {
+            this.url = url; this.type = type; this.quality = quality;
+            this.headers = headers == null ? java.util.Collections.emptyMap() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(headers));
+        }
+    }
+    interface Callback { void onResult(MediaResult result, String message); }
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(6, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
@@ -21,7 +31,7 @@ final class PlatformExtractor {
 
     static void resolve(String apiBase, String token, String pageUrl, String cookies, Callback callback) {
         new Thread(() -> {
-            String found = "";
+            MediaResult found = null;
             String message = "لم يُرجع Social Engine رابط بث مباشر.";
             try {
                 String base = apiBase == null ? "" : apiBase.trim();
@@ -60,9 +70,29 @@ final class PlatformExtractor {
                                 if ("mp4".equalsIgnoreCase(type)) score += 3;
                                 else if ("hls".equalsIgnoreCase(type)) score += 2;
                                 else if ("dash".equalsIgnoreCase(type)) score += 1;
-                                if (score > bestScore) { bestScore = score; found = candidate; }
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    java.util.Map<String, String> safeHeaders = new java.util.LinkedHashMap<>();
+                                    JSONObject rawHeaders = format.optJSONObject("headers");
+                                    if (rawHeaders != null) {
+                                        java.util.Iterator<String> headerKeys = rawHeaders.keys();
+                                        while (headerKeys.hasNext() && safeHeaders.size() < 5) {
+                                            String key = headerKeys.next();
+                                            String lower = key.toLowerCase(java.util.Locale.ROOT);
+                                            String value = rawHeaders.optString(key, "");
+                                            if (("user-agent".equals(lower) || "referer".equals(lower)
+                                                    || "origin".equals(lower) || "accept".equals(lower)
+                                                    || "accept-language".equals(lower))
+                                                    && value.length() <= 2048
+                                                    && !value.contains("\r") && !value.contains("\n")) {
+                                                safeHeaders.put(key, value);
+                                            }
+                                        }
+                                    }
+                                    found = new MediaResult(candidate, type, format.optString("quality", ""), safeHeaders);
+                                }
                             }
-                            message = found.isEmpty()
+                            message = found == null
                                     ? result.optString("message", "لا توجد صيغة بث مباشرة قابلة للإرسال.")
                                     : "تم استخراج رابط من Social Engine.";
                         }
