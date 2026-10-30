@@ -333,10 +333,10 @@ public class MainActivity extends Activity {
         }
         if (usePlatformApi) {
             PlatformExtractor.resolve(configuredApi, socialEngineToken, pageUrl,
-                    android.webkit.CookieManager.getInstance().getCookie(pageUrl), (mediaUrl, message) -> {
-                if (mediaUrl != null && !mediaUrl.trim().isEmpty()
-                        && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
-                    run.candidate(mediaUrl, "محرك API الإضافي");
+                    android.webkit.CookieManager.getInstance().getCookie(pageUrl), (result, message) -> {
+                if (result != null && result.url != null && !result.url.trim().isEmpty()
+                        && BrowserEngine.isWebUrl(result.url) && !result.url.equals(pageUrl)) {
+                    run.candidate(result.url, "Social Engine", result.headers);
                 } else {
                     run.failed();
                 }
@@ -467,17 +467,22 @@ public class MainActivity extends Activity {
 
     private void runRemoteExtraction(String pageUrl, int generation, String apiBase) {
         Toast.makeText(this, "المحرك الأول لم يعثر على رابط؛ جاري تجربة محرك الاستخراج الإضافي…", Toast.LENGTH_LONG).show();
-        PlatformExtractor.resolve(apiBase, pageUrl, (mediaUrl, message) -> runOnUiThread(() -> {
+        String token = prefs == null ? "" : prefs.getString("social_engine_token", "").trim();
+        PlatformExtractor.resolve(apiBase, token, pageUrl,
+                android.webkit.CookieManager.getInstance().getCookie(pageUrl), (result, message) -> runOnUiThread(() -> {
             if (generation != authenticatedResolveGeneration || isFinishing()) return;
-            if (mediaUrl != null && !mediaUrl.isEmpty()
-                    && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)
-                    && !mediaUrl.startsWith("blob:") && !mediaUrl.startsWith("data:")) {
-                currentPlayingVideoUrl = mediaUrl;
-                Toast.makeText(this, "تم استخراج رابط من المحرك الإضافي؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
-                castUrl(mediaUrl);
+            if (result != null && result.url != null && !result.url.isEmpty()
+                    && BrowserEngine.isWebUrl(result.url) && !result.url.equals(pageUrl)
+                    && !result.url.startsWith("blob:") && !result.url.startsWith("data:")) {
+                currentPlayingVideoUrl = result.url;
+                Toast.makeText(this, "تم استخراج رابط من Social Engine؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
+                CastingManager.sendWithHeaders(receiverIp, result.url, result.headers, (success, status) -> runOnUiThread(() -> {
+                    if (success) trackReceiverExtraction(receiverIp);
+                    updateExtractionNotification(success ? "تم إرسال الفيديو" : "فشل إرسال الفيديو", status, false);
+                }));
             } else {
-                Toast.makeText(this, message + " جاري تمرير الرابط للريسيفر ليجرب تشغيل صفحة الموقع على الشاشة.", Toast.LENGTH_LONG).show();
-                sendPlatformLinkToReceiver(pageUrl);
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                updateExtractionNotification("فشل استخراج الفيديو", message, false);
             }
         }));
     }
@@ -2306,6 +2311,7 @@ public class MainActivity extends Activity {
         private int pending;
         private String bestUrl;
         private String bestEngine;
+        private java.util.Map<String, String> bestHeaders = java.util.Collections.emptyMap();
         private int bestScore = -1;
         private boolean finishScheduled;
         private boolean finished;
@@ -2326,6 +2332,10 @@ public class MainActivity extends Activity {
         }
 
         void candidate(String url, String engine) {
+            candidate(url, engine, java.util.Collections.emptyMap());
+        }
+
+        void candidate(String url, String engine, java.util.Map<String, String> headers) {
             runOnUiThread(() -> {
                 if (finished || generation != extractionGeneration || isFinishing()) return;
                 if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(pageUrl)) {
@@ -2336,6 +2346,7 @@ public class MainActivity extends Activity {
                 if (bestUrl == null || score > bestScore) {
                     bestUrl = url;
                     bestEngine = engine;
+                    bestHeaders = headers == null ? java.util.Collections.emptyMap() : new java.util.LinkedHashMap<>(headers);
                     bestScore = score;
                 }
                 // Give other in-flight engines a short chance to return a better hinted quality.
@@ -2362,7 +2373,7 @@ public class MainActivity extends Activity {
             finished = true;
             handler.removeCallbacks(finishRunnable);
             if (bestUrl != null) {
-                extractionSucceeded(bestUrl, bestEngine, generation);
+                extractionSucceeded(bestUrl, bestEngine, generation, bestHeaders);
                 return;
             }
             if (fallbackToReceiver) {
@@ -2394,21 +2405,29 @@ public class MainActivity extends Activity {
     }
 
     private void extractionSucceeded(String mediaUrl, String engine, int generation) {
+        extractionSucceeded(mediaUrl, engine, generation, java.util.Collections.emptyMap());
+    }
+
+    private void extractionSucceeded(String mediaUrl, String engine, int generation, java.util.Map<String, String> headers) {
         if (generation != extractionGeneration || mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
         currentPlayingVideoUrl = mediaUrl;
         if (castActionButton != null) castActionButton.clearAnimation();
         updateExtractionNotification("تم استخراج الفيديو", "نجح " + engine + "؛ جاري إرسال الرابط إلى Receiver…", true);
-        castExtractedUrlSilently(mediaUrl, generation);
+        castExtractedUrlSilently(mediaUrl, generation, headers);
     }
 
     private void castExtractedUrlSilently(String mediaUrl, int generation) {
+        castExtractedUrlSilently(mediaUrl, generation, java.util.Collections.emptyMap());
+    }
+
+    private void castExtractedUrlSilently(String mediaUrl, int generation, java.util.Map<String, String> headers) {
         if (receiverIp == null || receiverIp.trim().isEmpty()) {
             updateExtractionNotification("تم استخراج الفيديو", "نجح الاستخراج، لكن حدّد عنوان IP للريسيفر لإرسال الفيديو.", false);
             return;
         }
         final String ip = receiverIp.trim();
         rememberCastUrl(mediaUrl);
-        CastingManager.send(ip, mediaUrl, (success, message) -> runOnUiThread(() -> {
+        CastingManager.sendWithHeaders(ip, mediaUrl, headers, (success, message) -> runOnUiThread(() -> {
             if (generation != extractionGeneration || isFinishing()) return;
             receiverConnected = success;
             refreshConnectionLabel();
