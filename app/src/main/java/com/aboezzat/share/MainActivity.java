@@ -1236,23 +1236,10 @@ public class MainActivity extends Activity {
             addWebsiteCard(siteGrid, siteName, siteUrl, i, !item.optBoolean("builtin", false));
             siteCountInRow = (siteCountInRow + 1) % 3;
         }
-        if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
-            addWebsiteCard(siteGrid, site[0], site[1], -1, false);
-            siteCountInRow = (siteCountInRow + 1) % 3;
+        if (siteCountInRow != 0 || allSites.isEmpty()) {
+            siteGrid = row();
+            page.addView(siteGrid, lp(-1, -2));
         }
-        JSONArray customSites = readCustomSites();
-        for (int i = 0; i < customSites.length(); i++) {
-            JSONObject item = customSites.optJSONObject(i);
-            if (item == null) continue;
-            String siteUrl = item.optString("url", "").trim();
-            if (!BrowserEngine.isWebUrl(siteUrl)) continue;
-            String siteName = item.optString("name", "").trim();
-            if (siteName.isEmpty()) siteName = siteHostLabel(siteUrl);
-            if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
-            addWebsiteCard(siteGrid, siteName, siteUrl, i, true);
-            siteCountInRow = (siteCountInRow + 1) % 3;
-        }
-        if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
         LinearLayout addSiteCard = column();
         addSiteCard.setGravity(Gravity.CENTER);
         addSiteCard.setPadding(dp(5), dp(8), dp(5), dp(8));
