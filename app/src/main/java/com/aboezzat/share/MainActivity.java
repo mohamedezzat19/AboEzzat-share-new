@@ -2488,7 +2488,7 @@ public class MainActivity extends Activity {
             receiverConnected = success;
             refreshConnectionLabel();
             if (success) {
-                String notice = "تم إرسال الفيديو إلى Receiver. افحص الشاشة.";
+                String notice = "Receiver استلم طلب التشغيل؛ جاري التحقق من بدء الفيديو على الشاشة.";
                 updateExtractionNotification("تم إرسال الفيديو", notice, false);
                 Toast.makeText(MainActivity.this, notice, Toast.LENGTH_LONG).show();
                 trackReceiverExtraction(ip);
