@@ -3002,27 +3002,32 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams cardParams = lp(-1, -2);
                 cardParams.bottomMargin = dp(8);
                 list.addView(card, cardParams);
+                LinearLayout itemRow = row();
                 String poster = mediaPosters.get(url);
                 if (poster != null && BrowserEngine.isWebUrl(poster)) {
                     ImageView thumb = new ImageView(this);
                     thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
                     thumb.setBackground(shape(PANEL2, PANEL2, 8));
-                    card.addView(thumb, lp(-1, 112));
+                    itemRow.addView(thumb, new LinearLayout.LayoutParams(dp(88), dp(64)));
                     loadDetectedPoster(poster, thumb);
                 }
+                LinearLayout detailsColumn = column();
+                detailsColumn.setPadding(dp(9), 0, 0, 0);
                 String title = mediaTitles.get(url);
-                if (title == null || title.trim().isEmpty()) title = "وسائط مكتشفة";
+                if (title == null || title.trim().isEmpty()) title = "فيديو مكتشف";
                 TextView titleView = text(title, 14, WHITE, true);
                 titleView.setMaxLines(2);
                 titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                card.addView(titleView, lp(-1, -2));
+                detailsColumn.addView(titleView, lp(-1, -2));
                 String host = Uri.parse(url).getHost();
                 String details = mediaType(url) + " • " + MediaDetector.quality(url) + " • " + (host == null ? "مصدر مباشر" : host);
-                card.addView(text(details, 12, MUTED, false), lp(-1, 26));
+                detailsColumn.addView(text(details, 12, MUTED, false), lp(-1, 24));
                 TextView link = text(url, 10, MUTED, false);
-                link.setMaxLines(2);
+                link.setMaxLines(1);
                 link.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                card.addView(link, lp(-1, 34));
+                detailsColumn.addView(link, lp(-1, 22));
+                itemRow.addView(detailsColumn, new LinearLayout.LayoutParams(0, -2, 1f));
+                card.addView(itemRow, lp(-1, -2));
                 LinearLayout actions = row();
                 TextView send = button("إرسال للشاشة", BLUE, WHITE);
                 TextView download = button("تنزيل", PANEL2, WHITE);
