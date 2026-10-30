@@ -2961,16 +2961,18 @@ public class MainActivity extends Activity {
             mediaPosters.clear();
             selectedTrackUrls.clear();
         }
-        currentPlayingVideoUrl = "";
-        lastPageMediaTitle = "";
-        lastPageMediaPoster = "";
-        if (mediaLabel != null) mediaLabel.setText("المصادر المكتشفة: 0");
-        if (mediaPanel != null) mediaPanel.setVisibility(View.GONE);
-        if (castActionButton != null) {
-            castActionButton.clearAnimation();
-            castActionButton.setText("🎯 0");
-            castActionButton.setContentDescription("لا توجد مصادر ملتقطة حاليًا");
-        }
+        // This callback can arrive from WebView's JavaScript thread. Keep all
+        // view mutations on the main thread and preserve the newly-playing URL.
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (mediaLabel != null) mediaLabel.setText("المصادر المكتشفة: 0");
+            if (mediaPanel != null) mediaPanel.setVisibility(View.GONE);
+            if (castActionButton != null) {
+                castActionButton.clearAnimation();
+                castActionButton.setText("🎯 0");
+                castActionButton.setContentDescription("لا توجد مصادر ملتقطة حاليًا");
+            }
+        });
     }
 
     private synchronized void detectMedia(String url){ detectMedia(url, java.util.Collections.emptyMap()); }
