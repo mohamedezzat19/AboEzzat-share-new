@@ -2916,6 +2916,61 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void showDetectedMediaDialog() {
+        if (mediaOrder.isEmpty()) {
+            Toast.makeText(this, "لسه مفيش روابط اتلقطت. افتح الفيديو وشغّله الأول.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout list = column();
+        list.setPadding(dp(12), dp(12), dp(12), dp(12));
+        synchronized (mediaOrder) {
+            for (String url : new ArrayList<>(mediaOrder)) {
+                LinearLayout card = column();
+                card.setPadding(dp(10), dp(10), dp(10), dp(10));
+                card.setBackground(shape(PANEL, PANEL2, 12));
+                LinearLayout.LayoutParams cardParams = lp(-1, -2);
+                cardParams.bottomMargin = dp(8);
+                list.addView(card, cardParams);
+                String poster = mediaPosters.get(url);
+                if (poster != null && BrowserEngine.isWebUrl(poster)) {
+                    ImageView thumb = new ImageView(this);
+                    thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    thumb.setBackground(shape(PANEL2, PANEL2, 8));
+                    card.addView(thumb, lp(-1, 112));
+                    loadDetectedPoster(poster, thumb);
+                }
+                String title = mediaTitles.get(url);
+                if (title == null || title.trim().isEmpty()) title = "وسائط مكتشفة";
+                TextView titleView = text(title, 14, WHITE, true);
+                titleView.setMaxLines(2);
+                titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                card.addView(titleView, lp(-1, -2));
+                String host = Uri.parse(url).getHost();
+                String details = mediaType(url) + " • " + MediaDetector.quality(url) + " • " + (host == null ? "مصدر مباشر" : host);
+                card.addView(text(details, 12, MUTED, false), lp(-1, 26));
+                TextView link = text(url, 10, MUTED, false);
+                link.setMaxLines(2);
+                link.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                card.addView(link, lp(-1, 34));
+                LinearLayout actions = row();
+                TextView send = button("إرسال للشاشة", BLUE, WHITE);
+                TextView download = button("تنزيل", PANEL2, WHITE);
+                actions.addView(send, new LinearLayout.LayoutParams(0, dp(40), 1));
+                actions.addView(download, new LinearLayout.LayoutParams(0, dp(40), 1));
+                card.addView(actions, lp(-1, 42));
+                send.setOnClickListener(v -> castUrl(url));
+                download.setOnClickListener(v -> downloadUrl(url, null));
+            }
+        }
+        scroll.addView(list);
+        new AlertDialog.Builder(this)
+                .setTitle("الروابط التي التقطها المتصفح (" + mediaOrder.size() + ")")
+                .setView(scroll)
+                .setPositiveButton("إغلاق", null)
+                .show();
+    }
+
     private LinearLayout.LayoutParams remoteButtonParams() {
         // No gaps between remote buttons; equal-width controls touch edge-to-edge.
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(32), 1f);
