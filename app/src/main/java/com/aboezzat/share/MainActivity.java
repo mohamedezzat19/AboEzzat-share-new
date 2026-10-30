@@ -1835,15 +1835,15 @@ public class MainActivity extends Activity {
         address.setImeOptions(EditorInfo.IME_ACTION_GO);
         address.setPadding(dp(12),0,dp(12),0);
         address.setBackground(shape(PANEL2,BLUE,14));
-        TextView capture=button("▶",GOLD,WHITE);
+        TextView capture=button("🎯",Color.rgb(105,35,45),WHITE);
         capture.setTextSize(16);
         capture.setIncludeFontPadding(false);
         capture.setGravity(Gravity.CENTER);
         capture.setPadding(0,0,0,0);
-        capture.setContentDescription("التقاط الفيديو المشغّل حاليًا وإرساله للتلفزيون");
-        capture.setBackground(shape(GOLD,GOLD,50));
+        capture.setContentDescription("عرض روابط الفيديو والصوت التي التقطها المتصفح");
+        capture.setBackground(shape(Color.rgb(105,35,45),Color.rgb(220,45,60),50));
         LinearLayout.LayoutParams cap=lp(38,38);cap.setMargins(0,0,dp(5),0);addressRow.addView(capture,cap);
-        capture.setOnClickListener(v -> captureCurrentPlayingVideo());
+        capture.setOnClickListener(v -> showDetectedMediaDialog());
         addressRow.addView(address,new LinearLayout.LayoutParams(0,dp(48),1));
         TextView voice=button("🎙",PANEL2,GOLD);
         voice.setTextSize(18);
@@ -1890,6 +1890,11 @@ public class MainActivity extends Activity {
         content.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         // Keep browser navigation controls, but move video capture into the compact TV icon beside the URL.
         castActionButton = capture;
+        capture.setText("🎯" + (mediaOrder.isEmpty() ? "" : " " + mediaOrder.size()));
+        if (!mediaOrder.isEmpty()) {
+            capture.setBackground(shape(Color.rgb(190,25,45), Color.rgb(255,70,80), 50));
+            capture.setContentDescription("تم التقاط " + mediaOrder.size() + " رابط وسائط؛ اضغط لعرضها");
+        }
         mediaLabel = null;
         mediaPanel = null;
         LinearLayout.LayoutParams navParams = lp(-1,44);
@@ -2898,9 +2903,15 @@ public class MainActivity extends Activity {
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
             if (castActionButton != null) {
                 castActionButton.clearAnimation();
-                castActionButton.setText("▶");
+                castActionButton.setText("🎯 " + mediaOrder.size());
                 castActionButton.setTextColor(WHITE);
-                castActionButton.setBackground(shape(GOLD, GOLD, 50));
+                castActionButton.setBackground(shape(Color.rgb(190,25,45), Color.rgb(255,70,80), 50));
+                castActionButton.setContentDescription("تم التقاط " + mediaOrder.size() + " رابط وسائط؛ اضغط لعرضها");
+                android.view.animation.AlphaAnimation pulse = new android.view.animation.AlphaAnimation(0.35f, 1.0f);
+                pulse.setDuration(420);
+                pulse.setRepeatMode(android.view.animation.Animation.REVERSE);
+                pulse.setRepeatCount(3);
+                castActionButton.startAnimation(pulse);
             }
         });
     }
