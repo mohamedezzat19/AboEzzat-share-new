@@ -1236,7 +1236,7 @@ public class MainActivity extends Activity {
             addWebsiteCard(siteGrid, siteName, siteUrl, i, !item.optBoolean("builtin", false));
             siteCountInRow = (siteCountInRow + 1) % 3;
         }
-        if (siteCountInRow != 0 || allSites.isEmpty()) {
+        if (siteCountInRow == 0) {
             siteGrid = row();
             page.addView(siteGrid, lp(-1, -2));
         }
