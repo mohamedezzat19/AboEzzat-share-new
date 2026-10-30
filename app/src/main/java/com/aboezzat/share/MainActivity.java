@@ -1908,6 +1908,7 @@ public class MainActivity extends Activity {
                     @Override public boolean shouldOverrideUrlLoading(WebView child, WebResourceRequest request) {
                         Uri uri = request.getUrl();
                         String scheme = uri != null ? uri.getScheme() : null;
+                        if (prefs.getBoolean("browser_adblock", true) && uri != null && isKnownAdRequest(uri.toString())) return true;
                         return scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
                     }
                     @Override public boolean onRenderProcessGone(WebView child, android.webkit.RenderProcessGoneDetail detail) {
@@ -1948,6 +1949,7 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
                 Uri u=request.getUrl();
+                if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(u.toString())) return true;
                 if("http".equals(u.getScheme())||"https".equals(u.getScheme())) return false;
                 return true;
             }
