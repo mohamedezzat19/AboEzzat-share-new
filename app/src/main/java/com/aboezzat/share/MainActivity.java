@@ -522,11 +522,9 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Legacy-compatible background sniffer for shared social links.
-     * It uses an isolated, invisible WebView so ACTION_SEND never opens the large browser UI.
-     * Media URLs are collected by the same request interceptor used by the visible browser.
+     * Primary legacy capture path: use the normal browser WebView, just like old Share.
+     * Its AboEzzatBridge and request interceptor watch the page while the user plays media.
      */
-    @SuppressLint("SetJavaScriptEnabled")
     private void openSharedPageForCapture(String pageUrl, int generation) {
         if (generation != extractionGeneration || isFinishing()) return;
         if (isYouTubeUrl(pageUrl)) {
@@ -534,102 +532,23 @@ public class MainActivity extends Activity {
             sendPlatformLinkToReceiver(pageUrl);
             return;
         }
+        destroySharedCaptureWebView();
         pendingExternalShareCapture = true;
-        media.clear();
-        mediaOrder.clear();
-        mediaRequestHeaders.clear();
-        mediaTitles.clear();
-        mediaPosters.clear();
-        updateExtractionNotification("التقاط الفيديو في الخلفية",
-                "المحركات المباشرة لم تعثر بعد؛ جاري التقاط طلبات الوسائط دون فتح واجهة المتصفح…", true);
+        synchronized (mediaOrder) {
+            media.clear(); mediaOrder.clear(); mediaRequestHeaders.clear();
+            mediaTitles.clear(); mediaPosters.clear();
+        }
+        lastPageMediaTitle = "";
+        lastPageMediaPoster = "";
+        currentPlayingVideoUrl = "";
+        updateExtractionNotification("طريقة AboEzzat Share القديمة", "افتح الصفحة وشغّل الفيديو؛ سيتم التقاط روابط الفيديو والصوت تلقائيًا.", true);
         runOnUiThread(() -> {
-            if (generation != extractionGeneration || isFinishing() || shellOverlay == null) return;
-            destroySharedCaptureWebView();
-            final int captureId = ++sharedCaptureGeneration;
-            WebView capture = new WebView(MainActivity.this);
-            sharedCaptureWebView = capture;
-            WebSettings settings = capture.getSettings();
-            settings.setJavaScriptEnabled(true);
-            settings.setDomStorageEnabled(true);
-            settings.setDatabaseEnabled(true);
-            settings.setMediaPlaybackRequiresUserGesture(false);
-            settings.setLoadsImagesAutomatically(false);
-            settings.setBlockNetworkImage(true);
-            settings.setJavaScriptCanOpenWindowsAutomatically(false);
-            settings.setSupportMultipleWindows(false);
-            settings.setUserAgentString(web != null ? web.getSettings().getUserAgentString()
-                    : "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36");
-            CookieManager cookies = CookieManager.getInstance();
-            cookies.setAcceptCookie(true);
-            cookies.setAcceptThirdPartyCookies(capture, true);
-            capture.addJavascriptInterface(new Object() {
-                @android.webkit.JavascriptInterface
-                public void onMediaFound(String url) {
-                    if (url != null && !url.trim().isEmpty() && captureId == sharedCaptureGeneration) {
-                        detectMedia(url, java.util.Collections.emptyMap());
-                    }
-                }
-            }, "AboEzzatCapture");
-            capture.setWebChromeClient(new WebChromeClient());
-            capture.setWebViewClient(new WebViewClient() {
-                @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                    if (request == null || request.getUrl() == null) return super.shouldInterceptRequest(view, request);
-                    String requestUrl = request.getUrl().toString();
-                    if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(requestUrl)) {
-                        return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
-                    }
-                    detectMedia(requestUrl, request.getRequestHeaders());
-                    return super.shouldInterceptRequest(view, request);
-                }
-                @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                    Uri uri = request == null ? null : request.getUrl();
-                    String scheme = uri == null ? null : uri.getScheme();
-                    return scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
-                }
-                @Override public void onPageFinished(WebView view, String loadedUrl) {
-                    super.onPageFinished(view, loadedUrl);
-                    String js = "(function(){try{var vs=[].slice.call(document.querySelectorAll('video'));"
-                            + "vs.forEach(function(v){try{v.muted=true;var p=v.play();if(p&&p.catch)p.catch(function(){});}"
-                            + "catch(e){}var u=v.currentSrc||v.src||'';if(/^https?:/i.test(u))AboEzzatCapture.onMediaFound(u);});"
-                            + "var rs=performance.getEntriesByType('resource')||[];"
-                            + "for(var i=rs.length-1;i>=0;i--){var u=rs[i].name||'';"
-                            + "if(/\\.(mp4|m4v|webm|mov|flv|m3u8|mpd)([?#]|$)/i.test(u)"
-                            + "||/videoplayback|video_playback|mime=video|type=video|pull-|bytevc/i.test(u))"
-                            + "AboEzzatCapture.onMediaFound(u);}}catch(e){}})();";
-                    view.evaluateJavascript(js, null);
-                }
-            });
-            FrameLayout.LayoutParams hiddenParams = new FrameLayout.LayoutParams(dp(2), dp(2), Gravity.BOTTOM | Gravity.END);
-            capture.setAlpha(0.01f);
-            capture.setClickable(false);
-            capture.setFocusable(false);
-            shellOverlay.addView(capture, hiddenParams);
-            sharedCaptureFinishRunnable = () -> {
-                if (captureId != sharedCaptureGeneration || generation != extractionGeneration || isFinishing()) return;
-                String best = null;
-                int bestScore = -1;
-                synchronized (mediaOrder) {
-                    for (int i = mediaOrder.size() - 1; i >= 0; i--) {
-                        String candidate = mediaOrder.get(i);
-                        if (!isVideoCandidate(candidate) || candidate.equals(pageUrl)
-                                || candidate.startsWith("blob:") || candidate.startsWith("data:")) continue;
-                        int score = mediaQualityHintScore(candidate);
-                        if (score > bestScore) { best = candidate; bestScore = score; }
-                    }
-                }
-                destroySharedCaptureWebView();
-                pendingExternalShareCapture = false;
-                if (best != null) {
-                    currentPlayingVideoUrl = best;
-                    updateExtractionNotification("تم التقاط الفيديو", "تم العثور على رابط مباشر من طلبات الموقع؛ جاري إرساله إلى Receiver…", true);
-                    castUrl(best);
-                } else {
-                    updateExtractionNotification("تعذر التقاط رابط مباشر",
-                            "لم تُظهر الصفحة رابط فيديو قابلًا للتشغيل. قد يتطلب الموقع تسجيل الدخول أو يستخدم بثًا محميًا.", false);
-                }
-            };
-            receiverMonitorHandler.postDelayed(sharedCaptureFinishRunnable, 18000L);
-            capture.loadUrl(pageUrl);
+            if (generation != extractionGeneration || isFinishing()) return;
+            showBrowser();
+            if (web == null) createWebView();
+            if (address != null) address.setText(pageUrl);
+            web.loadUrl(pageUrl);
+            Toast.makeText(this, "طريقة الالتقاط القديمة: شغّل الفيديو ثم اضغط زر الالتقاط الأحمر لعرض الروابط", Toast.LENGTH_LONG).show();
         });
     }
 
