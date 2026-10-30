@@ -277,16 +277,69 @@ public class MainActivity extends Activity {
             sendPlatformLinkToReceiver(url);
             return;
         }
-        if (!isEngineEnabled("rapidapi")) {
-            sendPlatformLinkToReceiver(url);
+        startSharedLinkExtraction(url);
+    }
+
+    /** External shares use all configured Share extractors; RapidAPI remains optional. */
+    private void startSharedLinkExtraction(String pageUrl) {
+        final int generation = ++extractionGeneration;
+        final boolean useFast = isEngineEnabled("fast");
+        final boolean useOkHttp = isEngineEnabled("okhttp");
+        final String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+        final boolean useRapid = isEngineEnabled("rapidapi") && !apiKey.isEmpty();
+        final String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
+        final boolean usePlatformApi = !configuredApi.isEmpty();
+        final int enabled = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
+                + (useRapid ? 1 : 0) + (usePlatformApi ? 1 : 0);
+
+        if (enabled == 0) {
+            updateExtractionNotification("تجربة محركات Receiver",
+                    "لا يوجد محرك Share جاهز لهذا الرابط؛ جاري تمريره إلى Receiver.", true);
+            sendPlatformLinkToReceiver(pageUrl);
             return;
         }
-        String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
-        if (apiKey.isEmpty()) {
-            promptForRapidApiKey(url);
-            return;
+
+        updateExtractionNotification("استخراج رابط المشاركة",
+                "تشغيل " + enabled + " محرك/محركات متاحة بالتوازي…", true);
+        final ParallelExtractionRun run =
+                new ParallelExtractionRun(pageUrl, generation, enabled, true);
+
+        if (useFast) {
+            FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+                @Override public void onSuccess(String mediaUrl, String platform) {
+                    run.candidate(mediaUrl, "FastMediaExtractor / " + platform);
+                }
+                @Override public void onError(String error) { run.failed(); }
+            });
         }
-        extractWithRapidApi(url, apiKey);
+        if (useOkHttp) {
+            OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+                @Override public void onSuccess(String mediaUrl) {
+                    run.candidate(mediaUrl, "OkHttp Page Parser");
+                }
+                @Override public void onError(String reason) { run.failed(); }
+            });
+        }
+        if (useRapid) {
+            RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> {
+                if (mediaUrl != null && !mediaUrl.trim().isEmpty()
+                        && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                    run.candidate(mediaUrl, "RapidAPI");
+                } else {
+                    run.failed();
+                }
+            });
+        }
+        if (usePlatformApi) {
+            PlatformExtractor.resolve(configuredApi, pageUrl, (mediaUrl, message) -> {
+                if (mediaUrl != null && !mediaUrl.trim().isEmpty()
+                        && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                    run.candidate(mediaUrl, "محرك API الإضافي");
+                } else {
+                    run.failed();
+                }
+            });
+        }
     }
 
     private void promptForRapidApiKey(String pageUrl) {
@@ -2204,14 +2257,20 @@ public class MainActivity extends Activity {
         private int bestScore = -1;
         private boolean finishScheduled;
         private boolean finished;
+        private final boolean fallbackToReceiver;
         private final android.os.Handler handler =
                 new android.os.Handler(android.os.Looper.getMainLooper());
         private final Runnable finishRunnable = this::finish;
 
         ParallelExtractionRun(String pageUrl, int generation, int pending) {
+            this(pageUrl, generation, pending, false);
+        }
+
+        ParallelExtractionRun(String pageUrl, int generation, int pending, boolean fallbackToReceiver) {
             this.pageUrl = pageUrl;
             this.generation = generation;
             this.pending = pending;
+            this.fallbackToReceiver = fallbackToReceiver;
         }
 
         void candidate(String url, String engine) {
@@ -2252,6 +2311,12 @@ public class MainActivity extends Activity {
             handler.removeCallbacks(finishRunnable);
             if (bestUrl != null) {
                 extractionSucceeded(bestUrl, bestEngine, generation);
+                return;
+            }
+            if (fallbackToReceiver) {
+                updateExtractionNotification("تجربة محركات Receiver",
+                        "لم يعثر Share على رابط مباشر؛ جاري تجربة محركات الاستخراج على شاشة Receiver.", true);
+                sendPlatformLinkToReceiver(pageUrl);
                 return;
             }
             if (castActionButton != null) castActionButton.clearAnimation();
@@ -3677,7 +3742,10 @@ public class MainActivity extends Activity {
             while (extractionTracking && System.currentTimeMillis() < deadline) {
                 HttpURLConnection connection = null;
                 try {
-                    URL statusUrl = new URL("http://" + ip + ":8081/?command=status");
+                    int statusPort = prefs == null
+                            ? CastingManager.getReceiverPort()
+                            : prefs.getInt("receiver_port", CastingManager.getReceiverPort());
+                    URL statusUrl = new URL("http://" + ip + ":" + statusPort + "/?command=status");
                     connection = (HttpURLConnection) statusUrl.openConnection();
                     connection.setConnectTimeout(1800);
                     connection.setReadTimeout(1800);
@@ -3705,14 +3773,18 @@ public class MainActivity extends Activity {
                             return;
                         } else if ("resolved".equals(stage)) {
                             sawStatus = true;
-                            updateExtractionNotification("تم استخراج الفيديو", "الريسيفر استخرج رابط الوسائط وبدأ محاولة التشغيل.", false);
+                            updateExtractionNotification("تم العثور على رابط فيديو",
+                                    "Receiver استخرج رابطًا مباشرًا؛ جاري تسليمه إلى المشغّل.", true);
+                        } else if ("stream_captured".equals(stage)) {
+                            sawStatus = true;
+                            updateExtractionNotification("تم التقاط بث الفيديو",
+                                    "Receiver التقط مصدر الفيديو من صفحة الموقع؛ جاري محاولة تشغيله.", false);
                             extractionTracking = false;
                             return;
                         } else if ("web_fallback".equals(stage)) {
                             sawStatus = true;
-                            updateExtractionNotification("تجربة مشغّل الويب", "لم ينجح استخراج رابط مباشر؛ الريسيفر يجرب صفحة الفيديو داخل مشغّل الويب.", false);
-                            extractionTracking = false;
-                            return;
+                            updateExtractionNotification("تجربة مشغّل الويب",
+                                    "لم يظهر رابط مباشر بعد؛ Receiver يراقب طلبات الفيديو داخل الصفحة.", true);
                         }
                     }
                 } catch (Exception ignored) {
