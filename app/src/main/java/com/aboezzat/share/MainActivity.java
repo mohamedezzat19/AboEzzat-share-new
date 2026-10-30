@@ -2394,7 +2394,13 @@ public class MainActivity extends Activity {
                     "adcolony.com", "criteo.com", "adnxs.com", "outbrain.com",
                     "taboola.com", "popads.net", "popcash.net", "propellerads.com",
                     "exoclick.com", "smartadserver.com", "scorecardresearch.com",
-                    "zedo.com", "adroll.com", "pubmatic.com", "rubiconproject.com"
+                    "zedo.com", "adroll.com", "pubmatic.com", "rubiconproject.com",
+                    "adsrvr.org", "advertising.com", "adform.net", "amazon-adsystem.com",
+                    "bidswitch.net", "casalemedia.com", "contextweb.com", "demdex.net",
+                    "everesttech.net", "flashtalking.com", "lijit.com", "media.net",
+                    "moatads.com", "openx.net", "quantserve.com", "rlcdn.com",
+                    "sharethrough.com", "simpli.fi", "teads.tv", "thetradedesk.com",
+                    "triplelift.com", "undertone.com", "yieldmo.com", "33across.com"
             };
             for (String domain : adDomains) {
                 if (host.equals(domain) || host.endsWith("." + domain)) return true;
