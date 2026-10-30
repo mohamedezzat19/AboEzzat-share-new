@@ -146,6 +146,21 @@ final class OkHttpPageExtractor {
         return m.find() ? clean(m.group(1)) : null;
     }
 
+    private static String findStructuredMedia(String html) {
+        Matcher m = STRUCTURED_MEDIA.matcher(html);
+        while (m.find()) {
+            String value = clean(m.group(2));
+            if (isHttp(value) && isStreamLike(value)) return value;
+        }
+        return null;
+    }
+
+    private static boolean isStreamLike(String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.contains(".mp4") || lower.contains(".m3u8")
+                || lower.contains(".mpd") || lower.contains(".webm");
+    }
+
     private static String findMp4(String html) {
         Matcher m = MP4.matcher(html.replace("\\/", "/"));
         return m.find() ? clean(m.group()) : null;
