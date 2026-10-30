@@ -1215,9 +1215,11 @@ public class MainActivity extends Activity {
             if (item == null) continue;
             String siteUrl = item.optString("url", "").trim();
             if (!BrowserEngine.isWebUrl(siteUrl)) continue;
-            JSONObject copy = new JSONObject(item.toString());
-            try { copy.put("builtin", false); allSites.add(copy); }
-            catch (org.json.JSONException ignored) { }
+            try {
+                JSONObject copy = new JSONObject(item.toString());
+                copy.put("builtin", false);
+                allSites.add(copy);
+            } catch (org.json.JSONException ignored) { }
         }
         JSONArray savedOrder;
         try { savedOrder = new JSONArray(prefs.getString("site_order_json", "[]")); }
