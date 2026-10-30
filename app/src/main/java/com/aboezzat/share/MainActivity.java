@@ -3840,35 +3840,26 @@ public class MainActivity extends Activity {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, EXTRACTION_CHANNEL)
                 : new Notification.Builder(this);
-        int progress = 0;
-        String lowerMessage = message == null ? "" : message.toLowerCase(Locale.ROOT);
-        if (title != null && (title.contains("تم") || title.contains("فشل"))) progress = 100;
-        else if (lowerMessage.contains("تجهيز") || lowerMessage.contains("المحركات")) progress = 8;
-        else if (lowerMessage.contains("السريع") || lowerMessage.contains("fast")) progress = 22;
-        else if (lowerMessage.contains("okhttp")) progress = 45;
-        else if (lowerMessage.contains("rapidapi") || lowerMessage.contains("3 من 4")) progress = 68;
-        else if (lowerMessage.contains("1 من 3")) progress = 58;
-        else if (lowerMessage.contains("2 من 3")) progress = 76;
-        else if (lowerMessage.contains("3 من 3")) progress = 90;
-        else if (lowerMessage.contains("webview") || lowerMessage.contains("مشغّل")) progress = 86;
-        else if (lowerMessage.contains("إرسال") || lowerMessage.contains("receiver")) progress = 94;
-        builder.setSmallIcon(android.R.drawable.stat_sys_download)
+        // This is a status notification, not a download: no transfer arrow,
+        // no fake percentage bar, and never leave it permanently ongoing.
+        builder.setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle(title == null ? "AboEzzat Share" : title)
                 .setContentText(message)
                 .setStyle(new Notification.BigTextStyle().bigText(message))
-                .setOngoing(ongoing)
+                .setOngoing(false)
                 .setOnlyAlertOnce(true)
-                .setCategory(Notification.CATEGORY_PROGRESS)
-                .setProgress(100, progress, false);
+                .setCategory(Notification.CATEGORY_STATUS)
+                .setAutoCancel(false);
         manager.notify(EXTRACTION_NOTIFICATION_ID, builder.build());
     }
 
     private void trackReceiverExtraction(String ip) {
         extractionTracking = true;
-        updateExtractionNotification("متابعة تشغيل الفيديو", "تم إرسال الرابط؛ جاري متابعة حالة التشغيل على Receiver…", true);
+        updateExtractionNotification("تم إرسال الرابط", "Receiver استلم الطلب؛ في انتظار تأكيد بدء التشغيل…", false);
         Thread tracker = new Thread(() -> {
-            long deadline = System.currentTimeMillis() + 90000L;
-            boolean sawStatus = false;
+            long deadline = System.currentTimeMillis() + 25000L;
+            boolean receivedStatus = false;
+            String lastState = "waiting";
             while (extractionTracking && System.currentTimeMillis() < deadline) {
                 HttpURLConnection connection = null;
                 try {
@@ -3888,50 +3879,45 @@ public class MainActivity extends Activity {
                             while ((line = reader.readLine()) != null && body.length() < 8192) body.append(line);
                         }
                         JSONObject status = new JSONObject(body.toString());
-                        boolean extracting = status.optBoolean("extracting", false);
-                        int attempt = status.optInt("attempt", 0);
                         String stage = status.optString("status", "waiting");
-                        if (extracting) {
-                            sawStatus = true;
-                            String detail = "محاولة استخراج رقم " + Math.max(1, attempt)
-                                    + " من 3 — " + stage + " — عملية واحدة قيد التقدم";
-                            updateExtractionNotification("جاري استخراج الفيديو", detail, true);
-                        } else if ("direct_playback".equals(stage)) {
-                            sawStatus = true;
-                            updateExtractionNotification("تم إرسال الفيديو", "الرابط مباشر؛ الريسيفر يتولى تشغيله دون حاجة لاستخراج إضافي.", false);
+                        String detail = status.optString("message", "");
+                        if (!stage.equals(lastState)) {
+                            lastState = stage;
+                            receivedStatus = true;
+                        }
+                        if ("playing".equals(stage) || "direct_playback".equals(stage)) {
+                            updateExtractionNotification("Receiver بدأ التشغيل", "تم استلام الرابط وبدأ الفيديو على الشاشة.", false);
                             extractionTracking = false;
                             return;
-                        } else if ("resolved".equals(stage)) {
-                            sawStatus = true;
-                            updateExtractionNotification("تم العثور على رابط فيديو",
-                                    "Receiver استخرج رابطًا مباشرًا؛ جاري تسليمه إلى المشغّل.", true);
-                        } else if ("stream_captured".equals(stage)) {
-                            sawStatus = true;
-                            updateExtractionNotification("تم التقاط بث الفيديو",
-                                    "Receiver التقط مصدر الفيديو من صفحة الموقع؛ جاري محاولة تشغيله.", false);
+                        }
+                        if ("error".equals(stage) || "playback_error".equals(stage)) {
+                            updateExtractionNotification("تعذّر تشغيل الفيديو على Receiver",
+                                    detail.isEmpty() ? "Receiver استلم الرابط لكن مشغّل الفيديو أبلغ عن خطأ." : detail, false);
                             extractionTracking = false;
                             return;
-                        } else if ("web_fallback".equals(stage)) {
-                            sawStatus = true;
-                            updateExtractionNotification("تجربة مشغّل الويب",
-                                    "لم يظهر رابط مباشر بعد؛ Receiver يراقب طلبات الفيديو داخل الصفحة.", true);
+                        }
+                        if ("preparing".equals(stage) || "buffering".equals(stage) || "resolved".equals(stage)) {
+                            updateExtractionNotification("Receiver استلم الرابط",
+                                    detail.isEmpty() ? "جاري تجهيز الفيديو وبدء تشغيله…" : detail, false);
                         }
                     }
                 } catch (Exception ignored) {
-                    // The receiver can still be resolving or the local network may briefly pause.
+                    // A short network pause must not turn an accepted request into a false success.
                 } finally {
                     if (connection != null) connection.disconnect();
                 }
-                try { Thread.sleep(1400L); }
+                try { Thread.sleep(1000L); }
                 catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
             if (extractionTracking) {
-                updateExtractionNotification("حالة استخراج الفيديو", sawStatus
-                        ? "انتهت متابعة الحالة؛ تحقق من شاشة الريسيفر."
-                        : "تم إرسال الرابط، لكن لم تصل حالة الاستخراج من الريسيفر.", false);
+                updateExtractionNotification(receivedStatus ? "Receiver استلم الرابط" : "لم يصل تأكيد من Receiver",
+                        receivedStatus
+                                ? "Receiver استلم الطلب، لكن لم يؤكد بدء تشغيل الفيديو خلال المهلة."
+                                : "تم إرسال الرابط، لكن لم تصل حالة الاستقبال من Receiver. تأكد من تشغيل التطبيق وخدمة الاستقبال.",
+                        false);
             }
             extractionTracking = false;
-        }, "ReceiverExtractionStatus");
+        }, "ReceiverPlaybackStatus");
         tracker.setDaemon(true);
         tracker.start();
     }
