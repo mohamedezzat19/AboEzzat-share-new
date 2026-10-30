@@ -1,8 +1,7 @@
 package com.aboezzat.share;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
-import java.io.IOException;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -10,90 +9,89 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-/**
- * Optional remote extraction adapter.
- * The user must configure an API instance they are authorized to use.
- * Only redirect/tunnel URLs are returned; the original page is never treated as media.
- */
+/** Private AboEzzat Social Engine client. Secrets and cookies are never logged or forwarded to Receiver. */
 final class PlatformExtractor {
-    interface Callback {
-        void onResult(String mediaUrl, String message);
-    }
-
+    interface Callback { void onResult(String mediaUrl, String message); }
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .callTimeout(15, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .build();
+            .connectTimeout(6, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
+            .callTimeout(35, TimeUnit.SECONDS).followRedirects(false).build();
 
     private PlatformExtractor() {}
 
-    static void resolve(String apiBase, String pageUrl, Callback callback) {
+    static void resolve(String apiBase, String token, String pageUrl, String cookies, Callback callback) {
         new Thread(() -> {
             String found = "";
-            String message = "لم يُرجع محرك الاستخراج رابط بث مباشر.";
+            String message = "لم يُرجع Social Engine رابط بث مباشر.";
             try {
                 String base = apiBase == null ? "" : apiBase.trim();
                 while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-                if (!(base.startsWith("https://") || base.startsWith("http://"))) {
-                    throw new IllegalArgumentException("عنوان API غير مضبوط");
-                }
+                if (!(base.startsWith("https://") || base.startsWith("http://")))
+                    throw new IllegalArgumentException("عنوان Social Engine غير مضبوط");
+                String endpoint = base.endsWith("/api/v1/extract") ? base : base + "/api/v1/extract";
+                String secret = token == null ? "" : token.trim();
+                if (secret.length() < 16) throw new IllegalArgumentException("مفتاح Social Engine غير مضبوط");
+
                 JSONObject payload = new JSONObject();
                 payload.put("url", pageUrl);
-                Request request = new Request.Builder()
-                        .url(base + "/")
+                if (cookies != null && !cookies.trim().isEmpty()) payload.put("cookies", cookies.trim());
+                Request request = new Request.Builder().url(endpoint)
                         .header("Accept", "application/json")
-                        .post(RequestBody.create(payload.toString(), JSON))
-                        .build();
+                        .header("Authorization", "Bearer " + secret)
+                        .post(RequestBody.create(payload.toString(), JSON)).build();
+
                 try (Response response = CLIENT.newCall(request).execute()) {
                     if (!response.isSuccessful() || response.body() == null) {
-                        message = "خادم الاستخراج ردّ برمز HTTP " + response.code();
+                        message = "Social Engine ردّ برمز HTTP " + response.code();
                     } else {
                         JSONObject result = new JSONObject(response.body().string());
-                        String status = result.optString("status", "").toLowerCase(Locale.ROOT);
-                        String candidate = result.optString("url", "");
-                        if ("picker".equals(status)) {
-                            org.json.JSONArray items = result.optJSONArray("picker");
-                            if (items != null) {
-                                // Prefer an actual video variant over audio-only tracks.
-                                for (int pass = 0; pass < 2 && candidate.isEmpty(); pass++) {
-                                    for (int i = 0; i < items.length(); i++) {
-                                        JSONObject item = items.optJSONObject(i);
-                                        if (item == null) continue;
-                                        String type = item.optString("type", "").toLowerCase(Locale.ROOT);
-                                        String itemUrl = item.optString("url", "");
-                                        boolean preferredType = pass == 0
-                                                ? "video".equals(type) : "audio".equals(type);
-                                        if (preferredType && isHttpUrl(itemUrl) && !itemUrl.equals(pageUrl)) {
-                                            candidate = itemUrl;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (("redirect".equals(status) || "tunnel".equals(status)
-                                || "picker".equals(status))
-                                && isHttpUrl(candidate) && !candidate.equals(pageUrl)) {
-                            found = candidate;
-                            message = "تم العثور على رابط وسائط من محرك الاستخراج (" + status + ").";
+                        if (!result.optBoolean("success", false)) {
+                            message = result.optString("message", "لم ينجح استخراج الرابط.");
                         } else {
-                            message = "المحرك لم يُرجع رابط وسائط صالحًا (الحالة: "
-                                    + (status.isEmpty() ? "غير معروفة" : status) + ").";
+                            JSONArray formats = result.optJSONArray("formats");
+                            int bestScore = Integer.MIN_VALUE;
+                            if (formats != null) for (int i = 0; i < formats.length(); i++) {
+                                JSONObject format = formats.optJSONObject(i);
+                                if (format == null) continue;
+                                String candidate = format.optString("url", "").trim();
+                                if (!isHttpUrl(candidate) || candidate.equals(pageUrl)) continue;
+                                String type = format.optString("type", "unknown");
+                                int score = qualityScore(format.optString("quality", "")) * 10;
+                                if ("mp4".equalsIgnoreCase(type)) score += 3;
+                                else if ("hls".equalsIgnoreCase(type)) score += 2;
+                                else if ("dash".equalsIgnoreCase(type)) score += 1;
+                                if (score > bestScore) { bestScore = score; found = candidate; }
+                            }
+                            message = found.isEmpty()
+                                    ? result.optString("message", "لا توجد صيغة بث مباشرة قابلة للإرسال.")
+                                    : "تم استخراج رابط من Social Engine.";
                         }
                     }
                 }
             } catch (Exception e) {
-                message = "تعذّر الاتصال بمحرك الاستخراج: " + e.getMessage();
+                // Do not include request data, cookies, or bearer token in error messages.
+                message = "تعذّر الاتصال بـ Social Engine أو قراءة رده: " + e.getClass().getSimpleName();
             }
             callback.onResult(found, message);
-        }, "PlatformExtractor").start();
+        }, "AboEzzatSocialEngine").start();
+    }
+
+    private static int qualityScore(String quality) {
+        if (quality == null) return 0;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(\\d{3,4})\\s*p", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(quality);
+        if (!matcher.find()) return 0;
+        try { return Integer.parseInt(matcher.group(1)); }
+        catch (NumberFormatException ignored) { return 0; }
     }
 
     private static boolean isHttpUrl(String value) {
-        return value != null && (value.startsWith("https://") || value.startsWith("http://"))
-                && value.length() < 8192;
+        if (value == null || value.length() > 8192) return false;
+        try {
+            android.net.Uri uri = android.net.Uri.parse(value);
+            String scheme = uri.getScheme();
+            return uri.getHost() != null && ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme));
+        } catch (Exception ignored) { return false; }
     }
 }
