@@ -295,16 +295,15 @@ public class MainActivity extends Activity {
                 + (useRapid ? 1 : 0) + (usePlatformApi ? 1 : 0);
 
         if (enabled == 0) {
-            updateExtractionNotification("تجربة محركات Receiver",
-                    "لا يوجد محرك Share جاهز لهذا الرابط؛ جاري تمريره إلى Receiver.", true);
-            sendPlatformLinkToReceiver(pageUrl);
+            updateExtractionNotification("لا توجد محركات استخراج مفعّلة",
+                    "فعّل Social Engine أو أحد المحركات البديلة من إعدادات Share. لم يتم إرسال صفحة الموقع إلى Receiver.", false);
             return;
         }
 
         updateExtractionNotification("استخراج رابط المشاركة",
                 "تشغيل " + enabled + " محرك/محركات متاحة بالتوازي…", true);
         final ParallelExtractionRun run =
-                new ParallelExtractionRun(pageUrl, generation, enabled, true);
+                new ParallelExtractionRun(pageUrl, generation, enabled, false);
 
         if (useFast) {
             FastMediaExtractor.extractDirectMedia(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new FastMediaExtractor.ExtractorCallback() {
@@ -1019,8 +1018,8 @@ public class MainActivity extends Activity {
                         return;
                     }
                     if (!(base.startsWith("http://") || base.startsWith("https://"))
-                            || token.length() < 16) {
-                        Toast.makeText(this, "أدخل عنوان HTTP/HTTPS ومفتاحًا صحيحًا (16 حرفًا على الأقل).", Toast.LENGTH_LONG).show();
+                            || token.length() < 32) {
+                        Toast.makeText(this, "أدخل عنوان HTTP/HTTPS ومفتاحًا قويًا (32 حرفًا على الأقل).", Toast.LENGTH_LONG).show();
                         return;
                     }
                     prefs.edit().putString("extractor_api_base", base)
