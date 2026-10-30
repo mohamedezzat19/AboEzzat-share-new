@@ -1357,7 +1357,7 @@ public class MainActivity extends Activity {
             icon = R.drawable.app_icon_instagram;
         } else if (host.equals("x.com") || host.endsWith(".x.com")
                 || host.equals("twitter.com") || host.endsWith(".twitter.com")) {
-            icon = R.drawable.quick_x;
+            icon = R.drawable.app_icon_x;
         } else if (host.equals("threads.net") || host.endsWith(".threads.net")
                 || host.equals("threads.com") || host.endsWith(".threads.com")) {
             icon = R.drawable.quick_threads;
