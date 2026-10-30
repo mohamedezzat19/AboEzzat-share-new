@@ -2264,8 +2264,9 @@ public class MainActivity extends Activity {
         }
 
         updateExtractionNotification("جاري البحث عن الفيديوهات",
-                "تشغيل " + enabled + " محرك/محركات بالتوازي…", true);
+                "تشغيل " + enabled + " محرك/محركات بالتوازي… سيتم تحديث النتائج عند وصولها.", true);
         final ParallelExtractionRun run = new ParallelExtractionRun(pageUrl, generation, enabled);
+        run.setTimeout(8000L);
 
         // Start every configured and ready extractor, including the local Social Engine.
         if (useFast) {
@@ -2339,6 +2340,13 @@ public class MainActivity extends Activity {
                 new android.os.Handler(android.os.Looper.getMainLooper());
         private final Runnable finishRunnable = this::finish;
 
+        void setTimeout(long delayMs) {
+            if (!finishScheduled) {
+                finishScheduled = true;
+                handler.postDelayed(finishRunnable, delayMs);
+            }
+        }
+
         ParallelExtractionRun(String pageUrl, int generation, int pending) {
             this(pageUrl, generation, pending, false);
         }
@@ -2374,11 +2382,9 @@ public class MainActivity extends Activity {
                     bestHeaders = headers == null ? java.util.Collections.emptyMap() : new java.util.LinkedHashMap<>(headers);
                     bestScore = score;
                 }
-                // Give other in-flight engines a short chance to return a better hinted quality.
-                if (!finishScheduled) {
-                    finishScheduled = true;
-                    handler.postDelayed(finishRunnable, 1100L);
-                }
+                // Count this engine's response and wait for the other engines.
+                // A bounded timeout below prevents a slow extractor from holding the UI forever.
+                if (pending > 0) pending--;
                 if (pending <= 0) finish();
             });
         }
@@ -2409,8 +2415,12 @@ public class MainActivity extends Activity {
                         .setTitle("الفيديوهات التي التقطها Share (" + candidateUrls.size() + ")")
                         .setItems(labels, (dialog, which) -> {
                             if (which >= 0 && which < candidateUrls.size()) {
-                                extractionSucceeded(candidateUrls.get(which), candidateEngines.get(which),
-                                        generation, candidateHeaders.get(which));
+                                String selected = candidateUrls.get(which);
+                                String engine = candidateEngines.get(which);
+                                Toast.makeText(MainActivity.this,
+                                        "تم اختيار المصدر " + (which + 1) + " من " + engine + " — جاري الإرسال…",
+                                        Toast.LENGTH_SHORT).show();
+                                extractionSucceeded(selected, engine, generation, candidateHeaders.get(which));
                             }
                         })
                         .setNegativeButton("إلغاء", (dialog, which) ->
@@ -2466,7 +2476,9 @@ public class MainActivity extends Activity {
 
     private void castExtractedUrlSilently(String mediaUrl, int generation, java.util.Map<String, String> headers) {
         if (receiverIp == null || receiverIp.trim().isEmpty()) {
-            updateExtractionNotification("تم استخراج الفيديو", "نجح الاستخراج، لكن حدّد عنوان IP للريسيفر لإرسال الفيديو.", false);
+            String message = "نجح الاستخراج، لكن حدّد جهاز Receiver من إعدادات الاستقبال أولًا.";
+            updateExtractionNotification("تم استخراج الفيديو", message, false);
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             return;
         }
         final String ip = receiverIp.trim();
@@ -2476,11 +2488,14 @@ public class MainActivity extends Activity {
             receiverConnected = success;
             refreshConnectionLabel();
             if (success) {
-                updateExtractionNotification("تم إرسال الفيديو", "تم إرسال الرابط إلى Receiver بنجاح.", false);
+                String notice = "تم إرسال الفيديو إلى Receiver. افحص الشاشة.";
+                updateExtractionNotification("تم إرسال الفيديو", notice, false);
+                Toast.makeText(MainActivity.this, notice, Toast.LENGTH_LONG).show();
                 trackReceiverExtraction(ip);
             } else {
-                updateExtractionNotification("فشل إرسال الفيديو", message == null
-                        ? "تعذر إرسال الرابط إلى Receiver." : message, false);
+                String error = message == null ? "تعذر إرسال الرابط إلى Receiver." : message;
+                updateExtractionNotification("فشل إرسال الفيديو", error, false);
+                Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
             }
         }));
     }
