@@ -53,10 +53,10 @@ final class OkHttpPageExtractor {
             Pattern.compile("(?:property|name)\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]",
                     Pattern.CASE_INSENSITIVE);
     private static final Pattern STREAM_URL =
-            Pattern.compile("https?:\\\\?/\\\\?/[^\\\"'\\s<>]+?\\.(?:mp4|m3u8|mpd|webm)(?:\\?[^\\\"'\\s<>]*)?",
+            Pattern.compile("https?://[^\\\"'\\s<>]+?\\.(?:mp4|m3u8|mpd|webm)(?:\\?[^\\\"'\\s<>]*)?",
                     Pattern.CASE_INSENSITIVE);
     private static final Pattern STRUCTURED_MEDIA =
-            Pattern.compile("['\\\"](contentUrl|content_url|videoUrl|video_url|playbackUrl|playback_url|hlsUrl|manifestUrl)['\\\"]\\\\s*:\\\\s*['\\\"]((?:\\\\\\\\.|[^'\\\"])*)['\\\"]",
+            Pattern.compile("['\\\"](contentUrl|content_url|videoUrl|video_url|playbackUrl|playback_url|hlsUrl|manifestUrl)['\\\"]\\s*:\\s*['\\\"]((?:\\\\.|[^'\\\"])*)['\\\"]",
                     Pattern.CASE_INSENSITIVE);
 
     private OkHttpPageExtractor() {}
