@@ -2891,7 +2891,7 @@ public class MainActivity extends Activity {
             autoSelectDetectedTrack(url);
             // Automatically cast a captured direct video from the current platform page.
             // Debounce for five seconds so Share can collect multiple quality variants first.
-            if (isVideoCandidate(url) && web != null && "browser".equals(currentPage)) {
+            if (isVideoCandidate(url) && web != null && "browser".equals(currentPage) && !pendingExternalShareCapture) {
                 String activePage = web.getUrl();
                 if (isDirectPlatformUrl(activePage)) {
                     pendingAutoCastPageUrl = activePage;
