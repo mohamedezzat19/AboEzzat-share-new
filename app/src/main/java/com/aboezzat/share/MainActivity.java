@@ -288,7 +288,9 @@ public class MainActivity extends Activity {
         final String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
         final boolean useRapid = isEngineEnabled("rapidapi") && !apiKey.isEmpty();
         final String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
-        final boolean usePlatformApi = !configuredApi.isEmpty();
+        final String socialEngineToken = prefs == null ? "" : prefs.getString("social_engine_token", "").trim();
+        final boolean usePlatformApi = isEngineEnabled("socialengine")
+                && !configuredApi.isEmpty() && socialEngineToken.length() >= 16;
         final int enabled = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
                 + (useRapid ? 1 : 0) + (usePlatformApi ? 1 : 0);
 
@@ -331,7 +333,8 @@ public class MainActivity extends Activity {
             });
         }
         if (usePlatformApi) {
-            PlatformExtractor.resolve(configuredApi, pageUrl, (mediaUrl, message) -> {
+            PlatformExtractor.resolve(configuredApi, socialEngineToken, pageUrl,
+                    android.webkit.CookieManager.getInstance().getCookie(pageUrl), (mediaUrl, message) -> {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()
                         && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
                     run.candidate(mediaUrl, "محرك API الإضافي");
@@ -982,11 +985,58 @@ public class MainActivity extends Activity {
                 .setMessage(message).setPositiveButton("حسنًا", null).show();
     }
 
+    private void showSocialEngineSettings() {
+        EditText baseInput = new EditText(this);
+        baseInput.setSingleLine(true);
+        baseInput.setHint("http://192.168.1.x:8000");
+        baseInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        baseInput.setText(prefs.getString("extractor_api_base", ""));
+
+        EditText tokenInput = new EditText(this);
+        tokenInput.setSingleLine(true);
+        tokenInput.setHint("مفتاح API الخاص");
+        tokenInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        tokenInput.setText(prefs.getString("social_engine_token", ""));
+
+        LinearLayout box = column();
+        box.setPadding(dp(18), dp(8), dp(18), dp(4));
+        box.addView(text("عنوان الجهاز الذي يشغّل Social Engine على شبكتك الخاصة. لا تحتاج إلى شراء استضافة.", 12, MUTED, false));
+        box.addView(baseInput, lp(-1, 50));
+        box.addView(text("Bearer token — يُحفظ محليًا داخل التطبيق ولا يُرسل إلى Receiver.", 12, MUTED, false));
+        box.addView(tokenInput, lp(-1, 50));
+
+        new AlertDialog.Builder(this)
+                .setTitle("اتصال AboEzzat Social Engine")
+                .setView(box)
+                .setPositiveButton("حفظ", (dialog, which) -> {
+                    String base = baseInput.getText().toString().trim();
+                    String token = tokenInput.getText().toString().trim();
+                    if (base.isEmpty() && token.isEmpty()) {
+                        prefs.edit().remove("extractor_api_base").remove("social_engine_token").apply();
+                        Toast.makeText(this, "تم مسح إعداد اتصال Social Engine", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (!(base.startsWith("http://") || base.startsWith("https://"))
+                            || token.length() < 16) {
+                        Toast.makeText(this, "أدخل عنوان HTTP/HTTPS ومفتاحًا صحيحًا (16 حرفًا على الأقل).", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    prefs.edit().putString("extractor_api_base", base)
+                            .putString("social_engine_token", token).apply();
+                    Toast.makeText(this, "تم حفظ اتصال Social Engine على هذا الجهاز.", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
     private void showExtractorEngines() {
-        String[] keys = {"fast", "okhttp", "rapidapi", "webview"};
-        String[] labels = {"FastMediaExtractor — المحرك السريع",
+        String[] keys = {"socialengine", "fast", "okhttp", "rapidapi", "webview"};
+        String[] labels = {"AboEzzat Social Engine — المحرك الأساسي",
+                "FastMediaExtractor — المحرك السريع",
                 "OkHttp Page Parser — تحليل الصفحة",
-                "RapidAPI — محرك الاستخراج الخارجي",
+                "RapidAPI — محرك الاستخراج الخارجي (اختياري)",
                 "WebView Capture — التقاط البث من المتصفح"};
         LinearLayout panel = column();
         panel.setPadding(dp(16), dp(8), dp(16), dp(4));
@@ -1013,8 +1063,11 @@ public class MainActivity extends Activity {
                 panel.addView(divider, lp(-1, 1));
             }
         }
-        TextView note = text("الأزرار الخضراء مفعّلة. لو أوقفت محركًا، سيتخطاه التطبيق أثناء الاستخراج.", 11, MUTED, false);
+        TextView note = text("الأزرار الخضراء مفعّلة. Social Engine هو المحرك الأساسي عند ضبط عنوانه ومفتاحه؛ بقية المحركات بدائل اختيارية.", 11, MUTED, false);
         panel.addView(note, lp(-1, -2));
+        TextView socialConfig = button("⚙ إعداد اتصال Social Engine", PANEL2, WHITE);
+        socialConfig.setOnClickListener(v -> showSocialEngineSettings());
+        panel.addView(socialConfig, lp(-1, 46));
         ScrollView scroll = new ScrollView(this);
         scroll.addView(panel);
         new AlertDialog.Builder(this)
