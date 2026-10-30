@@ -1866,6 +1866,10 @@ public class MainActivity extends Activity {
                 }
             }
             @Override public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+                if (!isUserGesture) {
+                    Toast.makeText(MainActivity.this, "تم منع نافذة منبثقة غير مطلوبة", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
                 final WebView popupWeb = new WebView(MainActivity.this);
                 WebSettings popupSettings = popupWeb.getSettings();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1880,7 +1884,7 @@ public class MainActivity extends Activity {
                 }
                 popupSettings.setDomStorageEnabled(true);
                 popupSettings.setDatabaseEnabled(true);
-                popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+                popupSettings.setJavaScriptCanOpenWindowsAutomatically(false);
                 popupSettings.setSupportMultipleWindows(true);
                 popupSettings.setUserAgentString(view.getSettings().getUserAgentString());
                 CookieManager.getInstance().setAcceptCookie(true);
@@ -1897,6 +1901,21 @@ public class MainActivity extends Activity {
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT);
                 }
                 popupWeb.setWebViewClient(new WebViewClient() {
+                    @Override public WebResourceResponse shouldInterceptRequest(WebView child, WebResourceRequest request) {
+                        String requestUrl = request == null || request.getUrl() == null ? "" : request.getUrl().toString();
+                        if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(requestUrl)) {
+                            return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
+                        }
+                        return super.shouldInterceptRequest(child, request);
+                    }
+                    @Override public void onSafeBrowsingHit(WebView child, WebResourceRequest request,
+                            int threatType, android.webkit.SafeBrowsingResponse response) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            response.backToSafety(true);
+                            runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                                    "تم حظر موقع تحذر منه ميزة التصفح الآمن", Toast.LENGTH_LONG).show());
+                        }
+                    }
                     @Override public boolean shouldOverrideUrlLoading(WebView child, WebResourceRequest request) {
                         Uri uri = request.getUrl();
                         String scheme = uri != null ? uri.getScheme() : null;
@@ -1942,6 +1961,14 @@ public class MainActivity extends Activity {
                 Uri u=request.getUrl();
                 if("http".equals(u.getScheme())||"https".equals(u.getScheme())) return false;
                 return true;
+            }
+            @Override public void onSafeBrowsingHit(WebView view, WebResourceRequest request,
+                    int threatType, android.webkit.SafeBrowsingResponse response) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    response.backToSafety(true);
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "تم حظر موقع تحذر منه ميزة التصفح الآمن", Toast.LENGTH_LONG).show());
+                }
             }
             @Override public boolean onRenderProcessGone(WebView crashedView, android.webkit.RenderProcessGoneDetail detail) {
                 final int crashedIndex = browserTabs.indexOf(crashedView);
@@ -2009,7 +2036,7 @@ public class MainActivity extends Activity {
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 String requestUrl = request.getUrl().toString();
-                if (isKnownAdRequest(requestUrl)) {
+                if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(requestUrl)) {
                     return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
                 detectMedia(requestUrl);
@@ -3193,7 +3220,8 @@ public class MainActivity extends Activity {
                 "تشغيل الفيديو والصوت تلقائيًا: " + (autoplay ? "مفعّل" : "يتطلب ضغط تشغيل"),
                 "مسح ذاكرة الصفحات المؤقتة",
                 "مسح ملفات تعريف الارتباط وتسجيلات المواقع",
-                "إعدادات أذونات Android للتطبيق"
+                "إعدادات أذونات Android للتطبيق",
+                "مانع الإعلانات: " + (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("browser_adblock", true) ? "مفعّل" : "متوقف")
         };
         new AlertDialog.Builder(this).setTitle("إعدادات المتصفح")
                 .setItems(items, (dialog, which) -> {
@@ -3255,6 +3283,11 @@ public class MainActivity extends Activity {
                                 }).setNegativeButton("إلغاء", null).show();
                     } else if (which == 8) {
                         openAppPermissionSettings();
+                    } else if (which == 9) {
+                        boolean enabled = !getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("browser_adblock", true);
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("browser_adblock", enabled).apply();
+                        Toast.makeText(this, "مانع الإعلانات " + (enabled ? "مفعّل" : "متوقف")
+                                + "؛ أعد تحميل الصفحة لتطبيق التغيير", Toast.LENGTH_LONG).show();
                     }
                 }).setNegativeButton("إغلاق", null).show();
     }
