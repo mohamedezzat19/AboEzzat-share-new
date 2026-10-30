@@ -2243,23 +2243,32 @@ public class MainActivity extends Activity {
             castActionButton.setBackground(shape(GOLD, GOLD, 50));
         }
 
-        int enabled = 0;
-        if (isEngineEnabled("fast")) enabled++;
-        if (isEngineEnabled("okhttp")) enabled++;
-        if (isEngineEnabled("rapidapi")) enabled++;
-        if (isEngineEnabled("webview")) enabled++;
+        final String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
+        final String socialEngineToken = prefs == null ? "" : prefs.getString("social_engine_token", "").trim();
+        final boolean useSocialEngine = isEngineEnabled("socialengine")
+                && !configuredApi.isEmpty() && socialEngineToken.length() >= 32;
+        final String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
+        final boolean useRapid = isEngineEnabled("rapidapi") && !apiKey.isEmpty();
+        final boolean useFast = isEngineEnabled("fast");
+        final boolean useOkHttp = isEngineEnabled("okhttp");
+        final boolean useWebView = isEngineEnabled("webview");
+        int enabled = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
+                + (useRapid ? 1 : 0) + (useWebView ? 1 : 0) + (useSocialEngine ? 1 : 0);
         if (enabled == 0) {
-            updateExtractionNotification("فشل استخراج الفيديو",
-                    "كل محركات الاستخراج متوقفة. فعّل محركًا واحدًا على الأقل من الإعدادات.", false);
+            String message = isEngineEnabled("socialengine")
+                    ? "اضبط عنوان Social Engine والتوكن من الإعدادات، أو فعّل محركًا بديلًا بإعداداته."
+                    : "كل محركات الاستخراج متوقفة. فعّل محركًا واحدًا على الأقل من الإعدادات.";
+            updateExtractionNotification("لا توجد محركات جاهزة", message, false);
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             return;
         }
 
-        updateExtractionNotification("جاري استخراج الفيديو",
+        updateExtractionNotification("جاري البحث عن الفيديوهات",
                 "تشغيل " + enabled + " محرك/محركات بالتوازي…", true);
         final ParallelExtractionRun run = new ParallelExtractionRun(pageUrl, generation, enabled);
 
-        // Start every enabled extractor without waiting for another one to fail.
-        if (isEngineEnabled("fast")) {
+        // Start every configured and ready extractor, including the local Social Engine.
+        if (useFast) {
             FastMediaExtractor.extractDirectMedia(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new FastMediaExtractor.ExtractorCallback() {
                 @Override public void onSuccess(String videoUrl, String platform) {
                     run.candidate(videoUrl, "FastMediaExtractor");
@@ -2267,7 +2276,7 @@ public class MainActivity extends Activity {
                 @Override public void onError(String error) { run.failed(); }
             });
         }
-        if (isEngineEnabled("okhttp")) {
+        if (useOkHttp) {
             OkHttpPageExtractor.extract(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new OkHttpPageExtractor.Callback() {
                 @Override public void onSuccess(String mediaUrl) {
                     run.candidate(mediaUrl, "OkHttp Page Parser");
@@ -2275,22 +2284,29 @@ public class MainActivity extends Activity {
                 @Override public void onError(String reason) { run.failed(); }
             });
         }
-        if (isEngineEnabled("rapidapi")) {
-            String apiKey = prefs == null ? "" : prefs.getString("rapid_api_key", "").trim();
-            if (apiKey.isEmpty()) {
-                run.failed();
-            } else {
-                RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> {
-                    if (mediaUrl != null && !mediaUrl.trim().isEmpty()
-                            && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
-                        run.candidate(mediaUrl, "RapidAPI");
-                    } else {
-                        run.failed();
-                    }
-                });
-            }
+        if (useRapid) {
+            RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> {
+                if (mediaUrl != null && !mediaUrl.trim().isEmpty()
+                        && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
+                    run.candidate(mediaUrl, "RapidAPI");
+                } else {
+                    run.failed();
+                }
+            });
         }
-        if (isEngineEnabled("webview")) {
+        if (useSocialEngine) {
+            PlatformExtractor.resolve(configuredApi, socialEngineToken, pageUrl,
+                    android.webkit.CookieManager.getInstance().getCookie(pageUrl), (result, message) -> {
+                if (result != null && result.url != null && !result.url.trim().isEmpty()
+                        && BrowserEngine.isWebUrl(result.url) && !result.url.equals(pageUrl)
+                        && !result.url.startsWith("blob:") && !result.url.startsWith("data:")) {
+                    run.candidate(result.url, "Social Engine", result.headers);
+                } else {
+                    run.failed();
+                }
+            });
+        }
+        if (useWebView) {
             captureCurrentPlayingVideoFallback(new ExtractionResult() {
                 @Override public void success(String mediaUrl, String engine) {
                     run.candidate(mediaUrl, "WebView Capture");
@@ -2313,6 +2329,9 @@ public class MainActivity extends Activity {
         private String bestEngine;
         private java.util.Map<String, String> bestHeaders = java.util.Collections.emptyMap();
         private int bestScore = -1;
+        private final ArrayList<String> candidateUrls = new ArrayList<>();
+        private final ArrayList<String> candidateEngines = new ArrayList<>();
+        private final ArrayList<java.util.Map<String, String>> candidateHeaders = new ArrayList<>();
         private boolean finishScheduled;
         private boolean finished;
         private final boolean fallbackToReceiver;
@@ -2341,6 +2360,12 @@ public class MainActivity extends Activity {
                 if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(pageUrl)) {
                     failedOnMain();
                     return;
+                }
+                if (!candidateUrls.contains(url)) {
+                    candidateUrls.add(url);
+                    candidateEngines.add(engine == null ? "محرك غير معروف" : engine);
+                    candidateHeaders.add(headers == null ? java.util.Collections.emptyMap()
+                            : new java.util.LinkedHashMap<>(headers));
                 }
                 int score = mediaQualityHintScore(url);
                 if (bestUrl == null || score > bestScore) {
@@ -2372,8 +2397,27 @@ public class MainActivity extends Activity {
             if (finished || generation != extractionGeneration || isFinishing()) return;
             finished = true;
             handler.removeCallbacks(finishRunnable);
-            if (bestUrl != null) {
-                extractionSucceeded(bestUrl, bestEngine, generation, bestHeaders);
+            if (!candidateUrls.isEmpty()) {
+                final String[] labels = new String[candidateUrls.size()];
+                for (int i = 0; i < candidateUrls.size(); i++) {
+                    int quality = mediaQualityHintScore(candidateUrls.get(i));
+                    String qualityLabel = quality >= 1080 ? quality + "p"
+                            : quality >= 700 ? "جودة عالية" : quality >= 400 ? "جودة متوسطة" : "الجودة غير محددة";
+                    labels[i] = (i + 1) + ". " + candidateEngines.get(i) + " — " + qualityLabel;
+                }
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("الفيديوهات التي التقطها Share (" + candidateUrls.size() + ")")
+                        .setItems(labels, (dialog, which) -> {
+                            if (which >= 0 && which < candidateUrls.size()) {
+                                extractionSucceeded(candidateUrls.get(which), candidateEngines.get(which),
+                                        generation, candidateHeaders.get(which));
+                            }
+                        })
+                        .setNegativeButton("إلغاء", (dialog, which) ->
+                                updateExtractionNotification("تم إلغاء الإرسال", "لم يتم إرسال أي فيديو إلى Receiver.", false))
+                        .show();
+                updateExtractionNotification("تم العثور على فيديوهات",
+                        "تم التقاط " + candidateUrls.size() + " مصدر. اختار الفيديو والجودة لإرسالهما إلى Receiver.", false);
                 return;
             }
             if (fallbackToReceiver) {
