@@ -584,7 +584,7 @@ public class MainActivity extends Activity {
 
                 sharedCaptureFinishRunnable = () -> {
                     if (generation != extractionGeneration || isFinishing() || sharedCaptureSent) return;
-                    if (mediaOrder.isEmpty()) {
+                    if (!hasCapturedVideoMedia()) {
                         destroySharedCaptureWebView();
                         pendingExternalShareCapture = false;
                         updateExtractionNotification("لم ينجح الالتقاط المباشر",
@@ -2905,41 +2905,22 @@ public class MainActivity extends Activity {
         });
     }
 
+    private boolean hasCapturedVideoMedia() {
+        synchronized (mediaOrder) {
+            for (String candidate : mediaOrder) {
+                if (isVideoCandidate(candidate)) return true;
+            }
+        }
+        return false;
+    }
+
     private synchronized void detectMedia(String url){ detectMedia(url, java.util.Collections.emptyMap()); }
 
     private synchronized void detectMedia(String url, java.util.Map<String,String> requestHeaders){
         if(url==null||url.trim().isEmpty()||url.startsWith("blob:")||url.startsWith("data:"))return;
-        // Match the media extension in the URL path, not in unrelated query parameters.
-        String path=Uri.parse(url).getPath();
-        String lower=(path==null?url:path).toLowerCase(Locale.ROOT);
-        boolean ok=false;
-        String[] exts={".mp4",".m4v",".webm",".mov",".avi",".mkv",".3gp",".flv",".ts",".m3u8",".mpd",".mp3",".m4a",".aac",".ogg",".oga",".opus",".wav",".flac",".mid",".midi",".jpg",".jpeg",".png",".webp",".gif",".bmp",".avif"};
-        for(String e:exts){if(lower.endsWith(e)){ok=true;break;}}
-        // Some services expose media through extensionless endpoints or signed URLs.
-        // Use known media-specific URL markers without treating every generic request as media.
-        String lowerUrl=url.toLowerCase(Locale.ROOT);
-        if (!ok) {
-            String host = Uri.parse(url).getHost();
-            String lowerHost = host == null ? "" : host.toLowerCase(Locale.ROOT);
-            boolean socialVideoHost = lowerHost.contains("tiktokcdn")
-                    || lowerHost.contains("tiktokv.com") || lowerHost.contains("byteoversea")
-                    || lowerHost.contains("ibytedtos") || lowerHost.contains("muscdn")
-                    || lowerHost.contains("fbcdn.net") || lowerHost.contains("fbsbx.com")
-                    || lowerHost.contains("cdninstagram.com");
-            boolean videoMarker = lowerUrl.contains("mime=video") || lowerUrl.contains("video_playback")
-                    || lowerUrl.contains("/videoplayback") || lowerUrl.contains("pull-")
-                    || lowerUrl.contains("format=mp4") || lowerUrl.contains("type=video")
-                    || lowerUrl.contains("contenttype=video") || lowerUrl.contains("content-type=video")
-                    || lowerUrl.contains("video") || lowerUrl.contains("playback")
-                    || lowerUrl.contains("bytevc") || lowerUrl.contains("avc1")
-                    || lowerUrl.contains("hevc") || lowerUrl.contains("dash")
-                    || lowerUrl.contains(".flv") || lowerUrl.contains("pull-")
-                    || lowerUrl.contains("/v/t42.") || lowerUrl.contains("/v/t39.")
-                    || lowerUrl.contains("/v/t16.") || lowerUrl.contains("/v/t15.");
-            ok = (socialVideoHost && (videoMarker || lowerHost.contains("fbcdn.net")))
-                    || lowerUrl.contains("mime=audio") || lowerUrl.contains("type=audio");
-        }
-        if(!ok)return;
+        // Only keep actual video candidates. Images, audio, posters, thumbnails,
+        // analytics and unrelated page requests must never enter the detected-media list.
+        if (!isVideoCandidate(url)) return;
         if (requestHeaders != null && !requestHeaders.isEmpty()) {
             java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<String,String> entry : requestHeaders.entrySet()) {
@@ -3233,22 +3214,27 @@ public class MainActivity extends Activity {
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
+            LinearLayout itemRow = row();
             String posterUrl = mediaPosters.get(url);
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) {
                 ImageView posterView = new ImageView(this);
                 posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                posterView.setBackground(shape(PANEL2, PANEL2, 10));
-                card.addView(posterView, lp(-1, dp(112)));
+                posterView.setBackground(shape(PANEL2, PANEL2, 8));
+                itemRow.addView(posterView, new LinearLayout.LayoutParams(dp(88), dp(64)));
                 loadDetectedPoster(posterUrl, posterView);
             }
+            LinearLayout details = column();
+            details.setPadding(dp(9), 0, 0, 0);
             String displayTitle = mediaTitles.get(url);
             if (displayTitle == null || displayTitle.trim().isEmpty()) displayTitle = "فيديو مكتشف";
             TextView titleView = text(displayTitle,14,WHITE,true);
             titleView.setMaxLines(2);
             titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            card.addView(titleView,lp(-1,-2));
-            card.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,12,MUTED,false),lp(-1,24));
-            TextView small=text(url,10,MUTED,false);small.setMaxLines(2);small.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(small,lp(-1,36));
+            details.addView(titleView,lp(-1,-2));
+            details.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,12,MUTED,false),lp(-1,24));
+            TextView small=text(url,10,MUTED,false);small.setMaxLines(1);small.setEllipsize(android.text.TextUtils.TruncateAt.END);details.addView(small,lp(-1,22));
+            itemRow.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
+            card.addView(itemRow, lp(-1, -2));
             LinearLayout actions=row();
             TextView cast=button("إرسال",BLUE,WHITE);
             TextView best=button("أفضل جودة",PANEL2,GOLD);
