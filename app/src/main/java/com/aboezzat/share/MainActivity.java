@@ -613,7 +613,8 @@ public class MainActivity extends Activity {
 
     private void scanSharedCapturePage(WebView view, int generation) {
         if (view == null || view != sharedCaptureWebView || generation != extractionGeneration) return;
-        installLegacyMediaCaptureHooks(view);
+        // Background shares use the active-visible-video scan below; do not hook every play()
+        // call because social pages also autoplay advertisements and preview clips.
         String js = "(function(){try{var vs=document.querySelectorAll('video');var best=null;var bestArea=0;"
                 + "for(var i=0;i<vs.length;i++){var v=vs[i];var r=v.getBoundingClientRect();"
                 + "var visible=r.width>80&&r.height>60&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;"
@@ -2823,7 +2824,20 @@ public class MainActivity extends Activity {
             if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
-            if (isVideoCandidate(mediaUrl)) detectMedia(mediaUrl);
+            if (isVideoCandidate(mediaUrl)) {
+                detectMedia(mediaUrl);
+                // Only the background scanner calls this after confirming a visible,
+                // currently-playing video. Network requests alone are never auto-cast.
+                if (pendingExternalShareCapture && sharedCaptureWebView != null
+                        && sharedCaptureGeneration == extractionGeneration && !sharedCaptureSent) {
+                    sharedCaptureSent = true;
+                    pendingExternalShareCapture = false;
+                    updateExtractionNotification("تم التقاط الفيديو",
+                            "تم تأكيد الفيديو الجاري تشغيله؛ جاري إرساله إلى Receiver…", true);
+                    destroySharedCaptureWebView();
+                    sendPlatformLinkToReceiver(mediaUrl);
+                }
+            }
         }
     }
 
@@ -2950,17 +2964,6 @@ public class MainActivity extends Activity {
             }
             if (isVideoCandidate(url)) currentPlayingVideoUrl = url;
             autoSelectDetectedTrack(url);
-            // Incoming shares are cast immediately when the hidden legacy sniffer finds a video.
-            if (pendingExternalShareCapture && sharedCaptureWebView != null
-                    && sharedCaptureGeneration == extractionGeneration
-                    && !sharedCaptureSent && isVideoCandidate(url)) {
-                sharedCaptureSent = true;
-                pendingExternalShareCapture = false;
-                updateExtractionNotification("تم التقاط الفيديو",
-                        "تم العثور على رابط مباشر؛ جاري إرساله تلقائيًا إلى Receiver…", true);
-                destroySharedCaptureWebView();
-                sendPlatformLinkToReceiver(url);
-            }
             // Automatically cast a captured direct video from the current platform page.
             // Debounce for five seconds so Share can collect multiple quality variants first.
             if (isVideoCandidate(url) && web != null && "browser".equals(currentPage) && !pendingExternalShareCapture) {
