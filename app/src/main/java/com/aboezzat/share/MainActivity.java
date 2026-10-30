@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
     private WebView sharedCaptureWebView;
     private Runnable sharedCaptureFinishRunnable;
     private int sharedCaptureGeneration = 0;
+    private boolean sharedCaptureSent = false;
     private android.widget.ProgressBar browserProgressBar;
     private static final LinkedHashMap<String, Bitmap> SITE_ICON_CACHE = new LinkedHashMap<>();
     private final ArrayList<WebView> browserTabs = new ArrayList<>();
@@ -522,9 +523,10 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Primary legacy capture path: use the normal browser WebView, just like old Share.
-     * Its AboEzzatBridge and request interceptor watch the page while the user plays media.
+     * Run the legacy Share sniffer in an attached, full-size WebView behind the app UI.
+     * The user stays on the Share home screen; the browser is shown only after capture fails.
      */
+    @SuppressLint("SetJavaScriptEnabled")
     private void openSharedPageForCapture(String pageUrl, int generation) {
         if (generation != extractionGeneration || isFinishing()) return;
         if (isYouTubeUrl(pageUrl)) {
@@ -534,6 +536,7 @@ public class MainActivity extends Activity {
         }
         destroySharedCaptureWebView();
         pendingExternalShareCapture = true;
+        sharedCaptureSent = false;
         synchronized (mediaOrder) {
             media.clear(); mediaOrder.clear(); mediaRequestHeaders.clear();
             mediaTitles.clear(); mediaPosters.clear();
@@ -541,15 +544,94 @@ public class MainActivity extends Activity {
         lastPageMediaTitle = "";
         lastPageMediaPoster = "";
         currentPlayingVideoUrl = "";
-        updateExtractionNotification("طريقة AboEzzat Share القديمة", "افتح الصفحة وشغّل الفيديو؛ سيتم التقاط روابط الفيديو والصوت تلقائيًا.", true);
+        updateExtractionNotification("التقاط الفيديو في الخلفية",
+                "جاري فحص صفحة المشاركة وإرسال أول رابط فيديو صالح إلى الشاشة…", true);
+
         runOnUiThread(() -> {
-            if (generation != extractionGeneration || isFinishing()) return;
-            showBrowser();
-            if (web == null) createWebView();
-            if (address != null) address.setText(pageUrl);
-            web.loadUrl(pageUrl);
-            Toast.makeText(this, "طريقة الالتقاط القديمة: شغّل الفيديو ثم اضغط زر الالتقاط الأحمر لعرض الروابط", Toast.LENGTH_LONG).show();
+            if (generation != extractionGeneration || isFinishing() || shellOverlay == null) return;
+            try {
+                WebView capture = new WebView(this);
+                sharedCaptureWebView = capture;
+                sharedCaptureGeneration = generation;
+                BrowserEngine.configure(capture);
+                WebSettings settings = capture.getSettings();
+                settings.setJavaScriptEnabled(true);
+                settings.setDomStorageEnabled(true);
+                settings.setDatabaseEnabled(true);
+                settings.setMediaPlaybackRequiresUserGesture(false);
+                settings.setUseWideViewPort(true);
+                settings.setLoadWithOverviewMode(true);
+                settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+                CookieManager cookies = CookieManager.getInstance();
+                cookies.setAcceptCookie(true);
+                cookies.setAcceptThirdPartyCookies(capture, true);
+                capture.addJavascriptInterface(new LegacyMediaCaptureBridge(), "AboEzzatBridge");
+                capture.setBackgroundColor(Color.BLACK);
+                capture.setAlpha(0.01f);
+                capture.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+                capture.setWebChromeClient(new WebChromeClient());
+                capture.setWebViewClient(new WebViewClient() {
+                    @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                        try { detectMedia(request.getUrl().toString(), request.getRequestHeaders()); }
+                        catch (Exception ignored) { }
+                        return super.shouldInterceptRequest(view, request);
+                    }
+                    @Override public void onPageFinished(WebView view, String loadedUrl) {
+                        super.onPageFinished(view, loadedUrl);
+                        if (generation != extractionGeneration || view != sharedCaptureWebView) return;
+                        scanSharedCapturePage(view, generation);
+                    }
+                });
+                // Keep a real viewport so social sites initialize their player and CDN requests.
+                shellOverlay.addView(capture, 0, new FrameLayout.LayoutParams(-1, -1));
+                capture.loadUrl(pageUrl);
+
+                sharedCaptureFinishRunnable = () -> {
+                    if (generation != extractionGeneration || isFinishing() || sharedCaptureSent) return;
+                    if (mediaOrder.isEmpty()) {
+                        destroySharedCaptureWebView();
+                        pendingExternalShareCapture = false;
+                        updateExtractionNotification("لم ينجح الالتقاط المباشر",
+                                "لم يظهر رابط فيديو مباشر؛ جاري فتح الصفحة في متصفح Share كخطة بديلة.", true);
+                        startConfiguredFallbackExtractors(pageUrl, generation);
+                        if (!isFinishing()) {
+                            showBrowser();
+                            if (web != null) {
+                                if (address != null) address.setText(pageUrl);
+                                web.loadUrl(pageUrl);
+                            }
+                        }
+                    }
+                };
+                receiverMonitorHandler.postDelayed(sharedCaptureFinishRunnable, 20000L);
+            } catch (Exception error) {
+                destroySharedCaptureWebView();
+                pendingExternalShareCapture = false;
+                showBrowser();
+                if (web != null) web.loadUrl(pageUrl);
+                updateExtractionNotification("تعذّر تشغيل الالتقاط الخلفي",
+                        "تم فتح صفحة الفيديو في متصفح Share بدلًا منه.", false);
+            }
         });
+    }
+
+    private void scanSharedCapturePage(WebView view, int generation) {
+        if (view == null || view != sharedCaptureWebView || generation != extractionGeneration) return;
+        installLegacyMediaCaptureHooks(view);
+        String js = "(function(){try{var vs=document.querySelectorAll('video');"
+                + "for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=true;v.playsInline=true;"
+                + "var p=v.play();if(p&&p.catch)p.catch(function(){});}catch(e){}"
+                + "var u=v.currentSrc||v.src||'';if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
+                + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',v.poster||'');}"
+                + "var m=document.querySelector('meta[property=\\\"og:video\\\"],meta[property=\\\"og:video:secure_url\\\"]');"
+                + "if(m&&m.content&&window.AboEzzatBridge)window.AboEzzatBridge.onVideoPlayingWithPoster(m.content,document.title||'','');"
+                + "}catch(e){}})()";
+        try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
+        receiverMonitorHandler.postDelayed(() -> {
+            if (generation == extractionGeneration && view == sharedCaptureWebView && !sharedCaptureSent) {
+                scanSharedCapturePage(view, generation);
+            }
+        }, 1200L);
     }
 
     private void destroySharedCaptureWebView() {
@@ -2889,6 +2971,17 @@ public class MainActivity extends Activity {
             }
             if (isVideoCandidate(url)) currentPlayingVideoUrl = url;
             autoSelectDetectedTrack(url);
+            // Incoming shares are cast immediately when the hidden legacy sniffer finds a video.
+            if (pendingExternalShareCapture && sharedCaptureWebView != null
+                    && sharedCaptureGeneration == extractionGeneration
+                    && !sharedCaptureSent && isVideoCandidate(url)) {
+                sharedCaptureSent = true;
+                pendingExternalShareCapture = false;
+                updateExtractionNotification("تم التقاط الفيديو",
+                        "تم العثور على رابط مباشر؛ جاري إرساله تلقائيًا إلى Receiver…", true);
+                destroySharedCaptureWebView();
+                sendPlatformLinkToReceiver(url);
+            }
             // Automatically cast a captured direct video from the current platform page.
             // Debounce for five seconds so Share can collect multiple quality variants first.
             if (isVideoCandidate(url) && web != null && "browser".equals(currentPage) && !pendingExternalShareCapture) {
