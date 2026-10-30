@@ -113,7 +113,7 @@ public final class CastingManager {
                 if (("user-agent".equals(key) || "referer".equals(key) || "origin".equals(key)
                         || "accept".equals(key) || "accept-language".equals(key))
                         && value != null && value.length() <= 2048
-                        && !value.contains("\\r") && !value.contains("\\n")) {
+                        && !value.contains("\r") && !value.contains("\n")) {
                     safeHeaders.put(key, value);
                 }
             }
@@ -132,16 +132,16 @@ public final class CastingManager {
                     socket.connect(new InetSocketAddress(ip, getPortFor(ip)), 3500);
                     socket.setSoTimeout(5000);
                     OutputStream out = socket.getOutputStream();
-                    String request = "POST /play HTTP/1.1\\r\\nHost: " + ip + ":" + getPortFor(ip)
-                            + "\\r\\nContent-Type: application/json; charset=utf-8"
-                            + "\\r\\nContent-Length: " + body.length
-                            + "\\r\\nConnection: close\\r\\n\\r\\n";
+                    String request = "POST /play HTTP/1.1\r\nHost: " + ip + ":" + getPortFor(ip)
+                            + "\r\nContent-Type: application/json; charset=utf-8"
+                            + "\r\nContent-Length: " + body.length
+                            + "\r\nConnection: close\r\n\r\n";
                     out.write(request.getBytes(StandardCharsets.US_ASCII));
                     out.write(body);
                     out.flush();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
                     String status = reader.readLine();
-                    boolean ok = status != null && status.matches("HTTP/1\\\\.[01] 200(?: .*)?");
+                    boolean ok = status != null && status.matches("HTTP/1\\.[01] 200(?: .*)?");
                     callback.onResult(ok, ok ? "تم إرسال الفيديو والـHeaders الآمنة إلى Receiver"
                             : "Receiver لم يؤكد طلب تشغيل الفيديو");
                 }
