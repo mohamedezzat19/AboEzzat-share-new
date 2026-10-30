@@ -2831,7 +2831,6 @@ public class MainActivity extends Activity {
                         media.clear(); mediaOrder.clear(); mediaRequestHeaders.clear();
                         mediaTitles.clear(); mediaPosters.clear(); selectedTrackUrls.clear();
                     }
-                    runOnUiThread(() -> updateCastActionButton());
                 }
                 currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
