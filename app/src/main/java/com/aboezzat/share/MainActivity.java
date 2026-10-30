@@ -894,16 +894,39 @@ public class MainActivity extends Activity {
     private void showAppSettings() {
         new AlertDialog.Builder(this)
                 .setTitle("إعدادات AboEzzat Share")
-                .setItems(new String[]{"المحركات", "إعدادات المتصفح", "جهاز الاستقبال", "البحث عن التحديثات", "إعدادات أندرويد للتطبيق"},
+                .setItems(new String[]{"المحركات", "إعدادات المتصفح", "جهاز الاستقبال", "البحث عن التحديثات", "تشخيص المتصفح", "إعدادات أندرويد للتطبيق"},
                         (dialog, which) -> {
                             if (which == 0) showExtractorEngines();
                             else if (which == 1) showBrowserSettingsDialog();
                             else if (which == 2) showReceiverPicker();
                             else if (which == 3) new AppUpdater(this).checkForUpdate(true);
+                            else if (which == 4) showBrowserDiagnostics();
                             else openAppPermissionSettings();
                         })
                 .setNegativeButton("إغلاق", null)
                 .show();
+    }
+
+    private void showBrowserDiagnostics() {
+        boolean adBlock = prefs != null && prefs.getBoolean("browser_adblock", true);
+        boolean safeBrowsing = false;
+        try { safeBrowsing = web != null && web.getSettings().getSafeBrowsingEnabled(); }
+        catch (Exception ignored) { }
+        String lastUrl = prefs == null ? "" : prefs.getString("last_browser_url", "");
+        String host = "لا توجد صفحة محفوظة";
+        try {
+            String parsedHost = Uri.parse(lastUrl).getHost();
+            if (parsedHost != null && !parsedHost.trim().isEmpty()) host = parsedHost;
+        } catch (Exception ignored) { }
+        String message = "حالة المتصفح\n"
+                + "• Safe Browsing: " + (safeBrowsing ? "مفعّل" : "غير متاح/متوقف") + "\n"
+                + "• مانع الإعلانات: " + (adBlock ? "مفعّل" : "متوقف") + "\n"
+                + "• منع النوافذ غير المطلوبة: مفعّل\n"
+                + "• علامات التبويب المفتوحة: " + browserTabs.size() + "\n"
+                + "• آخر موقع: " + host + "\n"
+                + "• حماية استخراج الفيديو: تعمل بشكل مستقل عن مانع الإعلانات";
+        new AlertDialog.Builder(this).setTitle("تشخيص المتصفح")
+                .setMessage(message).setPositiveButton("حسنًا", null).show();
     }
 
     private void showExtractorEngines() {
