@@ -162,7 +162,7 @@ final class OkHttpPageExtractor {
     }
 
     private static String findMp4(String html) {
-        Matcher m = MP4.matcher(html.replace("\\/", "/"));
+        Matcher m = STREAM_URL.matcher(html.replace("\\/", "/"));
         return m.find() ? clean(m.group()) : null;
     }
 
