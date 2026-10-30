@@ -101,6 +101,56 @@ public final class CastingManager {
         });
     }
 
+    /** Sends a direct media URL and only playback-safe HTTP headers to Receiver. */
+    public static void sendWithHeaders(String ip, String url, Map<String, String> headers, Callback callback) {
+        final String targetUrl = url == null ? "" : url.trim();
+        final Map<String, String> safeHeaders = new java.util.LinkedHashMap<>();
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                if (safeHeaders.size() >= 5) break;
+                String key = entry.getKey() == null ? "" : entry.getKey().toLowerCase(java.util.Locale.ROOT);
+                String value = entry.getValue();
+                if (("user-agent".equals(key) || "referer".equals(key) || "origin".equals(key)
+                        || "accept".equals(key) || "accept-language".equals(key))
+                        && value != null && value.length() <= 2048
+                        && !value.contains("\\r") && !value.contains("\\n")) {
+                    safeHeaders.put(key, value);
+                }
+            }
+        }
+        IO.execute(() -> {
+            if (!isHttpUrl(targetUrl)) {
+                callback.onResult(false, "رابط الوسائط غير صالح");
+                return;
+            }
+            try {
+                org.json.JSONObject payload = new org.json.JSONObject();
+                payload.put("url", targetUrl);
+                payload.put("headers", new org.json.JSONObject(safeHeaders));
+                byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress(ip, getPortFor(ip)), 3500);
+                    socket.setSoTimeout(5000);
+                    OutputStream out = socket.getOutputStream();
+                    String request = "POST /play HTTP/1.1\\r\\nHost: " + ip + ":" + getPortFor(ip)
+                            + "\\r\\nContent-Type: application/json; charset=utf-8"
+                            + "\\r\\nContent-Length: " + body.length
+                            + "\\r\\nConnection: close\\r\\n\\r\\n";
+                    out.write(request.getBytes(StandardCharsets.US_ASCII));
+                    out.write(body);
+                    out.flush();
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                    String status = reader.readLine();
+                    boolean ok = status != null && status.matches("HTTP/1\\\\.[01] 200(?: .*)?");
+                    callback.onResult(ok, ok ? "تم إرسال الفيديو والـHeaders الآمنة إلى Receiver"
+                            : "Receiver لم يؤكد طلب تشغيل الفيديو");
+                }
+            } catch (Exception e) {
+                callback.onResult(false, "تعذّر إرسال الفيديو: " + e.getClass().getSimpleName());
+            }
+        });
+    }
+
     public static void sendTracks(String ip, String videoUrl, String audioUrl, Callback callback) {
         final String video = videoUrl == null ? "" : videoUrl.trim();
         final String audio = audioUrl == null ? "" : audioUrl.trim();
