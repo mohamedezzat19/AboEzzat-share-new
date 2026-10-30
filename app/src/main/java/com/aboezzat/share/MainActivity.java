@@ -2708,9 +2708,9 @@ public class MainActivity extends Activity {
         if (view == null) return;
         String js = "(function(){try{"
                 + "var title='',poster='';"
-                + "var mt=document.querySelector('meta[property=\\"og:title\\"],meta[name=\\"twitter:title\\"]');"
+                + "var mt=document.querySelector('meta[property=\"og:title\"],meta[name=\"twitter:title\"]');"
                 + "if(mt&&mt.content)title=mt.content;"
-                + "var mi=document.querySelector('meta[property=\\"og:image\\"],meta[name=\\"twitter:image\\"]');"
+                + "var mi=document.querySelector('meta[property=\"og:image\"],meta[name=\"twitter:image\"]');"
                 + "if(mi&&mi.content)poster=mi.content;"
                 + "if(window.AboEzzatBridge)window.AboEzzatBridge.onMetaFound(title,poster);"
                 + "if(!window.__aboEzzatLegacyPlayHook&&window.HTMLMediaElement){"
@@ -2725,7 +2725,7 @@ public class MainActivity extends Activity {
                 + "for(var i=0;i<videos.length;i++){var src=videos[i].currentSrc||videos[i].src||'';"
                 + "if(/^https?:/i.test(src)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);}"
-                + "var ov=document.querySelector('meta[property=\\"og:video\\"],meta[property=\\"og:video:secure_url\\"]');"
+                + "var ov=document.querySelector('meta[property=\"og:video\"],meta[property=\"og:video:secure_url\"]');"
                 + "if(ov&&ov.content&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(ov.content,title||document.title,poster);"
                 + "}catch(e){}})()";
@@ -2814,10 +2814,10 @@ public class MainActivity extends Activity {
                     || lowerUrl.contains(".flv") || lowerUrl.contains("pull-")
                     || lowerUrl.contains("/v/t42.") || lowerUrl.contains("/v/t39.")
                     || lowerUrl.contains("/v/t16.") || lowerUrl.contains("/v/t15.");
-            ok = (socialVideoHost && videoMarker)
+            ok = (socialVideoHost && (videoMarker || lowerHost.contains("fbcdn.net")))
                     || lowerUrl.contains("mime=audio") || lowerUrl.contains("type=audio");
         }
-        if(!ok||media.containsKey(url))return;
+        if(!ok)return;
         if (requestHeaders != null && !requestHeaders.isEmpty()) {
             java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<String,String> entry : requestHeaders.entrySet()) {
@@ -2830,6 +2830,7 @@ public class MainActivity extends Activity {
             }
             if (!safe.isEmpty()) mediaRequestHeaders.put(url, safe);
         }
+        if (media.containsKey(url)) return;
         runOnUiThread(()->{
             if(media.containsKey(url))return;
             media.put(url,url);mediaOrder.add(url);
