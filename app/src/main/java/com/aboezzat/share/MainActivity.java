@@ -305,7 +305,7 @@ public class MainActivity extends Activity {
                 new ParallelExtractionRun(pageUrl, generation, enabled, true);
 
         if (useFast) {
-            FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+            FastMediaExtractor.extractDirectMedia(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new FastMediaExtractor.ExtractorCallback() {
                 @Override public void onSuccess(String mediaUrl, String platform) {
                     run.candidate(mediaUrl, "FastMediaExtractor / " + platform);
                 }
@@ -313,7 +313,7 @@ public class MainActivity extends Activity {
             });
         }
         if (useOkHttp) {
-            OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+            OkHttpPageExtractor.extract(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new OkHttpPageExtractor.Callback() {
                 @Override public void onSuccess(String mediaUrl) {
                     run.candidate(mediaUrl, "OkHttp Page Parser");
                 }
@@ -2203,7 +2203,7 @@ public class MainActivity extends Activity {
 
         // Start every enabled extractor without waiting for another one to fail.
         if (isEngineEnabled("fast")) {
-            FastMediaExtractor.extractDirectMedia(pageUrl, new FastMediaExtractor.ExtractorCallback() {
+            FastMediaExtractor.extractDirectMedia(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new FastMediaExtractor.ExtractorCallback() {
                 @Override public void onSuccess(String videoUrl, String platform) {
                     run.candidate(videoUrl, "FastMediaExtractor");
                 }
@@ -2211,7 +2211,7 @@ public class MainActivity extends Activity {
             });
         }
         if (isEngineEnabled("okhttp")) {
-            OkHttpPageExtractor.extract(pageUrl, new OkHttpPageExtractor.Callback() {
+            OkHttpPageExtractor.extract(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new OkHttpPageExtractor.Callback() {
                 @Override public void onSuccess(String mediaUrl) {
                     run.candidate(mediaUrl, "OkHttp Page Parser");
                 }
