@@ -584,13 +584,19 @@ public class MainActivity extends Activity {
 
                 sharedCaptureFinishRunnable = () -> {
                     if (generation != extractionGeneration || isFinishing() || sharedCaptureSent) return;
-                    if (!hasCapturedVideoMedia()) {
-                        destroySharedCaptureWebView();
-                        pendingExternalShareCapture = false;
-                        updateExtractionNotification("لم ينجح الالتقاط المباشر",
-                                "لم يظهر بث فيديو مباشر بعد فحص الصفحة. يمكنك فتح الرابط يدويًا من المتصفح؛ لن تُفتح الصفحة تلقائيًا.", true);
-                        startConfiguredFallbackExtractors(pageUrl, generation);
-                    }
+                    // A CDN request alone is not proof that the active video was captured.
+                    // Always end the hidden WebView session at timeout and run configured
+                    // extractors if the active-player bridge did not confirm a playable URL.
+                    boolean sawVideoRequests = hasCapturedVideoMedia();
+                    destroySharedCaptureWebView();
+                    pendingExternalShareCapture = false;
+                    updateExtractionNotification(
+                            sawVideoRequests ? "تم رصد مصادر دون تأكيد الفيديو" : "لم ينجح الالتقاط المباشر",
+                            sawVideoRequests
+                                    ? "تم رصد طلبات فيديو، لكن لم يتم تأكيد رابط التشغيل النشط. جاري تجربة المحركات الاحتياطية…"
+                                    : "لم يظهر بث فيديو مباشر بعد فحص الصفحة. جاري تجربة المحركات الاحتياطية…",
+                            true);
+                    startConfiguredFallbackExtractors(pageUrl, generation);
                 };
                 receiverMonitorHandler.postDelayed(sharedCaptureFinishRunnable, 20000L);
             } catch (Exception error) {
@@ -2948,12 +2954,15 @@ public class MainActivity extends Activity {
                     }
                 }
             }
+            String host = uri.getHost();
             String path = uri.getPath();
             if (path == null) path = "";
             path = path.toLowerCase(Locale.ROOT);
             // Quality suffixes are variants of the same media, not separate videos.
             path = path.replaceAll("_(?:2160p|1440p|1080p|720p|540p|480p|360p|240p|hd|sd|hq|n|s)(?=\\.[a-z0-9]+$)", "");
-            return path;
+            // Include the CDN host in fallback identity: unrelated providers can
+            // legitimately expose the same generic path (for example /video.mp4).
+            return (host == null ? "" : host.toLowerCase(Locale.ROOT)) + path;
         } catch (Exception ignored) {
             return url == null ? "" : url.toLowerCase(Locale.ROOT).split("\\?")[0];
         }
