@@ -1188,7 +1188,8 @@ public class MainActivity extends Activity {
         addSection(page, "منصاتك ومواقعك", "اضغط على البطاقة لفتح الموقع، واضغط + لإضافة أي موقع جديد");
         LinearLayout siteGrid = null;
         int siteCountInRow = 0;
-        String[][] sites = {
+        ArrayList<JSONObject> allSites = new ArrayList<>();
+        String[][] builtInSites = {
             {"YouTube", "https://m.youtube.com"},
             {"Facebook", "https://m.facebook.com"},
             {"TikTok", "https://www.tiktok.com"},
@@ -1196,8 +1197,46 @@ public class MainActivity extends Activity {
             {"X / Twitter", "https://x.com"},
             {"Threads", "https://www.threads.net"}
         };
-        for (String[] site : sites) {
+        JSONArray hiddenArray;
+        try { hiddenArray = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
+        catch (Exception ignored) { hiddenArray = new JSONArray(); }
+        java.util.HashSet<String> hiddenKeys = new java.util.HashSet<>();
+        for (int h = 0; h < hiddenArray.length(); h++) hiddenKeys.add(hiddenArray.optString(h));
+        for (String[] site : builtInSites) {
+            String key = site[1];
+            if (hiddenKeys.contains(key)) continue;
+            JSONObject item = new JSONObject();
+            try { item.put("name", site[0]); item.put("url", site[1]); item.put("builtin", true); allSites.add(item); }
+            catch (org.json.JSONException ignored) { }
+        }
+        JSONArray customSites = readCustomSites();
+        for (int i = 0; i < customSites.length(); i++) {
+            JSONObject item = customSites.optJSONObject(i);
+            if (item == null) continue;
+            String siteUrl = item.optString("url", "").trim();
+            if (!BrowserEngine.isWebUrl(siteUrl)) continue;
+            JSONObject copy = new JSONObject(item.toString());
+            try { copy.put("builtin", false); allSites.add(copy); }
+            catch (org.json.JSONException ignored) { }
+        }
+        JSONArray savedOrder;
+        try { savedOrder = new JSONArray(prefs.getString("site_order_json", "[]")); }
+        catch (Exception ignored) { savedOrder = new JSONArray(); }
+        java.util.HashMap<String, Integer> orderMap = new java.util.HashMap<>();
+        for (int oi = 0; oi < savedOrder.length(); oi++) orderMap.put(savedOrder.optString(oi), oi);
+        allSites.sort((a, b) -> Integer.compare(
+                orderMap.getOrDefault(a.optString("url"), Integer.MAX_VALUE),
+                orderMap.getOrDefault(b.optString("url"), Integer.MAX_VALUE)));
+        for (int i = 0; i < allSites.size(); i++) {
+            JSONObject item = allSites.get(i);
+            String siteUrl = item.optString("url", "");
+            String siteName = item.optString("name", siteHostLabel(siteUrl));
+            if (siteName.isEmpty()) siteName = siteHostLabel(siteUrl);
             if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
+            addWebsiteCard(siteGrid, siteName, siteUrl, i, !item.optBoolean("builtin", false));
+            siteCountInRow = (siteCountInRow + 1) % 3;
+        }
+        if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
             addWebsiteCard(siteGrid, site[0], site[1], -1, false);
             siteCountInRow = (siteCountInRow + 1) % 3;
         }
@@ -1323,15 +1362,21 @@ public class MainActivity extends Activity {
         card.addView(label, labelParams);
         card.setContentDescription("فتح " + name);
         card.setOnClickListener(v -> openQuickSite(siteUrl));
-        if (custom) {
-            card.setOnLongClickListener(v -> {
-                new AlertDialog.Builder(this).setTitle("إزالة الموقع")
-                        .setMessage("هل تريد إزالة «" + name + "» من بطاقات المواقع؟")
-                        .setPositiveButton("إزالة", (d, which) -> removeCustomSite(customIndex))
-                        .setNegativeButton("إلغاء", null).show();
-                return true;
-            });
-        }
+        card.setOnLongClickListener(v -> {
+            String[] actions = custom
+                    ? new String[]{"نقل لأعلى", "نقل لأسفل", "حذف الموقع", "إلغاء"}
+                    : new String[]{"نقل لأعلى", "نقل لأسفل", "إخفاء الموقع", "إلغاء"};
+            new AlertDialog.Builder(this).setTitle("إدارة " + name)
+                    .setItems(actions, (dialog, which) -> {
+                        if (which == 0) moveSite(siteUrl, -1);
+                        else if (which == 1) moveSite(siteUrl, 1);
+                        else if (which == 2) {
+                            if (custom) removeCustomSiteByUrl(siteUrl);
+                            else hideBuiltInSite(siteUrl);
+                        }
+                    }).show();
+            return true;
+        });
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(94), 1);
         cp.setMargins(dp(3), dp(4), dp(3), dp(4));
         parent.addView(card, cp);
@@ -1413,6 +1458,63 @@ public class MainActivity extends Activity {
             SITE_ICON_CACHE.put(cacheKey, bitmap);
         }
         return bitmap;
+    }
+
+    private void persistSiteOrder(ArrayList<String> urls) {
+        JSONArray array = new JSONArray();
+        for (String url : urls) array.put(url);
+        prefs.edit().putString("site_order_json", array.toString()).apply();
+    }
+
+    private void moveSite(String url, int delta) {
+        ArrayList<String> urls = new ArrayList<>();
+        JSONArray hidden;
+        try { hidden = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
+        catch (Exception ignored) { hidden = new JSONArray(); }
+        java.util.HashSet<String> hiddenSet = new java.util.HashSet<>();
+        for (int i = 0; i < hidden.length(); i++) hiddenSet.add(hidden.optString(i));
+        String[][] builtins = {{"YouTube","https://m.youtube.com"},{"Facebook","https://m.facebook.com"},{"TikTok","https://www.tiktok.com"},{"Instagram","https://www.instagram.com"},{"X / Twitter","https://x.com"},{"Threads","https://www.threads.net"}};
+        for (String[] site : builtins) if (!hiddenSet.contains(site[1])) urls.add(site[1]);
+        JSONArray custom = readCustomSites();
+        for (int i = 0; i < custom.length(); i++) {
+            JSONObject item = custom.optJSONObject(i);
+            if (item != null) urls.add(item.optString("url", ""));
+        }
+        JSONArray saved;
+        try { saved = new JSONArray(prefs.getString("site_order_json", "[]")); }
+        catch (Exception ignored) { saved = new JSONArray(); }
+        ArrayList<String> ordered = new ArrayList<>();
+        for (int i = 0; i < saved.length(); i++) {
+            String value = saved.optString(i);
+            if (urls.remove(value)) ordered.add(value);
+        }
+        ordered.addAll(urls);
+        int from = ordered.indexOf(url), to = from + delta;
+        if (from < 0 || to < 0 || to >= ordered.size()) return;
+        java.util.Collections.swap(ordered, from, to);
+        persistSiteOrder(ordered);
+        showHome();
+    }
+
+    private void removeCustomSiteByUrl(String url) {
+        JSONArray old = readCustomSites(), updated = new JSONArray();
+        for (int i = 0; i < old.length(); i++) {
+            JSONObject item = old.optJSONObject(i);
+            if (item != null && !url.equalsIgnoreCase(item.optString("url", ""))) updated.put(item);
+        }
+        prefs.edit().putString("custom_sites_json", updated.toString()).apply();
+        showHome();
+    }
+
+    private void hideBuiltInSite(String url) {
+        JSONArray hidden;
+        try { hidden = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
+        catch (Exception ignored) { hidden = new JSONArray(); }
+        boolean exists = false;
+        for (int i = 0; i < hidden.length(); i++) if (url.equals(hidden.optString(i))) exists = true;
+        if (!exists) hidden.put(url);
+        prefs.edit().putString("hidden_builtin_sites", hidden.toString()).apply();
+        showHome();
     }
 
     private void removeCustomSite(int removeIndex) {
