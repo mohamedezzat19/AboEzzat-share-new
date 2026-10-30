@@ -30,7 +30,7 @@ final class PlatformExtractor {
                     throw new IllegalArgumentException("عنوان Social Engine غير مضبوط");
                 String endpoint = base.endsWith("/api/v1/extract") ? base : base + "/api/v1/extract";
                 String secret = token == null ? "" : token.trim();
-                if (secret.length() < 16) throw new IllegalArgumentException("مفتاح Social Engine غير مضبوط");
+                if (secret.length() < 32) throw new IllegalArgumentException("مفتاح Social Engine غير مضبوط");
 
                 JSONObject payload = new JSONObject();
                 payload.put("url", pageUrl);
