@@ -290,7 +290,7 @@ public class MainActivity extends Activity {
         final String configuredApi = prefs == null ? "" : prefs.getString("extractor_api_base", "").trim();
         final String socialEngineToken = prefs == null ? "" : prefs.getString("social_engine_token", "").trim();
         final boolean usePlatformApi = isEngineEnabled("socialengine")
-                && !configuredApi.isEmpty() && socialEngineToken.length() >= 16;
+                && !configuredApi.isEmpty() && socialEngineToken.length() >= 32;
         final int enabled = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
                 + (useRapid ? 1 : 0) + (usePlatformApi ? 1 : 0);
 
