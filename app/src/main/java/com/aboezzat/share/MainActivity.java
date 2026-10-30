@@ -2601,14 +2601,21 @@ public class MainActivity extends Activity {
     }
 
     private int mediaQualityHintScore(String mediaUrl) {
-        String value = mediaUrl == null ? "" : mediaUrl.toLowerCase(Locale.ROOT);
+        if (mediaUrl == null) return 0;
+        String value = mediaUrl.toLowerCase(Locale.ROOT);
+        // Use the same quality label shown in the classic-style list first.
+        String detected = MediaDetector.quality(mediaUrl);
+        java.util.regex.Matcher qualityMatcher =
+                java.util.regex.Pattern.compile("(2160|1440|1080|720|540|480|360|240)p").matcher(detected);
+        if (qualityMatcher.find()) {
+            try { return Integer.parseInt(qualityMatcher.group(1)); } catch (Exception ignored) { }
+        }
         int[] heights = {2160, 1440, 1080, 720, 540, 480, 360, 240};
         for (int height : heights) {
             String number = String.valueOf(height);
             if (value.contains(number + "p") || value.contains("height=" + number)
-                    || value.contains("quality=" + number) || value.contains("res=" + number)) {
-                return height;
-            }
+                    || value.contains("quality=" + number) || value.contains("res=" + number)
+                    || value.contains("resolution=" + number)) return height;
         }
         if (value.contains("quality=hd") || value.contains("high")) return 700;
         if (value.contains("quality=sd") || value.contains("medium")) return 400;
@@ -3550,6 +3557,7 @@ public class MainActivity extends Activity {
         if(u.endsWith(".jpg")||u.endsWith(".jpeg")||u.endsWith(".png")||u.endsWith(".webp")||u.endsWith(".gif")||u.endsWith(".bmp")||u.endsWith(".avif"))return "صورة";
         if(u.endsWith(".mp3")||u.endsWith(".m4a")||u.endsWith(".aac")||u.endsWith(".ogg")||u.endsWith(".oga")||u.endsWith(".opus")||u.endsWith(".wav")||u.endsWith(".flac")||u.endsWith(".mid")||u.endsWith(".midi"))return "صوت";
         if(u.endsWith(".mp4")||u.endsWith(".m4v")||u.endsWith(".webm")||u.endsWith(".mov")||u.endsWith(".avi")||u.endsWith(".mkv")||u.endsWith(".3gp")||u.endsWith(".ts"))return "فيديو";
+        if (isVideoCandidate(url)) return "فيديو";
         return "وسائط";
     }
 
