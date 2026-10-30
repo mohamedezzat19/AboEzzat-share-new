@@ -2825,6 +2825,15 @@ public class MainActivity extends Activity {
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
             if (isVideoCandidate(mediaUrl)) {
+                if (currentPlayingVideoUrl != null && !currentPlayingVideoUrl.isEmpty()
+                        && !currentPlayingVideoUrl.equals(mediaUrl)) {
+                    synchronized (mediaOrder) {
+                        media.clear(); mediaOrder.clear(); mediaRequestHeaders.clear();
+                        mediaTitles.clear(); mediaPosters.clear(); selectedTrackUrls.clear();
+                    }
+                    runOnUiThread(() -> updateCastActionButton());
+                }
+                currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
                 // Only the background scanner calls this after confirming a visible,
                 // currently-playing video. Network requests alone are never auto-cast.
@@ -2936,7 +2945,7 @@ public class MainActivity extends Activity {
         if(url==null||url.trim().isEmpty()||url.startsWith("blob:")||url.startsWith("data:"))return;
         // Only keep actual video candidates. Images, audio, posters, thumbnails,
         // analytics and unrelated page requests must never enter the detected-media list.
-        if (!isVideoCandidate(url)) return;
+        if (!isVideoCandidate(url) && !isAudioTrackCandidate(url)) return;
         if (requestHeaders != null && !requestHeaders.isEmpty()) {
             java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<String,String> entry : requestHeaders.entrySet()) {
