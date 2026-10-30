@@ -2656,7 +2656,7 @@ public class MainActivity extends Activity {
             if (success) {
                 String notice = "Receiver استلم طلب التشغيل؛ جاري التحقق من بدء الفيديو على الشاشة.";
                 updateExtractionNotification("تم إرسال الفيديو", notice, false);
-                Toast.makeText(MainActivity.this, notice, Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this, "تم الإرسال", Toast.LENGTH_SHORT).show();
                 trackReceiverExtraction(ip);
             } else {
                 String error = message == null ? "تعذر إرسال الرابط إلى Receiver." : message;
@@ -3400,7 +3400,7 @@ public class MainActivity extends Activity {
         CastingManager.sendTracks(ip, selectedVideoUrl, selectedAudioUrl, (success, message) -> runOnUiThread(() -> {
             receiverConnected = success;
             refreshConnectionLabel();
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            if (!success) Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
             if (success) {
                 rememberCastUrl(selectedVideoUrl);
                 rememberCastUrl(selectedAudioUrl);
@@ -4118,6 +4118,9 @@ public class MainActivity extends Activity {
                 NotificationChannel channel = new NotificationChannel(
                         EXTRACTION_CHANNEL, "استخراج الفيديو", NotificationManager.IMPORTANCE_LOW);
                 channel.setDescription("حالة محاولات استخراج الفيديو المرسل إلى الريسيفر");
+                channel.setSound(null, null);
+                channel.enableVibration(false);
+                channel.setShowBadge(false);
                 manager.createNotificationChannel(channel);
             }
         }
@@ -4144,10 +4147,14 @@ public class MainActivity extends Activity {
                 .setContentTitle(title == null ? "AboEzzat Share" : title)
                 .setContentText(message)
                 .setStyle(new Notification.BigTextStyle().bigText(message))
-                .setOngoing(false)
+                .setOngoing(ongoing)
                 .setOnlyAlertOnce(true)
+                .setSilent(true)
                 .setCategory(Notification.CATEGORY_STATUS)
-                .setAutoCancel(false);
+                .setAutoCancel(!ongoing);
+        // Reuse one notification ID for the whole share operation. Progress stays
+        // in the shade; terminal states disappear automatically after a short delay.
+        if (!ongoing) builder.setTimeoutAfter(4500L);
         manager.notify(EXTRACTION_NOTIFICATION_ID, builder.build());
     }
 
