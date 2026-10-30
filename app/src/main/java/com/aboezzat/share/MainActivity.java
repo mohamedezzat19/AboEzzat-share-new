@@ -1348,13 +1348,13 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { }
         int icon = 0;
         if (host.equals("youtube.com") || host.endsWith(".youtube.com") || host.equals("youtu.be")) {
-            icon = R.drawable.quick_youtube;
+            icon = R.drawable.app_icon_youtube;
         } else if (host.equals("facebook.com") || host.endsWith(".facebook.com")) {
             icon = R.drawable.quick_facebook;
         } else if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) {
-            icon = R.drawable.quick_tiktok;
+            icon = R.drawable.app_icon_tiktok;
         } else if (host.equals("instagram.com") || host.endsWith(".instagram.com")) {
-            icon = R.drawable.quick_instagram;
+            icon = R.drawable.app_icon_instagram;
         } else if (host.equals("x.com") || host.endsWith(".x.com")
                 || host.equals("twitter.com") || host.endsWith(".twitter.com")) {
             icon = R.drawable.quick_x;
