@@ -2992,63 +2992,44 @@ public class MainActivity extends Activity {
     }
 
     private void showDetectedMediaDialog() {
-        if (mediaOrder.isEmpty()) {
-            Toast.makeText(this, "لسه مفيش روابط اتلقطت. افتح الفيديو وشغّله الأول.", Toast.LENGTH_LONG).show();
-            return;
-        }
+        if (mediaOrder.isEmpty()) { Toast.makeText(this, "لسه مفيش روابط للفيديو الحالي. شغّل الفيديو الأول.", Toast.LENGTH_LONG).show(); return; }
         ScrollView scroll = new ScrollView(this);
         LinearLayout list = column();
         list.setPadding(dp(12), dp(12), dp(12), dp(12));
+        LinearLayout bulk = row();
+        TextView send = button("▣ إرسال المحدد", BLUE, WHITE);
+        TextView download = button("⬇ تنزيل المحدد", PANEL2, WHITE);
+        bulk.addView(send, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        bulk.addView(download, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        list.addView(bulk, lp(-1, dp(44)));
+        send.setOnClickListener(v -> sendSelectedMediaTracks());
+        download.setOnClickListener(v -> {
+            int count=0;
+            for (String u : new ArrayList<>(selectedTrackUrls.keySet())) if (Boolean.TRUE.equals(selectedTrackUrls.get(u))) { downloadUrl(u, null); count++; }
+            if (count==0) Toast.makeText(this,"حدد رابطًا واحدًا على الأقل للتنزيل",Toast.LENGTH_SHORT).show();
+        });
         synchronized (mediaOrder) {
             for (String url : new ArrayList<>(mediaOrder)) {
-                LinearLayout card = column();
-                card.setPadding(dp(10), dp(10), dp(10), dp(10));
-                card.setBackground(shape(PANEL, PANEL2, 12));
-                LinearLayout.LayoutParams cardParams = lp(-1, -2);
-                cardParams.bottomMargin = dp(8);
-                list.addView(card, cardParams);
-                LinearLayout itemRow = row();
-                String poster = mediaPosters.get(url);
-                if (poster != null && BrowserEngine.isWebUrl(poster)) {
-                    ImageView thumb = new ImageView(this);
-                    thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                    thumb.setBackground(shape(PANEL2, PANEL2, 8));
-                    itemRow.addView(thumb, new LinearLayout.LayoutParams(dp(88), dp(64)));
-                    loadDetectedPoster(poster, thumb);
-                }
-                LinearLayout detailsColumn = column();
-                detailsColumn.setPadding(dp(9), 0, 0, 0);
-                String title = mediaTitles.get(url);
-                if (title == null || title.trim().isEmpty()) title = "فيديو مكتشف";
-                TextView titleView = text(title, 14, WHITE, true);
-                titleView.setMaxLines(2);
-                titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                detailsColumn.addView(titleView, lp(-1, -2));
-                String host = Uri.parse(url).getHost();
-                String details = mediaType(url) + " • " + MediaDetector.quality(url) + " • " + (host == null ? "مصدر مباشر" : host);
-                detailsColumn.addView(text(details, 12, MUTED, false), lp(-1, 24));
-                TextView link = text(url, 10, MUTED, false);
-                link.setMaxLines(1);
-                link.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                detailsColumn.addView(link, lp(-1, 22));
-                itemRow.addView(detailsColumn, new LinearLayout.LayoutParams(0, -2, 1f));
-                card.addView(itemRow, lp(-1, -2));
-                LinearLayout actions = row();
-                TextView send = button("إرسال للشاشة", BLUE, WHITE);
-                TextView download = button("تنزيل", PANEL2, WHITE);
-                actions.addView(send, new LinearLayout.LayoutParams(0, dp(40), 1));
-                actions.addView(download, new LinearLayout.LayoutParams(0, dp(40), 1));
-                card.addView(actions, lp(-1, 42));
-                send.setOnClickListener(v -> castUrl(url));
-                download.setOnClickListener(v -> downloadUrl(url, null));
+                LinearLayout card=column(); card.setPadding(dp(8),dp(8),dp(8),dp(8)); card.setBackground(shape(PANEL,PANEL2,12));
+                LinearLayout.LayoutParams cp=lp(-1,-2); cp.bottomMargin=dp(7); list.addView(card,cp);
+                LinearLayout item=row();
+                android.widget.CheckBox check=new android.widget.CheckBox(this);
+                check.setButtonTintList(android.content.res.ColorStateList.valueOf(BLUE));
+                check.setChecked(Boolean.TRUE.equals(selectedTrackUrls.get(url)));
+                check.setOnCheckedChangeListener((v,checked)->selectedTrackUrls.put(url,checked));
+                item.addView(check,new LinearLayout.LayoutParams(dp(38),dp(48)));
+                String poster=mediaPosters.get(url);
+                if(poster!=null&&BrowserEngine.isWebUrl(poster)){ImageView thumb=new ImageView(this);thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);thumb.setBackground(shape(PANEL2,PANEL2,8));item.addView(thumb,new LinearLayout.LayoutParams(dp(76),dp(56)));loadDetectedPoster(poster,thumb);}
+                LinearLayout details=column(); details.setPadding(dp(8),0,0,0);
+                String title=mediaTitles.get(url); if(title==null||title.trim().isEmpty())title="مصدر "+mediaType(url);
+                TextView tv=text(title,13,WHITE,true);tv.setMaxLines(2);tv.setEllipsize(android.text.TextUtils.TruncateAt.END);details.addView(tv,lp(-1,-2));
+                String host=Uri.parse(url).getHost();details.addView(text(mediaType(url)+" • "+MediaDetector.quality(url)+" • "+(host==null?"مصدر مباشر":host),11,MUTED,false),lp(-1,22));
+                TextView link=text(url,9,MUTED,false);link.setMaxLines(1);link.setEllipsize(android.text.TextUtils.TruncateAt.END);details.addView(link,lp(-1,20));
+                item.addView(details,new LinearLayout.LayoutParams(0,-2,1f));card.addView(item,lp(-1,-2));
             }
         }
         scroll.addView(list);
-        new AlertDialog.Builder(this)
-                .setTitle("الروابط التي التقطها المتصفح (" + mediaOrder.size() + ")")
-                .setView(scroll)
-                .setPositiveButton("إغلاق", null)
-                .show();
+        new AlertDialog.Builder(this).setTitle("مصادر الفيديو الحالي ("+mediaOrder.size()+")").setView(scroll).setPositiveButton("إغلاق",null).show();
     }
 
     private LinearLayout.LayoutParams remoteButtonParams() {
