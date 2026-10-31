@@ -1788,10 +1788,7 @@ public class MainActivity extends Activity {
     private void showPhoneGallery() {
         currentPage = "gallery";
         resetContent();
-        addSection(content, "معرض الصور", "اختار صورة من جهازك واعرض معاينتها");
-        TextView note = text("اختار صورة لعرضها هنا. إرسال الملفات المحلية للتلفزيون يحتاج مشاركة الملف عبر اتصال يمكن لجهاز الاستقبال الوصول إليه.", 14, MUTED, false);
-        note.setPadding(dp(8), dp(12), dp(8), dp(12));
-        content.addView(note, lp(-1, -2));
+        addSection(content, "معرض الصور", null);
         TextView open = button("اختيار عدة صور", BLUE, WHITE);
         content.addView(open, lp(-1, 48));
         open.setOnClickListener(v -> {
