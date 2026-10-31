@@ -242,6 +242,7 @@ public class ShareLinkActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        completed.set(true);
         mainHandler.removeCallbacks(extractionTimeout);
         mainHandler.removeCallbacks(activityTimeout);
         super.onDestroy();
