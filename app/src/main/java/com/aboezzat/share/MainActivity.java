@@ -3218,222 +3218,54 @@ public class MainActivity extends Activity {
     private void showDetectedMediaDialog() {
         final ArrayList<String> snapshot;
         synchronized (mediaOrder) { snapshot = new ArrayList<>(mediaOrder); }
+        snapshot.removeIf(url -> url == null || !BrowserEngine.isWebUrl(url)
+                || !isVideoCandidate(url) || isObviousNonVideoMedia(url));
         if (snapshot.isEmpty()) {
-            Toast.makeText(this, "لا توجد فيديوهات ملتقطة لهذا المقطع بعد. شغّل الفيديو ثم افتح القائمة مرة أخرى.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "لم يتم العثور على رابط فيديو مباشر صالح بعد. افتح الفيديو وانتظر تحميله ثم أعد المحاولة.", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // Match the classic Share capture list: dark surface, centered heading,
-        // compact rows, checkbox, title/format, thumbnail and gold cast action.
-        final android.app.Dialog dialog = new android.app.Dialog(this);
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
-        LinearLayout main = column();
-        main.setBackgroundColor(Color.parseColor("#181818"));
-        main.setPadding(dp(14), dp(14), dp(14), dp(12));
+        // Keep only distinct media URLs and put the clearest quality candidate first.
+        java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>(snapshot);
+        snapshot.clear();
+        snapshot.addAll(unique);
+        java.util.Collections.sort(snapshot, (left, right) ->
+                Integer.compare(mediaQualityHintScore(right), mediaQualityHintScore(left)));
 
-        TextView heading = text("المسارات المكتشفة (" + snapshot.size() + ") - محددة تلقائياً", 16, WHITE, true);
-        heading.setGravity(Gravity.CENTER);
-        heading.setPadding(0, dp(8), 0, dp(14));
-        main.addView(heading, lp(-1, -2));
-
-        TextView selectionStatus = text("", 11, MUTED, false);
-        selectionStatus.setGravity(Gravity.CENTER);
-        selectionStatus.setPadding(0, 0, 0, dp(8));
-        Runnable updateSelectionStatus = () -> {
-            int selectedCount = 0;
-            for (String selectedUrl : snapshot) {
-                if (Boolean.TRUE.equals(selectedTrackUrls.get(selectedUrl))) selectedCount++;
-            }
-            selectionStatus.setText("المحدد: " + selectedCount + " من " + snapshot.size());
-        };
-        updateSelectionStatus.run();
-        main.addView(selectionStatus, lp(-1, dp(24)));
-
-        LinearLayout selectionActions = row();
-        TextView selectAll = button("تحديد الكل", PANEL2, GOLD);
-        TextView clearSelection = button("إلغاء التحديد", PANEL2, WHITE);
-        LinearLayout.LayoutParams selectionButtonParams = new LinearLayout.LayoutParams(0, dp(32), 1f);
-        selectionButtonParams.setMargins(0, 0, dp(4), dp(8));
-        selectionActions.addView(selectAll, selectionButtonParams);
-        LinearLayout.LayoutParams clearSelectionParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
-        clearSelectionParams.setMargins(dp(4), 0, 0, dp(8));
-        selectionActions.addView(clearSelection, clearSelectionParams);
-        main.addView(selectionActions, lp(-1, dp(38)));
-
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout rows = column();
-        ArrayList<android.widget.CheckBox> rowChecks = new ArrayList<>();
-        for (String url : snapshot) {
-            LinearLayout item = row();
-            item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(8), dp(6), dp(8), dp(6));
-            item.setBackgroundColor(Color.parseColor("#1F1F1F"));
-            LinearLayout.LayoutParams rowParams = lp(-1, -2);
-            rowParams.bottomMargin = dp(2);
-            rows.addView(item, rowParams);
-
-            android.widget.CheckBox check = new android.widget.CheckBox(this);
-            check.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FFC107")));
-            check.setChecked(Boolean.TRUE.equals(selectedTrackUrls.get(url)));
-            check.setOnCheckedChangeListener((button, checked) -> {
-                selectedTrackUrls.put(url, checked);
-                updateSelectionStatus.run();
-            });
-            rowChecks.add(check);
-            item.addView(check, new LinearLayout.LayoutParams(dp(34), dp(40)));
-
-            LinearLayout info = column();
-            LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0, -2, 1f);
-            infoParams.setMargins(dp(7), 0, dp(8), 0);
-            item.addView(info, infoParams);
-
-            String title = mediaTitles.get(url);
-            if (title == null || title.trim().isEmpty()) title = "مقطع فيديو";
-            final String capturedTitle = title;
-            TextView titleView = text(capturedTitle, 13, WHITE, true);
-            titleView.setMaxLines(2);
-            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            info.addView(titleView, lp(-1, -2));
-
-            String type = mediaType(url);
+        final String pageTitle = lastPageMediaTitle == null || lastPageMediaTitle.trim().isEmpty()
+                ? "فيديو فيسبوك" : lastPageMediaTitle.trim();
+        final String[] labels = new String[snapshot.size()];
+        for (int i = 0; i < snapshot.size(); i++) {
+            String url = snapshot.get(i);
             String quality = MediaDetector.quality(url);
-            String host = Uri.parse(url).getHost();
-            TextView formatView = text(type + "  •  " + quality + "  •  " +
-                    (host == null ? "مصدر مباشر" : host), 11,
-                    "صوت".equals(type) ? Color.parseColor("#FF9800") : Color.parseColor("#4CAF50"), false);
-            formatView.setMaxLines(1);
-            formatView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            info.addView(formatView, lp(-1, dp(22)));
-
-            ImageView thumb = new ImageView(this);
-            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumb.setBackgroundColor(Color.parseColor("#2C2C2C"));
-            LinearLayout.LayoutParams thumbParams = lp(dp(88), dp(66));
-            item.addView(thumb, thumbParams);
-            String poster = mediaPosters.get(url);
-            if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
-            item.setOnClickListener(v -> new AlertDialog.Builder(this)
-                    .setTitle(capturedTitle)
-                    .setItems(new String[]{
-                            "🔗 دمج وبث بصوت وصورة",
-                            "📺 بث هذا المسار منفرداً",
-                            "🎬 تحميل هذا المسار",
-                            "🎵 تحميل الصوت فقط",
-                            "✓ تحديد / إلغاء التحديد"
-                    }, (d, choice) -> {
-                        if (choice == 0) {
-                            dialog.dismiss();
-                            sendSelectedMediaTracks();
-                        } else if (choice == 1) {
-                            dialog.dismiss();
-                            castUrl(url);
-                        } else if (choice == 2) {
-                            downloadUrl(url, null);
-                        } else if (choice == 3) {
-                            downloadUrl(url, "audio/*");
-                        } else {
-                            check.setChecked(!check.isChecked());
-                        }
-                    }).show());
+            if (quality == null || quality.trim().isEmpty()
+                    || "غير معروف".equalsIgnoreCase(quality)) quality = "الجودة غير محددة";
+            String host;
+            try { host = Uri.parse(url).getHost(); } catch (Exception ignored) { host = null; }
+            labels[i] = (i == 0 ? "⭐ الأفضل المتاح  •  " : "")
+                    + quality + "  •  " + (host == null ? "رابط فيديو مباشر" : host);
         }
-        selectAll.setOnClickListener(v -> {
-            for (int i = 0; i < snapshot.size(); i++) {
-                selectedTrackUrls.put(snapshot.get(i), true);
-                rowChecks.get(i).setChecked(true);
-            }
-            updateSelectionStatus.run();
-        });
-        clearSelection.setOnClickListener(v -> {
-            for (int i = 0; i < snapshot.size(); i++) {
-                selectedTrackUrls.put(snapshot.get(i), false);
-                rowChecks.get(i).setChecked(false);
-            }
-            updateSelectionStatus.run();
-        });
 
-        scroll.addView(rows);
-        main.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        TextView cast = button("📺 بث فوري على الشاشة", Color.parseColor("#FFD700"), Color.BLACK);
-        cast.setTextSize(14);
-        LinearLayout.LayoutParams castParams = lp(-1, dp(38));
-        castParams.topMargin = dp(10);
-        main.addView(cast, castParams);
-        cast.setOnClickListener(v -> {
-            boolean selectedVideo = false;
-            for (String url : selectedTrackUrls.keySet()) {
-                if (Boolean.TRUE.equals(selectedTrackUrls.get(url)) && isVideoCandidate(url)) {
-                    selectedVideo = true; break;
-                }
-            }
-            if (!selectedVideo) {
-                Toast.makeText(this, "حدد فيديو واحدًا على الأقل قبل الإرسال", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            dialog.dismiss();
-            sendSelectedMediaTracks();
-        });
-
-        TextView download = button("⬇ تحميل المحدد", Color.parseColor("#2E7D32"), WHITE);
-        LinearLayout.LayoutParams downloadParams = lp(-1, dp(36));
-        downloadParams.topMargin = dp(6);
-        main.addView(download, downloadParams);
-        download.setOnClickListener(v -> {
-            int count = 0;
-            for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
-                if (Boolean.TRUE.equals(selectedTrackUrls.get(url))) {
-                    downloadUrl(url, null); count++;
-                }
-            }
-            if (count == 0) Toast.makeText(this, "حدد رابطًا واحدًا على الأقل للتنزيل", Toast.LENGTH_SHORT).show();
-            else dialog.dismiss();
-        });
-
-        LinearLayout downloadActions = row();
-        TextView downloadVideo = button("🎬 تحميل الفيديو المحدد", Color.parseColor("#2E7D32"), WHITE);
-        TextView downloadAudio = button("🎵 تحميل الصوت المحدد", Color.parseColor("#E65100"), WHITE);
-        LinearLayout.LayoutParams actionHalf = new LinearLayout.LayoutParams(0, dp(42), 1f);
-        actionHalf.setMargins(0, dp(6), dp(3), 0);
-        downloadActions.addView(downloadVideo, actionHalf);
-        LinearLayout.LayoutParams actionHalf2 = new LinearLayout.LayoutParams(0, dp(42), 1f);
-        actionHalf2.setMargins(dp(3), dp(6), 0, 0);
-        downloadActions.addView(downloadAudio, actionHalf2);
-        main.addView(downloadActions);
-        downloadVideo.setOnClickListener(v -> {
-            int count = 0;
-            for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
-                if (Boolean.TRUE.equals(selectedTrackUrls.get(url)) && isVideoCandidate(url)) { downloadUrl(url, null); count++; }
-            }
-            if (count == 0) Toast.makeText(this, "حدد فيديو للتنزيل أولاً", Toast.LENGTH_SHORT).show();
-            else dialog.dismiss();
-        });
-        downloadAudio.setOnClickListener(v -> {
-            int count = 0;
-            for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
-                if (Boolean.TRUE.equals(selectedTrackUrls.get(url)) && "صوت".equals(mediaType(url))) { downloadUrl(url, "audio/*"); count++; }
-            }
-            if (count == 0) Toast.makeText(this, "حدد مسار صوت للتنزيل أولاً", Toast.LENGTH_SHORT).show();
-            else dialog.dismiss();
-        });
-        TextView clearList = button("مسح قائمة الوسائط المكتشفة", PANEL2, MUTED);
-        LinearLayout.LayoutParams clearParams = lp(-1, dp(32));
-        clearParams.topMargin = dp(6);
-        main.addView(clearList, clearParams);
-        clearList.setOnClickListener(v -> {
-            synchronized (mediaOrder) { mediaOrder.clear(); }
-            mediaTitles.clear(); mediaPosters.clear(); selectedTrackUrls.clear();
-            dialog.dismiss();
-            Toast.makeText(this, "تم مسح قائمة الوسائط المكتشفة", Toast.LENGTH_SHORT).show();
-        });
-
-        dialog.setContentView(main);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(pageTitle)
+                .setMessage(snapshot.size() == 1
+                        ? "تم العثور على مصدر فيديو واحد. اضغط عليه لإرساله إلى الشاشة."
+                        : "اختار مصدر الفيديو. الأفضل المتاح ظاهر أولاً، وسيتم إرساله مباشرة إلى Receiver.")
+                .setItems(labels, (d, which) -> {
+                    if (which < 0 || which >= snapshot.size()) return;
+                    String selectedUrl = snapshot.get(which);
+                    currentPlayingVideoUrl = selectedUrl;
+                    Toast.makeText(this, "جاري إرسال الفيديو إلى الشاشة…", Toast.LENGTH_SHORT).show();
+                    castUrl(selectedUrl);
+                })
+                .setPositiveButton("▶ بث أفضل جودة تلقائياً", (d, which) -> {
+                    String bestUrl = snapshot.get(0);
+                    currentPlayingVideoUrl = bestUrl;
+                    castUrl(bestUrl);
+                })
+                .setNegativeButton("إغلاق", null)
+                .create();
         dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-            dialog.getWindow().setLayout(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    Math.min(getResources().getDisplayMetrics().heightPixels - dp(48), dp(620)));
-        }
     }
 
     private LinearLayout.LayoutParams remoteButtonParams() {
