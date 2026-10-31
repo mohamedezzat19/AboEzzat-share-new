@@ -69,7 +69,6 @@
             android:name=".ShareLinkActivity"
             android:exported="true"
             android:excludeFromRecents="true"
-            android:launchMode="singleTop"
             android:theme="@style/Theme.AboEzzatShare.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
