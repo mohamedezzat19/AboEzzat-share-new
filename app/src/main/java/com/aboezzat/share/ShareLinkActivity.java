@@ -29,6 +29,7 @@ public class ShareLinkActivity extends Activity {
     private int pendingEngines;
     private String activeReceiverIp = "";
     private boolean selectedReceiver;
+    private boolean extractionFinalized;
     private String originalSharedUrl = "";
 
     private final Runnable extractionTimeout = () -> finishExtraction(
@@ -155,7 +156,7 @@ public class ShareLinkActivity extends Activity {
 
     private void addCandidate(String url, String engine, Map<String, String> headers) {
         mainHandler.post(() -> {
-            if (completed.get()) return;
+            if (completed.get() || extractionFinalized) return;
             if (url != null && BrowserEngine.isWebUrl(url) && !url.equals(originalSharedUrl)) {
                 boolean duplicate = false;
                 for (MediaCandidate candidate : candidates) {
@@ -172,13 +173,14 @@ public class ShareLinkActivity extends Activity {
     }
 
     private void engineFinished() {
-        if (completed.get()) return;
+        if (completed.get() || extractionFinalized) return;
         if (pendingEngines > 0) pendingEngines--;
         if (pendingEngines == 0) finishExtraction(null);
     }
 
     private void finishExtraction(String fallbackMessage) {
-        if (completed.get()) return;
+        if (completed.get() || extractionFinalized) return;
+        extractionFinalized = true;
         mainHandler.removeCallbacks(extractionTimeout);
         if (!candidates.isEmpty()) {
             MediaCandidate best = candidates.get(0);
