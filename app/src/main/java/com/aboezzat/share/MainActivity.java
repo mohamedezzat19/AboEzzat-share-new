@@ -1874,6 +1874,46 @@ public class MainActivity extends Activity {
         t.setOnClickListener(v->{showBrowser(); address.setText(url);loadAddress();});
     }
 
+    private void showQuickSitesDialog() {
+        ArrayList<JSONObject> sites = new ArrayList<>();
+        String[][] builtIns = {
+                {"YouTube", "https://m.youtube.com"}, {"Facebook", "https://m.facebook.com"},
+                {"TikTok", "https://www.tiktok.com"}, {"Instagram", "https://www.instagram.com"},
+                {"X / Twitter", "https://x.com"}, {"Threads", "https://www.threads.net"}
+        };
+        JSONArray hidden;
+        try { hidden = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
+        catch (Exception ignored) { hidden = new JSONArray(); }
+        java.util.HashSet<String> hiddenUrls = new java.util.HashSet<>();
+        for (int i = 0; i < hidden.length(); i++) hiddenUrls.add(hidden.optString(i));
+        for (String[] site : builtIns) {
+            if (hiddenUrls.contains(site[1])) continue;
+            JSONObject item = new JSONObject();
+            try { item.put("name", site[0]); item.put("url", site[1]); sites.add(item); }
+            catch (org.json.JSONException ignored) { }
+        }
+        JSONArray custom = readCustomSites();
+        for (int i = 0; i < custom.length(); i++) {
+            JSONObject item = custom.optJSONObject(i);
+            if (item != null && BrowserEngine.isWebUrl(item.optString("url", ""))) sites.add(item);
+        }
+        if (sites.isEmpty()) {
+            Toast.makeText(this, "لا توجد مواقع سريعة", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] labels = new String[sites.size()];
+        for (int i = 0; i < sites.size(); i++) labels[i] = sites.get(i).optString("name", siteHostLabel(sites.get(i).optString("url", "")));
+        new AlertDialog.Builder(this).setTitle("المواقع السريعة")
+                .setItems(labels, (dialog, which) -> {
+                    String url = sites.get(which).optString("url", "");
+                    showBrowser();
+                    address.setText(url);
+                    loadAddress();
+                })
+                .setPositiveButton("إضافة موقع", (dialog, which) -> showAddCustomSiteDialog())
+                .setNegativeButton("إغلاق", null).show();
+    }
+
     private void showBrowser() {
         header.setVisibility(View.GONE); bottom.setVisibility(View.GONE);
         currentPage="browser";
@@ -1940,6 +1980,7 @@ public class MainActivity extends Activity {
             android.widget.PopupMenu menu = new android.widget.PopupMenu(this, more);
             menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { openNewBrowserTab(); return true; });
             menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showBrowserTabsDialog(); return true; });
+            menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
             menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> { saveBookmark(); return true; });
             menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> { showBrowserSettingsDialog(); return true; });
             menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> { openSideDrawer(); return true; });
