@@ -3479,8 +3479,11 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(32));
         remoteRowParams.topMargin=0;
         remote.addView(r3,remoteRowParams);
-        previous.setOnClickListener(v -> sendRemoteCommand("previous"));
-        next.setOnClickListener(v -> sendRemoteCommand("next"));
+        // Local phone media is served one item at a time by Share. Navigate its
+        // saved queue here instead of sending Receiver's remote "next/previous"
+        // commands, which cannot know the phone-side playlist.
+        previous.setOnClickListener(v -> playAdjacentLocalMedia(-1));
+        next.setOnClickListener(v -> playAdjacentLocalMedia(1));
         volumeDown.setOnClickListener(v -> sendRemoteCommand("volume_down"));
         mute.setOnClickListener(v -> sendRemoteCommand("mute"));
         volumeUp.setOnClickListener(v -> sendRemoteCommand("volume_up"));
@@ -5141,6 +5144,23 @@ public class MainActivity extends Activity {
             }
         } catch (Exception ignored) { }
         return name == null ? "ملف وسائط" : name;
+    }
+
+    private void playAdjacentLocalMedia(int direction) {
+        if (localMediaQueue.isEmpty()) {
+            Toast.makeText(this, "قائمة التشغيل فارغة؛ اختار ملفات من الهاتف أولاً", Toast.LENGTH_SHORT).show();
+            openLocalMediaPicker();
+            return;
+        }
+        int nextIndex = currentLocalMediaIndex + (direction < 0 ? -1 : 1);
+        if (nextIndex < 0 || nextIndex >= localMediaQueue.size()) {
+            Toast.makeText(this, direction < 0 ? "أنت عند أول عنصر في القائمة" : "وصلت إلى آخر عنصر في القائمة", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        currentLocalMediaIndex = nextIndex;
+        prefs.edit().putInt("local_media_index", currentLocalMediaIndex).apply();
+        playSelectedLocalMedia();
+        if ("media".equals(currentPage)) showMedia();
     }
 
     private void playSelectedLocalMedia() {
