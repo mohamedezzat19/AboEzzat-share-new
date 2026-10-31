@@ -619,7 +619,13 @@ public class MainActivity extends Activity {
                 + "var active=!v.paused&&!v.ended&&v.currentTime>0&&v.readyState>=2;"
                 + "var area=Math.min(r.width,innerWidth)*Math.min(r.height,innerHeight);"
                 + "if(visible&&!ad&&active&&area>bestArea){best=v;bestArea=area;}}"
-                + "if(best){var u=best.currentSrc||best.src||'';if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
+                + "if(best){var u=best.currentSrc||best.src||'';"
+                + "if(!/^https?:/i.test(u)){var entries=performance.getEntriesByType('resource');var now=performance.now();"
+                + "for(var j=entries.length-1;j>=0;j--){var x=entries[j].name||'';"
+                + "var fresh=now-entries[j].startTime<90000;"
+                + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"
+                + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
+                + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',best.poster||'');}"
                 + "}catch(e){}})()";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
@@ -2825,16 +2831,21 @@ public class MainActivity extends Activity {
 
         @android.webkit.JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
-            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
+            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || !isVideoCandidate(mediaUrl)) return;
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
-            if (isVideoCandidate(mediaUrl)) {
+
+            // JavascriptInterface methods run on a WebView background thread. Keep all
+            // WebView teardown, notifications, Toasts and casting state on Android's UI thread.
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 if (currentPlayingVideoUrl != null && !currentPlayingVideoUrl.isEmpty()
                         && !currentPlayingVideoUrl.equals(mediaUrl)) {
                     clearDetectedMedia();
                 }
                 currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
+
                 // Only the background scanner calls this after confirming a visible,
                 // currently-playing video. Network requests alone are never auto-cast.
                 if (pendingExternalShareCapture && sharedCaptureWebView != null
@@ -2846,7 +2857,7 @@ public class MainActivity extends Activity {
                     destroySharedCaptureWebView();
                     sendPlatformLinkToReceiver(mediaUrl);
                 }
-            }
+            });
         }
     }
 
