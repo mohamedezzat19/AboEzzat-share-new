@@ -578,6 +578,11 @@ public class MainActivity extends Activity {
                     @Override public void onPageFinished(WebView view, String loadedUrl) {
                         super.onPageFinished(view, loadedUrl);
                         if (generation != extractionGeneration || view != sharedCaptureWebView) return;
+                        // Use the same proven legacy play() hook as the visible browser.
+                        // Without this, background shares only poll for already-playing
+                        // videos and miss players that expose their stream during play().
+                        installLegacyMediaCaptureHooks(view);
+                        scanPageMediaAndSkipAds(view);
                         scanSharedCapturePage(view, generation);
                     }
                 });
@@ -629,7 +634,7 @@ public class MainActivity extends Activity {
                 + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"
                 + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
-                + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',best.poster||'');}"
+                + "window.AboEzzatBridge.onActiveVideoFound(u,document.title||'',best.poster||'');}"
                 + "}catch(e){}})()";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
         receiverMonitorHandler.postDelayed(() -> {
@@ -649,7 +654,7 @@ public class MainActivity extends Activity {
         if (old != null) {
             try { old.stopLoading(); } catch (Exception ignored) { }
             try { if (shellOverlay != null) shellOverlay.removeView(old); } catch (Exception ignored) { }
-            try { old.removeJavascriptInterface("AboEzzatCapture"); } catch (Exception ignored) { }
+            try { old.removeJavascriptInterface("AboEzzatBridge"); } catch (Exception ignored) { }
             try { old.destroy(); } catch (Exception ignored) { }
         }
     }
@@ -828,9 +833,11 @@ public class MainActivity extends Activity {
     private TextView button(String label, int color, int fg) {
         TextView b = text(label, 14, fg, true);
         b.setGravity(Gravity.CENTER);
+        b.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        b.setIncludeFontPadding(false);
         b.setContentDescription(label);
         b.setBackground(shape(color, color == PANEL ? 0 : PANEL2, 13));
-        b.setPadding(dp(12),dp(9),dp(12),dp(9));
+        b.setPadding(dp(12),dp(8),dp(12),dp(8));
         b.setClickable(true);
         b.setFocusable(true);
         return b;
@@ -839,6 +846,8 @@ public class MainActivity extends Activity {
     private void nav(String label, String page) {
         TextView b = text(label, 11, MUTED, true);
         b.setGravity(Gravity.CENTER);
+        b.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        b.setIncludeFontPadding(false);
         b.setContentDescription(label.replace("\n", " "));
         bottom.addView(b, new LinearLayout.LayoutParams(0,-1,1));
         b.setOnClickListener(v -> {
@@ -1475,20 +1484,23 @@ public class MainActivity extends Activity {
         remote.setPadding(dp(10), dp(10), dp(10), dp(10));
         remote.setBackground(shape(PANEL, PANEL2, 10));
         LinearLayout transport = row();
-        addLegacyRemoteButton(transport, "التالي ⏭️", PANEL2, () -> sendRemoteCommand("next"), 1f);
-        addLegacyRemoteButton(transport, "⏯️ تشغيل", BLUE, () -> sendRemoteCommand("play_pause"), 1.2f);
+        transport.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(transport, "⏮️ السابق", PANEL2, () -> sendRemoteCommand("prev"), 1f);
+        addLegacyRemoteButton(transport, "⏯️ تشغيل", BLUE, () -> sendRemoteCommand("play_pause"), 1.2f);
+        addLegacyRemoteButton(transport, "التالي ⏭️", PANEL2, () -> sendRemoteCommand("next"), 1f);
         remote.addView(transport, lp(-1, 42));
         LinearLayout seek = row();
-        addLegacyRemoteButton(seek, "10s تقديم ⏩", PANEL2, () -> sendRemoteCommand("ff"), 1f);
+        seek.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(seek, "⏪ 10s تأخير", PANEL2, () -> sendRemoteCommand("rw"), 1f);
+        addLegacyRemoteButton(seek, "10s تقديم ⏩", PANEL2, () -> sendRemoteCommand("ff"), 1f);
         LinearLayout.LayoutParams seekParams = lp(-1, 42);
         seekParams.topMargin = dp(7);
         remote.addView(seek, seekParams);
         LinearLayout volume = row();
-        addLegacyRemoteButton(volume, "🔊 تعلية", PANEL2, () -> sendRemoteCommand("vol_up"), 1f);
-        addLegacyRemoteButton(volume, "🔇 كتم", Color.rgb(211, 47, 47), () -> sendRemoteCommand("mute"), 1f);
+        volume.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(volume, "🔉 تقليل", PANEL2, () -> sendRemoteCommand("vol_down"), 1f);
+        addLegacyRemoteButton(volume, "🔇 كتم", Color.rgb(211, 47, 47), () -> sendRemoteCommand("mute"), 1f);
+        addLegacyRemoteButton(volume, "🔊 تعلية", PANEL2, () -> sendRemoteCommand("vol_up"), 1f);
         LinearLayout.LayoutParams volumeParams = lp(-1, 42);
         volumeParams.topMargin = dp(7);
         remote.addView(volume, volumeParams);
@@ -1520,6 +1532,9 @@ public class MainActivity extends Activity {
     private void addLegacyRemoteButton(LinearLayout parent, String label, int color, Runnable action, float weight) {
         TextView control = button(label, color, color == BLUE || color == Color.rgb(211, 47, 47) ? Color.BLACK : WHITE);
         control.setTextSize(11);
+        control.setGravity(Gravity.CENTER);
+        control.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        control.setIncludeFontPadding(false);
         control.setPadding(dp(2), 0, dp(2), 0);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, weight);
         params.setMargins(dp(2), 0, dp(2), 0);
@@ -1975,7 +1990,7 @@ public class MainActivity extends Activity {
         controls.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         TextView more = button("⋮", PANEL2, GOLD);
         more.setContentDescription("المزيد من أدوات المتصفح");
-        controls.addView(more, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        controls.addView(more, new LinearLayout.LayoutParams(0, dp(34), 1f));
         more.setOnClickListener(v -> {
             android.widget.PopupMenu menu = new android.widget.PopupMenu(this, more);
             menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { openNewBrowserTab(); return true; });
@@ -2851,7 +2866,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Receives metadata and HTMLMediaElement.play() callbacks from the working legacy browser flow. */
+    /** Receives legacy browser candidates and separately confirmed background-player captures. */
     private final class LegacyMediaCaptureBridge {
         @android.webkit.JavascriptInterface
         public void onMetaFound(String title, String posterUrl) {
@@ -2865,6 +2880,18 @@ public class MainActivity extends Activity {
 
         @android.webkit.JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
+            handleCapturedVideo(mediaUrl, title, posterUrl, false);
+        }
+
+        @android.webkit.JavascriptInterface
+        public void onActiveVideoFound(String mediaUrl, String title, String posterUrl) {
+            // This callback is used only by scanSharedCapturePage after checking that
+            // the largest visible, non-ad HTML5 video is actively playing.
+            handleCapturedVideo(mediaUrl, title, posterUrl, true);
+        }
+
+        private void handleCapturedVideo(String mediaUrl, String title, String posterUrl,
+                                         boolean activePlayerConfirmed) {
             if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || isObviousNonVideoMedia(mediaUrl)) return;
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
@@ -2877,15 +2904,14 @@ public class MainActivity extends Activity {
                         && !currentPlayingVideoUrl.equals(mediaUrl)) {
                     clearDetectedMedia();
                 }
-                // A real HTML5 video-player callback is stronger evidence than URL suffixes:
-                // social platforms frequently serve signed, extensionless CDN URLs.
                 confirmedPlayerVideoUrls.add(mediaUrl);
                 currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
 
-                // Only the background scanner calls this after confirming a visible,
-                // currently-playing video. Network requests alone are never auto-cast.
-                if (pendingExternalShareCapture && sharedCaptureWebView != null
+                // Do not auto-cast a page's OG video, preload, preview, or generic play() event.
+                // Background auto-cast is allowed only after the active visible player scan confirms it.
+                if (activePlayerConfirmed && pendingExternalShareCapture
+                        && sharedCaptureWebView != null
                         && sharedCaptureGeneration == extractionGeneration && !sharedCaptureSent) {
                     sharedCaptureSent = true;
                     pendingExternalShareCapture = false;
@@ -3158,13 +3184,13 @@ public class MainActivity extends Activity {
         LinearLayout selectionActions = row();
         TextView selectAll = button("تحديد الكل", PANEL2, GOLD);
         TextView clearSelection = button("إلغاء التحديد", PANEL2, WHITE);
-        LinearLayout.LayoutParams selectionButtonParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        LinearLayout.LayoutParams selectionButtonParams = new LinearLayout.LayoutParams(0, dp(32), 1f);
         selectionButtonParams.setMargins(0, 0, dp(4), dp(8));
         selectionActions.addView(selectAll, selectionButtonParams);
         LinearLayout.LayoutParams clearSelectionParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
         clearSelectionParams.setMargins(dp(4), 0, 0, dp(8));
         selectionActions.addView(clearSelection, clearSelectionParams);
-        main.addView(selectionActions, lp(-1, dp(46)));
+        main.addView(selectionActions, lp(-1, dp(38)));
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout rows = column();
@@ -3172,7 +3198,7 @@ public class MainActivity extends Activity {
         for (String url : snapshot) {
             LinearLayout item = row();
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(10), dp(12), dp(10), dp(12));
+            item.setPadding(dp(8), dp(6), dp(8), dp(6));
             item.setBackgroundColor(Color.parseColor("#1F1F1F"));
             LinearLayout.LayoutParams rowParams = lp(-1, -2);
             rowParams.bottomMargin = dp(2);
@@ -3186,7 +3212,7 @@ public class MainActivity extends Activity {
                 updateSelectionStatus.run();
             });
             rowChecks.add(check);
-            item.addView(check, new LinearLayout.LayoutParams(dp(42), dp(52)));
+            item.addView(check, new LinearLayout.LayoutParams(dp(34), dp(40)));
 
             LinearLayout info = column();
             LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0, -2, 1f);
@@ -3214,7 +3240,7 @@ public class MainActivity extends Activity {
             ImageView thumb = new ImageView(this);
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackgroundColor(Color.parseColor("#2C2C2C"));
-            LinearLayout.LayoutParams thumbParams = lp(dp(120), dp(100));
+            LinearLayout.LayoutParams thumbParams = lp(dp(88), dp(66));
             item.addView(thumb, thumbParams);
             String poster = mediaPosters.get(url);
             if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
@@ -3262,7 +3288,7 @@ public class MainActivity extends Activity {
 
         TextView cast = button("📺 بث فوري على الشاشة", Color.parseColor("#FFD700"), Color.BLACK);
         cast.setTextSize(14);
-        LinearLayout.LayoutParams castParams = lp(-1, dp(46));
+        LinearLayout.LayoutParams castParams = lp(-1, dp(38));
         castParams.topMargin = dp(10);
         main.addView(cast, castParams);
         cast.setOnClickListener(v -> {
@@ -3281,7 +3307,7 @@ public class MainActivity extends Activity {
         });
 
         TextView download = button("⬇ تحميل المحدد", Color.parseColor("#2E7D32"), WHITE);
-        LinearLayout.LayoutParams downloadParams = lp(-1, dp(42));
+        LinearLayout.LayoutParams downloadParams = lp(-1, dp(36));
         downloadParams.topMargin = dp(6);
         main.addView(download, downloadParams);
         download.setOnClickListener(v -> {
@@ -3322,7 +3348,7 @@ public class MainActivity extends Activity {
             else dialog.dismiss();
         });
         TextView clearList = button("مسح قائمة الوسائط المكتشفة", PANEL2, MUTED);
-        LinearLayout.LayoutParams clearParams = lp(-1, dp(38));
+        LinearLayout.LayoutParams clearParams = lp(-1, dp(32));
         clearParams.topMargin = dp(6);
         main.addView(clearList, clearParams);
         clearList.setOnClickListener(v -> {
@@ -3351,8 +3377,10 @@ public class MainActivity extends Activity {
 
     private void compactRemoteButton(TextView button) {
         button.setTextSize(12);
-        button.setPadding(dp(2), dp(1), dp(2), dp(1));
+        button.setGravity(Gravity.CENTER);
+        button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         button.setIncludeFontPadding(false);
+        button.setPadding(dp(2), dp(1), dp(2), dp(1));
         button.setMinHeight(0);
         button.setMinimumHeight(0);
         button.setMaxLines(1);
@@ -3436,6 +3464,7 @@ public class MainActivity extends Activity {
         remoteTitle.setPadding(dp(6),0,dp(6),0);
         remote.addView(remoteTitle,lp(-1,dp(20)));
         LinearLayout r1 = row();
+        r1.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         TextView rw = button("⏪ 10 ث",PANEL,WHITE);
         TextView play = button("▶ / ⏸",BLUE,WHITE);
         TextView ff = button("10 ث ⏩",PANEL,WHITE);
@@ -3445,21 +3474,23 @@ public class MainActivity extends Activity {
         for (TextView remoteButton : new TextView[]{rw, play, ff}) {
             remoteButton.setBackground(shape(remoteButton == play ? BLUE : PANEL, remoteButton == play ? BLUE : PANEL, 0));
         }
-        r1.addView(rw,remoteButtonParams());
-        r1.addView(play,remoteButtonParams());
         r1.addView(ff,remoteButtonParams());
+        r1.addView(play,remoteButtonParams());
+        r1.addView(rw,remoteButtonParams());
         remote.addView(r1,lp(-1,dp(32)));
         LinearLayout r2 = row();
+        r2.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         TextView previous = button("⏮ السابق",PANEL,WHITE);
         TextView next = button("التالي ⏭",PANEL,WHITE);
         compactRemoteButton(previous);
         compactRemoteButton(next);
         previous.setBackground(shape(PANEL, PANEL, 0));
         next.setBackground(shape(PANEL, PANEL, 0));
-        r2.addView(previous, remoteButtonParams());
         r2.addView(next, remoteButtonParams());
+        r2.addView(previous, remoteButtonParams());
         remote.addView(r2, lp(-1, dp(32)));
         LinearLayout r3 = row();
+        r3.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         TextView volumeDown = button("− صوت",PANEL,WHITE);
         TextView mute = button("🔇 كتم",PANEL2,GOLD);
         TextView volumeUp = button("+ صوت",PANEL,WHITE);
@@ -3472,10 +3503,10 @@ public class MainActivity extends Activity {
         mute.setBackground(shape(PANEL2, PANEL2, 0));
         volumeUp.setBackground(shape(PANEL, PANEL, 0));
         stop.setBackground(shape(PANEL, PANEL, 0));
-        r3.addView(volumeDown,remoteButtonParams());
-        r3.addView(mute,remoteButtonParams());
-        r3.addView(volumeUp,remoteButtonParams());
         r3.addView(stop,remoteButtonParams());
+        r3.addView(volumeUp,remoteButtonParams());
+        r3.addView(mute,remoteButtonParams());
+        r3.addView(volumeDown,remoteButtonParams());
         LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(32));
         remoteRowParams.topMargin=0;
         remote.addView(r3,remoteRowParams);

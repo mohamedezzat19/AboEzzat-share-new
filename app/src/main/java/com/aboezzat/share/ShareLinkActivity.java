@@ -23,6 +23,8 @@ import java.util.regex.Pattern;
  * extraction engines as MainActivity, then sends the best direct result to Receiver.
  */
 public class ShareLinkActivity extends Activity {
+    private static final String NOTIFICATION_CHANNEL = "aboezzat_extraction_progress";
+    private static final int NOTIFICATION_ID = 4708;
     private final AtomicBoolean completed = new AtomicBoolean(false);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<MediaCandidate> candidates = new ArrayList<>();
@@ -30,10 +32,24 @@ public class ShareLinkActivity extends Activity {
     private String activeReceiverIp = "";
     private boolean selectedReceiver;
     private boolean extractionFinalized;
+    private boolean captureWindowOpen;
+    private boolean captureWindowClosed = true;
+    private android.webkit.WebView captureWebView;
     private String originalSharedUrl = "";
 
-    private final Runnable extractionTimeout = () -> finishExtraction(
-            "انتهت مهلة محركات الاستخراج؛ هبعت الرابط الأصلي للريسيفر ليحاول تشغيله.");
+    private final Runnable extractionTimeout = () -> {
+        captureWindowClosed = true;
+        destroyBackgroundCapture();
+        finishExtraction("انتهت مهلة الالتقاط والمحركات؛ هبعت الرابط الأصلي للريسيفر.");
+    };
+    private final Runnable captureScanRunnable = new Runnable() {
+        @Override public void run() {
+            android.webkit.WebView view = captureWebView;
+            if (view == null || completed.get() || captureWindowClosed) return;
+            scanBackgroundVideo(view);
+            mainHandler.postDelayed(this, 1200L);
+        }
+    };
 
     private final Runnable activityTimeout = () -> finishWithMessage(
             "لسه ماوصلتش للريسيفر. اتأكد إن AboEzzat Receiver مفتوح والجهازين على نفس شبكة Wi‑Fi.");
@@ -96,13 +112,17 @@ public class ShareLinkActivity extends Activity {
 
         pendingEngines = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
                 + (useRapid ? 1 : 0) + (useSocial ? 1 : 0);
-        if (pendingEngines == 0) {
+        boolean useWebView = isEngineEnabled(prefs, "webview");
+        captureWindowOpen = useWebView;
+        captureWindowClosed = !useWebView;
+        if (useWebView) startBackgroundCapture(pageUrl);
+        if (pendingEngines == 0 && !useWebView) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
                     "لا يوجد محرك استخراج مفعّل؛ أرسلت الرابط الأصلي للريسيفر.");
             return;
         }
 
-        mainHandler.postDelayed(extractionTimeout, 11000L);
+        mainHandler.postDelayed(extractionTimeout, useWebView ? 22000L : 11000L);
         String cookies = "";
         try {
             CookieManager manager = CookieManager.getInstance();
@@ -180,8 +200,10 @@ public class ShareLinkActivity extends Activity {
 
     private void finishExtraction(String fallbackMessage) {
         if (completed.get() || extractionFinalized) return;
+        if (captureWindowOpen && !captureWindowClosed) return;
         extractionFinalized = true;
         mainHandler.removeCallbacks(extractionTimeout);
+        destroyBackgroundCapture();
         if (!candidates.isEmpty()) {
             MediaCandidate best = candidates.get(0);
             for (MediaCandidate candidate : candidates) {
@@ -194,6 +216,111 @@ public class ShareLinkActivity extends Activity {
                     fallbackMessage == null
                             ? "لم يعثر أي محرك على رابط مباشر؛ أرسلت الرابط الأصلي للريسيفر."
                             : fallbackMessage);
+        }
+    }
+
+
+    /** Hidden WebView fallback mirrors the legacy browser capture without opening Share UI. */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled")
+    private void startBackgroundCapture(String pageUrl) {
+        try {
+            android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+            root.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+            setContentView(root);
+            android.webkit.WebView view = new android.webkit.WebView(this);
+            captureWebView = view;
+            BrowserEngine.configure(view);
+            android.webkit.WebSettings settings = view.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setUseWideViewPort(true);
+            settings.setLoadWithOverviewMode(true);
+            settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+            CookieManager cookies = CookieManager.getInstance();
+            cookies.setAcceptCookie(true);
+            cookies.setAcceptThirdPartyCookies(view, true);
+            view.addJavascriptInterface(new BackgroundCaptureBridge(), "AboEzzatShareCapture");
+            view.setBackgroundColor(android.graphics.Color.BLACK);
+            view.setAlpha(0.01f);
+            view.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            view.setWebChromeClient(new android.webkit.WebChromeClient());
+            view.setWebViewClient(new android.webkit.WebViewClient() {
+                @Override public void onPageFinished(android.webkit.WebView webView, String loadedUrl) {
+                    super.onPageFinished(webView, loadedUrl);
+                    if (webView != captureWebView || captureWindowClosed || completed.get()) return;
+                    installBackgroundVideoHook(webView);
+                    scanBackgroundVideo(webView);
+                }
+            });
+            root.addView(view, new android.widget.FrameLayout.LayoutParams(-1, -1));
+            view.loadUrl(pageUrl);
+            mainHandler.removeCallbacks(captureScanRunnable);
+            mainHandler.postDelayed(captureScanRunnable, 1500L);
+        } catch (Exception ignored) {
+            captureWindowOpen = false;
+            captureWindowClosed = true;
+            if (pendingEngines == 0) mainHandler.post(() -> finishExtraction(
+                    "تعذّر تشغيل الالتقاط الخلفي؛ هبعت الرابط الأصلي للريسيفر."));
+        }
+    }
+
+    private void installBackgroundVideoHook(android.webkit.WebView view) {
+        String js = "(function(){try{if(window.__aboezzatShareHook)return;window.__aboezzatShareHook=true;"
+                + "function scan(){var vs=document.querySelectorAll(\"video\");var best=null,area=0;"
+                + "for(var i=0;i<vs.length;i++){var v=vs[i],r=v.getBoundingClientRect();"
+                + "var visible=r.width>80&&r.height>60&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;"
+                + "if(visible&&r.width*r.height>area){best=v;area=r.width*r.height;}}"
+                + "if(best){best.muted=true;if(best.paused){var p=best.play();if(p&&p.catch)p.catch(function(){});}}}"
+                + "document.addEventListener(\"play\",function(e){if(e.target&&e.target.tagName===\"VIDEO\")scan();},true);"
+                + "document.addEventListener(\"loadeddata\",scan,true);scan();}catch(e){}})();";
+        try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
+    }
+
+    private void scanBackgroundVideo(android.webkit.WebView view) {
+        if (view == null || view != captureWebView || captureWindowClosed || completed.get()) return;
+        String js = "(function(){try{var vs=document.querySelectorAll(\"video\"),best=null,area=0;"
+                + "for(var i=0;i<vs.length;i++){var v=vs[i],r=v.getBoundingClientRect();"
+                + "var visible=r.width>80&&r.height>60&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;"
+                + "var ad=!!v.closest(\"[data-ad-preview],[class*=ad-],[id*=ad-]\");"
+                + "var active=!v.paused&&!v.ended&&v.currentTime>0&&v.readyState>=2;"
+                + "if(visible&&!ad&&active&&r.width*r.height>area){best=v;area=r.width*r.height;}}"
+                + "if(best){var u=best.currentSrc||best.src||\"\";if(!/^https?:/i.test(u)){"
+                + "var es=performance.getEntriesByType(\"resource\"),now=performance.now();"
+                + "for(var j=es.length-1;j>=0;j--){var x=es[j].name||\"\";"
+                + "if(now-es[j].startTime<90000&&/^https?:/i.test(x)&&"
+                + "/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\//i.test(x)){u=x;break;}}}"
+                + "if(/^https?:/i.test(u)&&window.AboEzzatShareCapture)window.AboEzzatShareCapture.onActiveVideoFound(u);}"
+                + "}catch(e){}})();";
+        try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
+    }
+
+    private final class BackgroundCaptureBridge {
+        @android.webkit.JavascriptInterface
+        public void onActiveVideoFound(String url) {
+            mainHandler.post(() -> {
+                if (completed.get() || captureWindowClosed || !BrowserEngine.isWebUrl(url)
+                        || url.equals(originalSharedUrl)) return;
+                captureWindowClosed = true;
+                captureWindowOpen = false;
+                extractionFinalized = true;
+                mainHandler.removeCallbacks(extractionTimeout);
+                destroyBackgroundCapture();
+                sendResolvedToReceiver(url, Collections.emptyMap(),
+                        "تم التقاط الفيديو النشط من صفحة المشاركة وإرساله إلى Receiver.");
+            });
+        }
+    }
+
+    private void destroyBackgroundCapture() {
+        mainHandler.removeCallbacks(captureScanRunnable);
+        android.webkit.WebView old = captureWebView;
+        captureWebView = null;
+        if (old != null) {
+            try { old.stopLoading(); } catch (Exception ignored) { }
+            try { old.removeJavascriptInterface("AboEzzatShareCapture"); } catch (Exception ignored) { }
+            try { old.destroy(); } catch (Exception ignored) { }
         }
     }
 
@@ -245,6 +372,7 @@ public class ShareLinkActivity extends Activity {
         completed.set(true);
         mainHandler.removeCallbacks(extractionTimeout);
         mainHandler.removeCallbacks(activityTimeout);
+        destroyBackgroundCapture();
         super.onDestroy();
     }
 
@@ -270,12 +398,44 @@ public class ShareLinkActivity extends Activity {
         }
     }
 
+    private void showResultNotification(String message) {
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        android.app.NotificationManager manager =
+                (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                    NOTIFICATION_CHANNEL, "استخراج الفيديو", android.app.NotificationManager.IMPORTANCE_LOW);
+            channel.setSound(null, null);
+            channel.enableVibration(false);
+            channel.setShowBadge(false);
+            manager.createNotificationChannel(channel);
+        }
+        android.app.Notification.Builder builder = android.os.Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(this, NOTIFICATION_CHANNEL)
+                : new android.app.Notification.Builder(this);
+        builder.setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle("AboEzzat Share")
+                .setContentText(message)
+                .setStyle(new android.app.Notification.BigTextStyle().bigText(message))
+                .setCategory(android.app.Notification.CATEGORY_STATUS)
+                .setOnlyAlertOnce(true)
+                .setOngoing(false)
+                .setAutoCancel(true);
+        if (android.os.Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(6000L);
+        manager.notify(NOTIFICATION_ID, builder.build());
+    }
+
     private void finishWithMessage(String message) {
         if (!completed.compareAndSet(false, true)) return;
         mainHandler.post(() -> {
             mainHandler.removeCallbacks(extractionTimeout);
             mainHandler.removeCallbacks(activityTimeout);
-            Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
+            captureWindowClosed = true;
+            destroyBackgroundCapture();
+            showResultNotification(message);
             finish();
         });
     }
