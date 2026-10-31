@@ -833,9 +833,11 @@ public class MainActivity extends Activity {
     private TextView button(String label, int color, int fg) {
         TextView b = text(label, 14, fg, true);
         b.setGravity(Gravity.CENTER);
+        b.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        b.setIncludeFontPadding(false);
         b.setContentDescription(label);
         b.setBackground(shape(color, color == PANEL ? 0 : PANEL2, 13));
-        b.setPadding(dp(12),dp(9),dp(12),dp(9));
+        b.setPadding(dp(12),dp(8),dp(12),dp(8));
         b.setClickable(true);
         b.setFocusable(true);
         return b;
@@ -1480,20 +1482,23 @@ public class MainActivity extends Activity {
         remote.setPadding(dp(10), dp(10), dp(10), dp(10));
         remote.setBackground(shape(PANEL, PANEL2, 10));
         LinearLayout transport = row();
-        addLegacyRemoteButton(transport, "التالي ⏭️", PANEL2, () -> sendRemoteCommand("next"), 1f);
-        addLegacyRemoteButton(transport, "⏯️ تشغيل", BLUE, () -> sendRemoteCommand("play_pause"), 1.2f);
+        transport.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(transport, "⏮️ السابق", PANEL2, () -> sendRemoteCommand("prev"), 1f);
+        addLegacyRemoteButton(transport, "⏯️ تشغيل", BLUE, () -> sendRemoteCommand("play_pause"), 1.2f);
+        addLegacyRemoteButton(transport, "التالي ⏭️", PANEL2, () -> sendRemoteCommand("next"), 1f);
         remote.addView(transport, lp(-1, 42));
         LinearLayout seek = row();
-        addLegacyRemoteButton(seek, "10s تقديم ⏩", PANEL2, () -> sendRemoteCommand("ff"), 1f);
+        seek.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(seek, "⏪ 10s تأخير", PANEL2, () -> sendRemoteCommand("rw"), 1f);
+        addLegacyRemoteButton(seek, "10s تقديم ⏩", PANEL2, () -> sendRemoteCommand("ff"), 1f);
         LinearLayout.LayoutParams seekParams = lp(-1, 42);
         seekParams.topMargin = dp(7);
         remote.addView(seek, seekParams);
         LinearLayout volume = row();
-        addLegacyRemoteButton(volume, "🔊 تعلية", PANEL2, () -> sendRemoteCommand("vol_up"), 1f);
-        addLegacyRemoteButton(volume, "🔇 كتم", Color.rgb(211, 47, 47), () -> sendRemoteCommand("mute"), 1f);
+        volume.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(volume, "🔉 تقليل", PANEL2, () -> sendRemoteCommand("vol_down"), 1f);
+        addLegacyRemoteButton(volume, "🔇 كتم", Color.rgb(211, 47, 47), () -> sendRemoteCommand("mute"), 1f);
+        addLegacyRemoteButton(volume, "🔊 تعلية", PANEL2, () -> sendRemoteCommand("vol_up"), 1f);
         LinearLayout.LayoutParams volumeParams = lp(-1, 42);
         volumeParams.topMargin = dp(7);
         remote.addView(volume, volumeParams);
@@ -1525,6 +1530,9 @@ public class MainActivity extends Activity {
     private void addLegacyRemoteButton(LinearLayout parent, String label, int color, Runnable action, float weight) {
         TextView control = button(label, color, color == BLUE || color == Color.rgb(211, 47, 47) ? Color.BLACK : WHITE);
         control.setTextSize(11);
+        control.setGravity(Gravity.CENTER);
+        control.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        control.setIncludeFontPadding(false);
         control.setPadding(dp(2), 0, dp(2), 0);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, weight);
         params.setMargins(dp(2), 0, dp(2), 0);
@@ -3356,8 +3364,10 @@ public class MainActivity extends Activity {
 
     private void compactRemoteButton(TextView button) {
         button.setTextSize(12);
-        button.setPadding(dp(2), dp(1), dp(2), dp(1));
+        button.setGravity(Gravity.CENTER);
+        button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         button.setIncludeFontPadding(false);
+        button.setPadding(dp(2), dp(1), dp(2), dp(1));
         button.setMinHeight(0);
         button.setMinimumHeight(0);
         button.setMaxLines(1);
@@ -3441,6 +3451,7 @@ public class MainActivity extends Activity {
         remoteTitle.setPadding(dp(6),0,dp(6),0);
         remote.addView(remoteTitle,lp(-1,dp(20)));
         LinearLayout r1 = row();
+        r1.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         TextView rw = button("⏪ 10 ث",PANEL,WHITE);
         TextView play = button("▶ / ⏸",BLUE,WHITE);
         TextView ff = button("10 ث ⏩",PANEL,WHITE);
@@ -3450,21 +3461,23 @@ public class MainActivity extends Activity {
         for (TextView remoteButton : new TextView[]{rw, play, ff}) {
             remoteButton.setBackground(shape(remoteButton == play ? BLUE : PANEL, remoteButton == play ? BLUE : PANEL, 0));
         }
-        r1.addView(rw,remoteButtonParams());
-        r1.addView(play,remoteButtonParams());
         r1.addView(ff,remoteButtonParams());
+        r1.addView(play,remoteButtonParams());
+        r1.addView(rw,remoteButtonParams());
         remote.addView(r1,lp(-1,dp(32)));
         LinearLayout r2 = row();
+        r2.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         TextView previous = button("⏮ السابق",PANEL,WHITE);
         TextView next = button("التالي ⏭",PANEL,WHITE);
         compactRemoteButton(previous);
         compactRemoteButton(next);
         previous.setBackground(shape(PANEL, PANEL, 0));
         next.setBackground(shape(PANEL, PANEL, 0));
-        r2.addView(previous, remoteButtonParams());
         r2.addView(next, remoteButtonParams());
+        r2.addView(previous, remoteButtonParams());
         remote.addView(r2, lp(-1, dp(32)));
         LinearLayout r3 = row();
+        r3.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         TextView volumeDown = button("− صوت",PANEL,WHITE);
         TextView mute = button("🔇 كتم",PANEL2,GOLD);
         TextView volumeUp = button("+ صوت",PANEL,WHITE);
@@ -3477,10 +3490,10 @@ public class MainActivity extends Activity {
         mute.setBackground(shape(PANEL2, PANEL2, 0));
         volumeUp.setBackground(shape(PANEL, PANEL, 0));
         stop.setBackground(shape(PANEL, PANEL, 0));
-        r3.addView(volumeDown,remoteButtonParams());
-        r3.addView(mute,remoteButtonParams());
-        r3.addView(volumeUp,remoteButtonParams());
         r3.addView(stop,remoteButtonParams());
+        r3.addView(volumeUp,remoteButtonParams());
+        r3.addView(mute,remoteButtonParams());
+        r3.addView(volumeDown,remoteButtonParams());
         LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(32));
         remoteRowParams.topMargin=0;
         remote.addView(r3,remoteRowParams);
