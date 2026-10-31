@@ -1460,15 +1460,9 @@ public class MainActivity extends Activity {
 
         // Receiver connection controls are centralized in the side drawer.
 
-        addSection(page, "أدوات ومصادر البث", null);
-        LinearLayout browserCard = legacyHomeCard("🌐", "المتصفح وقانص الوسائط",
-                "تصفح مواقع الفيديو، إنستجرام، فيسبوك وبث فوري", true);
-        page.addView(browserCard, lp(-1, 88));
-        browserCard.setOnClickListener(v -> showBrowser());
-
         LinearLayout mediaRow = row();
-        LinearLayout localCard = legacyHomeCard("🎬", "وسائط الهاتف", "بث فيديو، صورة أو صوت منفرد", false);
-        LinearLayout slideCard = legacyHomeCard("🖼️", "معرض متتابع", "عرض ألبوم صور وراء بعض", false);
+        LinearLayout localCard = legacyHomeCard("🎬", "وسائط الهاتف", "", false);
+        LinearLayout slideCard = legacyHomeCard("🖼️", "معرض الصور", "", false);
         LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, dp(112), 1);
         half.setMargins(0, dp(10), dp(5), 0);
         mediaRow.addView(localCard, half);
@@ -1515,15 +1509,16 @@ public class MainActivity extends Activity {
 
     private LinearLayout legacyHomeCard(String icon, String title, String description, boolean wide) {
         LinearLayout card = column();
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(14), dp(10), dp(14), dp(10));
-        card.setBackground(shape(wide ? Color.rgb(30, 35, 48) : PANEL, PANEL2, 10));
-        TextView iconView = text(icon, wide ? 27 : 25, GOLD, true);
-        card.addView(iconView, lp(-1, wide ? 34 : 34));
-        TextView titleView = text(title, wide ? 16 : 15, WHITE, true);
-        card.addView(titleView, lp(-1, 25));
-        TextView descView = text(description, 11, MUTED, false);
-        card.addView(descView, lp(-1, -2));
+        card.setGravity(Gravity.CENTER);
+        card.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.setBackground(shape(PANEL, PANEL2, 10));
+        TextView iconView = text(icon, 27, GOLD, true);
+        iconView.setGravity(Gravity.CENTER);
+        card.addView(iconView, lp(-1, 38));
+        TextView titleView = text(title, 16, WHITE, true);
+        titleView.setGravity(Gravity.CENTER);
+        titleView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        card.addView(titleView, lp(-1, 30));
         card.setFocusable(true);
         card.setClickable(true);
         return card;
@@ -3432,7 +3427,7 @@ public class MainActivity extends Activity {
     private void showMedia(){
         header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage="media";resetContent();
-        addSection(content,"مركز الوسائط","اختار ملفات من هاتفك أو أرسل رابطًا اكتشفه المتصفح");
+        addSection(content,"مركز الوسائط",null);
         TextView pickLocal = button("اختيار فيديوهات أو ملفات صوتية من الهاتف", BLUE, WHITE);
         content.addView(pickLocal,lp(-1,48));
         pickLocal.setOnClickListener(v -> openLocalMediaPicker());
@@ -3523,19 +3518,6 @@ public class MainActivity extends Activity {
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
         stop.setOnClickListener(v -> sendRemoteCommand("stop"));
         content.addView(remote,lp(-1,-2));
-        TextView info=button("عرض المصادر المكتشفة ("+mediaOrder.size()+")",PANEL2,GOLD);
-        LinearLayout.LayoutParams ip=lp(-1,44);ip.topMargin=dp(6);content.addView(info,ip);
-        ScrollView scroll=new ScrollView(this);scroll.setVisibility(View.GONE);LinearLayout list=column();
-        info.setOnClickListener(v -> {
-            boolean show = scroll.getVisibility() != View.VISIBLE;
-            scroll.setVisibility(show ? View.VISIBLE : View.GONE);
-            info.setText((show ? "إخفاء المصادر المكتشفة (" : "عرض المصادر المكتشفة (") + mediaOrder.size() + ")");
-        });
-        TextView mergeTracks = button("دمج مسار فيديو وصوت مختارين", PANEL2, GOLD);
-        LinearLayout.LayoutParams mergeParams = lp(-1, 42);
-        mergeParams.topMargin = dp(5);
-        content.addView(mergeTracks, mergeParams);
-        mergeTracks.setOnClickListener(v -> sendSelectedMediaTracks());
         for(String url:new ArrayList<>(mediaOrder)){
             LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
             String host=Uri.parse(url).getHost();if(host==null)host=url;
@@ -5153,6 +5135,13 @@ public class MainActivity extends Activity {
 
     private void openLocalMediaPicker() {
         try {
+            localMediaQueue.clear();
+            currentLocalMediaIndex = 0;
+            selectedMediaUri = null;
+            prefs.edit().putString("local_media_queue", "[]").putInt("local_media_index", 0).apply();
+            slideshowQueue.clear();
+            selectedImageUri = null;
+            saveUriQueue("slideshow_queue", slideshowQueue);
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             // Show the Android document picker for supported media while allowing mixed multi-select.
@@ -5349,6 +5338,9 @@ public class MainActivity extends Activity {
         if (resultCode != RESULT_OK || data == null) return;
         if (requestCode == PICK_LOCAL_MEDIA_REQUEST) {
             localMediaQueue.clear();
+            slideshowQueue.clear();
+            selectedImageUri = null;
+            saveUriQueue("slideshow_queue", slideshowQueue);
             if (data.getClipData() != null) {
                 android.content.ClipData clips = data.getClipData();
                 for (int i=0; i<clips.getItemCount(); i++) {
@@ -5367,6 +5359,9 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "تمت إضافة " + localMediaQueue.size() + " ملف إلى قائمة التشغيل", Toast.LENGTH_SHORT).show();
         } else if (requestCode == PICK_IMAGE_REQUEST) {
             slideshowQueue.clear();
+            localMediaQueue.clear();
+            selectedMediaUri = null;
+            prefs.edit().putString("local_media_queue", "[]").putInt("local_media_index", 0).apply();
             if (data.getClipData() != null) {
                 android.content.ClipData clips = data.getClipData();
                 for (int i=0; i<clips.getItemCount(); i++) {
