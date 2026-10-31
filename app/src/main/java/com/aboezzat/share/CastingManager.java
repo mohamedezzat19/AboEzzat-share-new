@@ -255,143 +255,84 @@ public final class CastingManager {
         }
     }
 
+    /**
+     * Discovery intentionally mirrors the proven AboEzzat Cast implementation:
+     * obtain the phone Wi-Fi subnet, then probe the Receiver TCP listening port.
+     * A TCP accept is the discovery signal; do not require a custom HTTP ping body
+     * or wait for multicast heartbeats before scanning.
+     */
     public static void discover(Context context, DiscoveryCallback callback) {
         IO.execute(() -> {
-            List<String> found = new ArrayList<>();
-            Map<String, Integer> announcedPorts = new ConcurrentHashMap<>();
-            // Android Wi-Fi filters multicast unless a MulticastLock is held.
-            WifiManager.MulticastLock multicastLock = null;
+            List<String> prefixes = new ArrayList<>();
             try {
-                WifiManager wifi = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-                if (wifi != null) { multicastLock = wifi.createMulticastLock("AboEzzatDiscovery"); multicastLock.setReferenceCounted(false); multicastLock.acquire(); }
+                WifiManager wifi = (WifiManager) context.getApplicationContext()
+                        .getSystemService(Context.WIFI_SERVICE);
+                if (wifi != null) {
+                    int ipAddress = wifi.getConnectionInfo().getIpAddress();
+                    String phoneIp = android.text.format.Formatter.formatIpAddress(ipAddress);
+                    if (phoneIp != null && phoneIp.matches("\\d{1,3}(\\.\\d{1,3}){3}")
+                            && !"0.0.0.0".equals(phoneIp)) {
+                        String prefix = phoneIp.substring(0, phoneIp.lastIndexOf('.') + 1);
+                        prefixes.add(prefix);
+                    }
+                }
             } catch (Exception ignored) { }
-            // Listen briefly for receiver heartbeats before the slower TCP fallback scan.
-            try (MulticastSocket listener = new MulticastSocket(null)) {
-                listener.setReuseAddress(true);
-                listener.bind(new InetSocketAddress(37020));
-                listener.setSoTimeout(4500);
-                InetAddress group = InetAddress.getByName("239.255.42.99");
-                NetworkInterface lanInterface = getLanInterface();
-                if (lanInterface != null) listener.setNetworkInterface(lanInterface);
-                listener.joinGroup(group);
-                long until = System.currentTimeMillis() + 4500L;
-                while (System.currentTimeMillis() < until) {
-                    byte[] buffer = new byte[512];
-                    java.net.DatagramPacket packet = new java.net.DatagramPacket(buffer, buffer.length);
-                    try {
-                        listener.receive(packet);
-                        String message = new String(packet.getData(), packet.getOffset(), packet.getLength(), StandardCharsets.UTF_8);
-                        String[] fields = message.split("\\|");
-                        if (fields.length == 3 && "ABOEZZAT_RECEIVER".equals(fields[0])) {
-                            String ip = fields[1].trim();
-                            int announcedPort;
-                            try { announcedPort = Integer.parseInt(fields[2].trim()); }
-                            catch (NumberFormatException invalidPort) { continue; }
-                            if (announcedPort < 1024 || announcedPort > 65535
-                                    || !ip.matches("\\d{1,3}(\\.\\d{1,3}){3}")) continue;
-                            // Keep each receiver's port with its IP; different devices may use different ports.
-                            announcedPorts.put(ip, announcedPort);
-                            synchronized (found) {
-                                if (!found.contains(ip)) found.add(ip);
-                            }
+
+            // Fallback for devices where Android hides WifiInfo.getIpAddress().
+            if (prefixes.isEmpty()) {
+                try {
+                    Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+                    while (interfaces != null && interfaces.hasMoreElements()) {
+                        NetworkInterface ni = interfaces.nextElement();
+                        if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                        String name = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
+                        if (name.contains("tun") || name.contains("tap") || name.contains("vpn")
+                                || name.contains("ppp") || name.contains("wg")) continue;
+                        Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                        while (addresses.hasMoreElements()) {
+                            InetAddress address = addresses.nextElement();
+                            if (!(address instanceof Inet4Address) || address.isLoopbackAddress()
+                                    || address.isLinkLocalAddress() || !address.isSiteLocalAddress()) continue;
+                            String localIp = address.getHostAddress();
+                            if (localIp == null) continue;
+                            String prefix = localIp.substring(0, localIp.lastIndexOf('.') + 1);
+                            if (!prefixes.contains(prefix)) prefixes.add(prefix);
                         }
-                    } catch (java.net.SocketTimeoutException timeout) {
-                        break;
                     }
-                }
-                listener.leaveGroup(group);
-            } catch (Exception ignored) {
-                // Multicast may be filtered; keep the existing TCP scan as a fallback.
-            } finally {
-                if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
+                } catch (Exception ignored) { }
             }
-            // Trust a multicast announcement only after its receiver port responds.
-            // If a stale or unreachable address was announced, continue with the TCP fallback scan.
-            List<String> verifiedMulticast = new ArrayList<>();
-            synchronized (found) {
-                for (String candidate : found) {
-                    int port = announcedPorts.getOrDefault(candidate, getReceiverPort());
-                    if (isReceiver(candidate, port)) {
-                        DEVICE_PORTS.put(candidate, port);
-                        setReceiverPort(port);
-                        verifiedMulticast.add(candidate);
-                    }
-                }
-            }
-            if (!verifiedMulticast.isEmpty()) {
-                context.getApplicationContext()
-                        .getSharedPreferences("aboezzat_browser", Context.MODE_PRIVATE)
-                        .edit().putInt("receiver_port", getReceiverPort()).apply();
-                callback.onDevices(verifiedMulticast);
-                return; // A verified receiver was found; avoid scanning the subnet.
-            }
-            try {
-                Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-                List<String> prefixes = new ArrayList<>();
-                List<String> fallbackPrefixes = new ArrayList<>();
-                while (interfaces != null && interfaces.hasMoreElements()) {
-                    NetworkInterface ni = interfaces.nextElement();
-                    if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
-                    String name = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
-                    // Never probe VPN/tunnel subnets; they are not the local TV LAN.
-                    if (name.contains("tun") || name.contains("tap") || name.contains("vpn")
-                            || name.contains("ppp") || name.contains("wg")) continue;
-                    boolean likelyWifi = name.contains("wlan") || name.contains("wifi")
-                            || name.contains("swlan") || name.contains("eth");
-                    Enumeration<InetAddress> addresses = ni.getInetAddresses();
-                    while (addresses.hasMoreElements()) {
-                        InetAddress a = addresses.nextElement();
-                        if (!(a instanceof Inet4Address) || a.isLoopbackAddress() || a.isLinkLocalAddress() || !a.isSiteLocalAddress()) continue;
-                        String local = a.getHostAddress();
-                        if (local == null || !local.matches("\\d{1,3}(\\.\\d{1,3}){3}")) continue;
-                        int dot = local.lastIndexOf('.');
-                        if (dot < 0) continue;
-                        String prefix = local.substring(0, dot + 1);
-                        List<String> target = likelyWifi ? prefixes : fallbackPrefixes;
-                        if (!target.contains(prefix)) target.add(prefix);
-                    }
-                }
-                // Prefer Wi-Fi subnets, but keep private-interface fallbacks because
-                // Android devices do not all name their Wi-Fi interface wlan0.
-                List<String> scanPrefixes = prefixes.isEmpty() ? fallbackPrefixes : prefixes;
+
+            List<String> found = java.util.Collections.synchronizedList(new ArrayList<>());
+            if (!prefixes.isEmpty()) {
                 ExecutorService workers = Executors.newFixedThreadPool(32);
-                List<Runnable> tasks = new ArrayList<>();
-                for (String prefix : scanPrefixes) {
-                    for (int i = 1; i < 255; i++) {
-                        String host = prefix + i;
-                        tasks.add(() -> {
-                            // Prefer this host's announced port when multicast was received
-                            // but the initial verification timed out; otherwise use the saved default.
-                            int port = announcedPorts.getOrDefault(host, getReceiverPort());
-                            if (isReceiver(host, port)) {
-                                DEVICE_PORTS.put(host, port);
-                                synchronized (found) {
-                                    if (!found.contains(host)) found.add(host);
-                                }
+                CountDownLatch done = new CountDownLatch(prefixes.size() * 254);
+                for (String prefix : prefixes) {
+                    for (int host = 1; host <= 254; host++) {
+                        final String candidate = prefix + host;
+                        workers.execute(() -> {
+                            try {
+                                int port = getReceiverPort();
+                                try (Socket socket = new Socket()) {
+                                    // Same test as the working AboEzzat Cast: is the Receiver TCP port open?
+                                    socket.connect(new InetSocketAddress(candidate, port), 250);
+                                    DEVICE_PORTS.put(candidate, port);
+                                    found.add(candidate);
+                                } catch (Exception ignored) { }
+                            } finally {
+                                done.countDown();
                             }
                         });
                     }
                 }
-                // Submit bounded scans and wait for all probes before returning results.
-                CountDownLatch done = new CountDownLatch(tasks.size());
-                for (Runnable task : tasks) {
-                    workers.execute(() -> {
-                        try { task.run(); }
-                        finally { done.countDown(); }
-                    });
-                }
                 try {
-                    done.await(8, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
+                    done.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                 } finally {
                     workers.shutdownNow();
                 }
-            } catch (Exception ignored) {
             }
-            synchronized (found) {
-                callback.onDevices(new ArrayList<>(found));
-            }
+            callback.onDevices(new ArrayList<>(found));
         });
     }
 }
