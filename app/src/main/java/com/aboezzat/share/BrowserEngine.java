@@ -41,8 +41,8 @@ public final class BrowserEngine {
         if (input.isEmpty()) return "";
         if (input.matches("(?i)^https?://.*")) return input;
         if (input.contains(" ") || !input.contains(".")) {
-            try { return "https://www.google.com/search?q=" + URLEncoder.encode(input, "UTF-8"); }
-            catch (Exception ignored) { return "https://www.google.com"; }
+            try { return "https://www.google.com.eg/search?q=" + URLEncoder.encode(input, "UTF-8") + "&gl=eg&hl=ar"; }
+            catch (Exception ignored) { return "https://www.google.com.eg"; }
         }
         return "https://" + input;
     }
