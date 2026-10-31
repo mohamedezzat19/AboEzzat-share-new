@@ -3530,9 +3530,9 @@ public class MainActivity extends Activity {
         for (TextView remoteButton : new TextView[]{rw, play, ff}) {
             remoteButton.setBackground(shape(remoteButton == play ? BLUE : PANEL, remoteButton == play ? BLUE : PANEL, 0));
         }
-        r1.addView(ff,remoteButtonParams());
-        r1.addView(play,remoteButtonParams());
         r1.addView(rw,remoteButtonParams());
+        r1.addView(play,remoteButtonParams());
+        r1.addView(ff,remoteButtonParams());
         remote.addView(r1,lp(-1,dp(32)));
         LinearLayout r2 = row();
         r2.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
@@ -3542,8 +3542,8 @@ public class MainActivity extends Activity {
         compactRemoteButton(next);
         previous.setBackground(shape(PANEL, PANEL, 0));
         next.setBackground(shape(PANEL, PANEL, 0));
-        r2.addView(next, remoteButtonParams());
         r2.addView(previous, remoteButtonParams());
+        r2.addView(next, remoteButtonParams());
         remote.addView(r2, lp(-1, dp(32)));
         LinearLayout r3 = row();
         r3.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
@@ -3559,10 +3559,10 @@ public class MainActivity extends Activity {
         mute.setBackground(shape(PANEL2, PANEL2, 0));
         volumeUp.setBackground(shape(PANEL, PANEL, 0));
         stop.setBackground(shape(PANEL, PANEL, 0));
-        r3.addView(stop,remoteButtonParams());
-        r3.addView(volumeUp,remoteButtonParams());
-        r3.addView(mute,remoteButtonParams());
         r3.addView(volumeDown,remoteButtonParams());
+        r3.addView(mute,remoteButtonParams());
+        r3.addView(volumeUp,remoteButtonParams());
+        r3.addView(stop,remoteButtonParams());
         LinearLayout.LayoutParams remoteRowParams=lp(-1,dp(32));
         remoteRowParams.topMargin=0;
         remote.addView(r3,remoteRowParams);
