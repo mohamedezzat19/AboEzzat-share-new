@@ -634,7 +634,7 @@ public class MainActivity extends Activity {
                 + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"
                 + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
-                + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',best.poster||'');}"
+                + "window.AboEzzatBridge.onActiveVideoFound(u,document.title||'',best.poster||'');}"
                 + "}catch(e){}})()";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
         receiverMonitorHandler.postDelayed(() -> {
@@ -2866,7 +2866,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Receives metadata and HTMLMediaElement.play() callbacks from the working legacy browser flow. */
+    /** Receives legacy browser candidates and separately confirmed background-player captures. */
     private final class LegacyMediaCaptureBridge {
         @android.webkit.JavascriptInterface
         public void onMetaFound(String title, String posterUrl) {
@@ -2880,6 +2880,18 @@ public class MainActivity extends Activity {
 
         @android.webkit.JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
+            handleCapturedVideo(mediaUrl, title, posterUrl, false);
+        }
+
+        @android.webkit.JavascriptInterface
+        public void onActiveVideoFound(String mediaUrl, String title, String posterUrl) {
+            // This callback is used only by scanSharedCapturePage after checking that
+            // the largest visible, non-ad HTML5 video is actively playing.
+            handleCapturedVideo(mediaUrl, title, posterUrl, true);
+        }
+
+        private void handleCapturedVideo(String mediaUrl, String title, String posterUrl,
+                                         boolean activePlayerConfirmed) {
             if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || isObviousNonVideoMedia(mediaUrl)) return;
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
@@ -2892,15 +2904,14 @@ public class MainActivity extends Activity {
                         && !currentPlayingVideoUrl.equals(mediaUrl)) {
                     clearDetectedMedia();
                 }
-                // A real HTML5 video-player callback is stronger evidence than URL suffixes:
-                // social platforms frequently serve signed, extensionless CDN URLs.
                 confirmedPlayerVideoUrls.add(mediaUrl);
                 currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
 
-                // Only the background scanner calls this after confirming a visible,
-                // currently-playing video. Network requests alone are never auto-cast.
-                if (pendingExternalShareCapture && sharedCaptureWebView != null
+                // Do not auto-cast a page's OG video, preload, preview, or generic play() event.
+                // Background auto-cast is allowed only after the active visible player scan confirms it.
+                if (activePlayerConfirmed && pendingExternalShareCapture
+                        && sharedCaptureWebView != null
                         && sharedCaptureGeneration == extractionGeneration && !sharedCaptureSent) {
                     sharedCaptureSent = true;
                     pendingExternalShareCapture = false;
