@@ -846,6 +846,8 @@ public class MainActivity extends Activity {
     private void nav(String label, String page) {
         TextView b = text(label, 11, MUTED, true);
         b.setGravity(Gravity.CENTER);
+        b.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        b.setIncludeFontPadding(false);
         b.setContentDescription(label.replace("\n", " "));
         bottom.addView(b, new LinearLayout.LayoutParams(0,-1,1));
         b.setOnClickListener(v -> {
