@@ -333,7 +333,11 @@ public final class CastingManager {
                     NetworkInterface ni = interfaces.nextElement();
                     if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
                     String name = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
-                    boolean likelyWifi = name.contains("wlan") || name.contains("wifi") || name.contains("swlan");
+                    // Never probe VPN/tunnel subnets; they are not the local TV LAN.
+                    if (name.contains("tun") || name.contains("tap") || name.contains("vpn")
+                            || name.contains("ppp") || name.contains("wg")) continue;
+                    boolean likelyWifi = name.contains("wlan") || name.contains("wifi")
+                            || name.contains("swlan") || name.contains("eth");
                     Enumeration<InetAddress> addresses = ni.getInetAddresses();
                     while (addresses.hasMoreElements()) {
                         InetAddress a = addresses.nextElement();
