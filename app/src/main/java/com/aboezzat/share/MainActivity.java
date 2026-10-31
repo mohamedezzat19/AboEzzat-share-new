@@ -1981,7 +1981,12 @@ public class MainActivity extends Activity {
         browserTools.addView(browserProgressBar,browserProgressParams);
         LinearLayout controls=row();
         controls.setGravity(Gravity.CENTER_VERTICAL);
-        controls.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        // Fixed visual order from left to right: refresh, back, home, forward, more.
+        controls.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        addSmallControl(controls,"↻",()->web.reload());
+        addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();else Toast.makeText(this,"مفيش صفحة سابقة",Toast.LENGTH_SHORT).show();});
+        addSmallControl(controls,"⌂",()->showHome());
+        addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();else Toast.makeText(this,"مفيش صفحة تالية",Toast.LENGTH_SHORT).show();});
         TextView more = button("⋮", PANEL2, GOLD);
         more.setContentDescription("المزيد من أدوات المتصفح");
         controls.addView(more, new LinearLayout.LayoutParams(0, dp(34), 1f));
@@ -1995,10 +2000,6 @@ public class MainActivity extends Activity {
             menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> { openSideDrawer(); return true; });
             menu.show();
         });
-        addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();else Toast.makeText(this,"مفيش صفحة سابقة",Toast.LENGTH_SHORT).show();});
-        addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();else Toast.makeText(this,"مفيش صفحة تالية",Toast.LENGTH_SHORT).show();});
-        addSmallControl(controls,"↻",()->web.reload());
-        addSmallControl(controls,"⌂",()->showHome());
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
         pageTitle.setVisibility(View.GONE);
