@@ -113,6 +113,9 @@ public class MainActivity extends Activity {
     private final LinkedHashMap<String,String> mediaTitles = new LinkedHashMap<>();
     private final LinkedHashMap<String,String> mediaPosters = new LinkedHashMap<>();
     private final LinkedHashMap<String, java.util.Map<String,String>> mediaRequestHeaders = new LinkedHashMap<>();
+    // URLs confirmed by the actual HTML5 video player, including extensionless social CDN streams.
+    private final java.util.Set<String> confirmedPlayerVideoUrls = java.util.Collections.newSetFromMap(
+            new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
     private volatile boolean pendingExternalShareCapture = false;
     private volatile String lastPageMediaTitle = "";
     private volatile String lastPageMediaPoster = "";
@@ -2831,7 +2834,7 @@ public class MainActivity extends Activity {
 
         @android.webkit.JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
-            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || !isVideoCandidate(mediaUrl)) return;
+            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || isObviousNonVideoMedia(mediaUrl)) return;
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
 
@@ -2843,6 +2846,9 @@ public class MainActivity extends Activity {
                         && !currentPlayingVideoUrl.equals(mediaUrl)) {
                     clearDetectedMedia();
                 }
+                // A real HTML5 video-player callback is stronger evidence than URL suffixes:
+                // social platforms frequently serve signed, extensionless CDN URLs.
+                confirmedPlayerVideoUrls.add(mediaUrl);
                 currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
 
@@ -2987,6 +2993,7 @@ public class MainActivity extends Activity {
             mediaTitles.clear();
             mediaPosters.clear();
             selectedTrackUrls.clear();
+            confirmedPlayerVideoUrls.clear();
         }
         // This callback can arrive from WebView's JavaScript thread. Keep all
         // view mutations on the main thread and preserve the newly-playing URL.
@@ -3008,7 +3015,8 @@ public class MainActivity extends Activity {
         if(url==null||url.trim().isEmpty()||url.startsWith("blob:")||url.startsWith("data:"))return;
         // Only keep actual video candidates. Images, audio, posters, thumbnails,
         // analytics and unrelated page requests must never enter the detected-media list.
-        if (!isVideoCandidate(url) && !isAudioTrackCandidate(url)) return;
+        if (!isVideoCandidate(url) && !isAudioTrackCandidate(url)
+                && !confirmedPlayerVideoUrls.contains(url)) return;
         if (requestHeaders != null && !requestHeaders.isEmpty()) {
             java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<String,String> entry : requestHeaders.entrySet()) {
@@ -4085,8 +4093,23 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private boolean isObviousNonVideoMedia(String candidate) {
+        if (candidate == null || candidate.trim().isEmpty()) return true;
+        try {
+            Uri uri = Uri.parse(candidate);
+            String path = uri.getPath();
+            String lower = ((path == null ? candidate : path)).toLowerCase(Locale.ROOT);
+            if (lower.matches("(?s).*\\.(jpg|jpeg|png|webp|gif|bmp|avif|mp3|m4a|aac|ogg|oga|opus|wav|flac)(?:[?#].*)?$")) return true;
+            String query = uri.getQuery();
+            String q = query == null ? "" : query.toLowerCase(Locale.ROOT);
+            return q.contains("mime=image") || q.contains("type=image")
+                    || q.contains("mime=audio") || q.contains("type=audio");
+        } catch (Exception ignored) { return false; }
+    }
+
     private boolean isVideoCandidate(String candidate) {
         if (candidate == null || candidate.trim().isEmpty()) return false;
+        if (confirmedPlayerVideoUrls.contains(candidate)) return true;
         Uri uri = Uri.parse(candidate);
         String path = uri.getPath();
         String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
