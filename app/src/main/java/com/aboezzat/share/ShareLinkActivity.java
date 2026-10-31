@@ -35,6 +35,7 @@ public class ShareLinkActivity extends Activity {
     private boolean captureWindowOpen;
     private boolean captureWindowClosed = true;
     private android.webkit.WebView captureWebView;
+    private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
 
     private final Runnable extractionTimeout = () -> {
@@ -240,12 +241,40 @@ public class ShareLinkActivity extends Activity {
             CookieManager cookies = CookieManager.getInstance();
             cookies.setAcceptCookie(true);
             cookies.setAcceptThirdPartyCookies(view, true);
-            view.addJavascriptInterface(new BackgroundCaptureBridge(), "AboEzzatShareCapture");
+            backgroundCaptureBridge = new BackgroundCaptureBridge();
+            view.addJavascriptInterface(backgroundCaptureBridge, "AboEzzatShareCapture");
             view.setBackgroundColor(android.graphics.Color.BLACK);
             view.setAlpha(0.01f);
             view.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             view.setWebChromeClient(new android.webkit.WebChromeClient());
             view.setWebViewClient(new android.webkit.WebViewClient() {
+                /**
+                 * Legacy AboEzzat Cast capture path: inspect actual network resources.
+                 * Social sites often expose the media request before currentSrc is readable.
+                 * This callback runs off the UI thread; the bridge posts accepted URLs to main.
+                 */
+                @Override public android.webkit.WebResourceResponse shouldInterceptRequest(
+                        android.webkit.WebView webView,
+                        android.webkit.WebResourceRequest request) {
+                    String resourceUrl = request.getUrl() == null ? "" : request.getUrl().toString();
+                    String lower = resourceUrl.toLowerCase(java.util.Locale.ROOT);
+                    boolean junk = lower.contains(".ts") || lower.contains("seg-")
+                            || lower.contains("preview") || lower.contains("google_ads")
+                            || lower.contains("ad-interrupting");
+                    boolean media = lower.contains(".mp4") || lower.contains(".m3u8")
+                            || lower.contains(".mpd") || lower.contains(".webm")
+                            || lower.contains(".flv") || lower.contains("pull-")
+                            || lower.contains("mime=video") || lower.contains("video_playback")
+                            || lower.contains("/videoplayback")
+                            || lower.contains("/ext_tw_video/")
+                            || lower.contains("/amplify_video/");
+                    if (!junk && media && BrowserEngine.isWebUrl(resourceUrl)) {
+                        BackgroundCaptureBridge bridge = backgroundCaptureBridge;
+                        if (bridge != null) bridge.onNetworkMediaFound(resourceUrl);
+                    }
+                    return super.shouldInterceptRequest(webView, request);
+                }
+
                 @Override public void onPageFinished(android.webkit.WebView webView, String loadedUrl) {
                     super.onPageFinished(webView, loadedUrl);
                     if (webView != captureWebView || captureWindowClosed || completed.get()) return;
@@ -296,8 +325,37 @@ public class ShareLinkActivity extends Activity {
     }
 
     private final class BackgroundCaptureBridge {
+        void onNetworkMediaFound(String url) {
+            if (url == null || url.isEmpty()) return;
+            mainHandler.post(() -> acceptCapturedMedia(url,
+                    "تم التقاط طلب ملف الفيديو من شبكة الموقع."));
+        }
+
         @android.webkit.JavascriptInterface
         public void onActiveVideoFound(String url) {
+            mainHandler.post(() -> acceptCapturedMedia(url,
+                    "تم التقاط الفيديو النشط من صفحة المشاركة وإرساله إلى Receiver."));
+        }
+    }
+
+    private void acceptCapturedMedia(String url, String note) {
+        if (completed.get() || captureWindowClosed || !BrowserEngine.isWebUrl(url)
+                || url.equals(originalSharedUrl)) return;
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        if (!(lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".mpd")
+                || lower.contains(".webm") || lower.contains(".flv") || lower.contains("pull-")
+                || lower.contains("mime=video") || lower.contains("video_playback")
+                || lower.contains("/videoplayback") || lower.contains("/ext_tw_video/")
+                || lower.contains("/amplify_video/"))) return;
+        captureWindowClosed = true;
+        captureWindowOpen = false;
+        extractionFinalized = true;
+        mainHandler.removeCallbacks(extractionTimeout);
+        destroyBackgroundCapture();
+        sendResolvedToReceiver(url, Collections.emptyMap(), note);
+    }
+
+    /*
             mainHandler.post(() -> {
                 if (completed.get() || captureWindowClosed || !BrowserEngine.isWebUrl(url)
                         || url.equals(originalSharedUrl)) return;
@@ -321,6 +379,7 @@ public class ShareLinkActivity extends Activity {
             try { old.removeJavascriptInterface("AboEzzatShareCapture"); } catch (Exception ignored) { }
             try { old.destroy(); } catch (Exception ignored) { }
         }
+        backgroundCaptureBridge = null;
     }
 
     private int qualityScore(String url) {
