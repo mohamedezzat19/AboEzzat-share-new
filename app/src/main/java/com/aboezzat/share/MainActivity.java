@@ -578,6 +578,11 @@ public class MainActivity extends Activity {
                     @Override public void onPageFinished(WebView view, String loadedUrl) {
                         super.onPageFinished(view, loadedUrl);
                         if (generation != extractionGeneration || view != sharedCaptureWebView) return;
+                        // Use the same proven legacy play() hook as the visible browser.
+                        // Without this, background shares only poll for already-playing
+                        // videos and miss players that expose their stream during play().
+                        installLegacyMediaCaptureHooks(view);
+                        scanPageMediaAndSkipAds(view);
                         scanSharedCapturePage(view, generation);
                     }
                 });
@@ -649,7 +654,7 @@ public class MainActivity extends Activity {
         if (old != null) {
             try { old.stopLoading(); } catch (Exception ignored) { }
             try { if (shellOverlay != null) shellOverlay.removeView(old); } catch (Exception ignored) { }
-            try { old.removeJavascriptInterface("AboEzzatCapture"); } catch (Exception ignored) { }
+            try { old.removeJavascriptInterface("AboEzzatBridge"); } catch (Exception ignored) { }
             try { old.destroy(); } catch (Exception ignored) { }
         }
     }
