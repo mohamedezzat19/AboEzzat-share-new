@@ -2031,13 +2031,16 @@ public class MainActivity extends Activity {
         browserProgressParams.setMargins(dp(4),0,dp(4),dp(3));
         browserTools.addView(browserProgressBar,browserProgressParams);
         LinearLayout controls=row();
+        // Classic Cast browser parity: keep the side menu reachable from the browser
+        // itself, then expose the familiar navigation, home and tab controls.
+        addSmallControl(controls,"☰",()->openSideDrawer());
         addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();else Toast.makeText(this,"مفيش صفحة سابقة",Toast.LENGTH_SHORT).show();});
         addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();else Toast.makeText(this,"مفيش صفحة تالية",Toast.LENGTH_SHORT).show();});
         addSmallControl(controls,"↻",()->web.reload());
         addSmallControl(controls,"⌂",()->showHome());
-        addSmallControl(controls,"☆",()->saveBookmark());
         addSmallControl(controls,"▣",()->showBrowserTabsDialog());
         addSmallControl(controls,"＋",()->openNewBrowserTab());
+        addSmallControl(controls,"☆",()->saveBookmark());
         addSmallControl(controls,"⚙",()->showBrowserSettingsDialog());
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
