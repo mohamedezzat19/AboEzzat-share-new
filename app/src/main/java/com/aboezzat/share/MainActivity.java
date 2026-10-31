@@ -2835,7 +2835,19 @@ public class MainActivity extends Activity {
                 : "↻".equals(label) ? "إعادة تحميل الصفحة"
                 : "⌂".equals(label) ? "العودة للرئيسية"
                 : "☆".equals(label) ? "إضافة للمفضلة" : label;
+        if ("▣".equals(label)) description = "عرض علامات التبويب المفتوحة";
+        else if ("＋".equals(label)) description = "فتح تبويب جديد";
+        else if ("⚙".equals(label)) description = "إعدادات المتصفح";
         b.setContentDescription(description);
+        b.setFocusable(true);
+        b.setFocusableInTouchMode(true);
+        b.setOnFocusChangeListener((view, focused) -> {
+            // Clear, high-contrast focus feedback for Android TV / Fire TV remotes.
+            b.setBackground(shape(focused ? PANEL2 : PANEL,
+                    focused ? BLUE : PANEL2, 13));
+            b.setTextColor(focused ? GOLD : WHITE);
+            b.setElevation(focused ? dp(3) : 0);
+        });
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(40),1);
         p.setMargins(dp(2),dp(2),dp(2),dp(2));
         row.addView(b,p);b.setOnClickListener(v->run.run());
