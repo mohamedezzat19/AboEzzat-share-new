@@ -51,8 +51,17 @@ public final class AppUpdater {
                     if (a != null && "app-release.apk".equals(a.optString("name"))) { apkUrl = a.optString("browser_download_url", null); break; }
                 }
                 final String downloadUrl = apkUrl;
-                if (latest <= installed || downloadUrl == null || downloadUrl.isEmpty()) {
-                    if (showResult) MAIN.post(() -> Toast.makeText(activity, "التطبيق محدث بالفعل، أو لم تُنشر نسخة موقّعة بعد.", Toast.LENGTH_LONG).show());
+                if (downloadUrl == null || downloadUrl.isEmpty()) {
+                    if (showResult) MAIN.post(() -> Toast.makeText(activity, "لم يتم العثور على ملف تحديث رسمي موقّع على GitHub.", Toast.LENGTH_LONG).show());
+                    return;
+                }
+                if (latest <= installed) {
+                    if (showResult) {
+                        String message = latest < installed
+                                ? "أنت تستخدم نسخة أحدث من آخر إصدار رسمي منشور (نسخة مثبتة: " + installed + "، آخر إصدار رسمي: " + latest + "). سيتم إتاحة التحديث التلقائي عند نشر إصدار رسمي برقم أعلى."
+                                : "التطبيق محدث بالفعل. رقم الإصدار الحالي: " + installed;
+                        MAIN.post(() -> Toast.makeText(activity, message, Toast.LENGTH_LONG).show());
+                    }
                     return;
                 }
                 MAIN.post(() -> new AlertDialog.Builder(activity).setTitle("تحديث جديد متاح")
