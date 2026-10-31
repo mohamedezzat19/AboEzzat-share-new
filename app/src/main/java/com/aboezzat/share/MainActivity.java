@@ -63,13 +63,13 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final int BG = Color.rgb(7, 13, 29);
-    private static final int PANEL = Color.rgb(17, 27, 49);
-    private static final int PANEL2 = Color.rgb(24, 37, 64);
-    private static final int WHITE = Color.rgb(244, 247, 255);
-    private static final int MUTED = Color.rgb(157, 174, 203);
-    private static final int BLUE = Color.rgb(86, 132, 255);
-    private static final int GOLD = Color.rgb(255, 196, 87);
+    private static final int BG = Color.rgb(16, 16, 20);
+    private static final int PANEL = Color.rgb(27, 28, 35);
+    private static final int PANEL2 = Color.rgb(38, 40, 51);
+    private static final int WHITE = Color.rgb(255, 255, 255);
+    private static final int MUTED = Color.rgb(158, 158, 158);
+    private static final int BLUE = Color.rgb(0, 176, 255);
+    private static final int GOLD = Color.rgb(255, 215, 0);
     private static final String PREFS = "aboezzat_browser";
     private static final int PICK_IMAGE_REQUEST = 901;
     private static final int PICK_BROWSER_FILE_REQUEST = 903;
@@ -796,8 +796,8 @@ public class MainActivity extends Activity {
         brandRow.addView(logo, lp(48,48));
         LinearLayout brandText = column();
         brandText.setPadding(dp(12),0,0,0);
-        brandText.addView(text("ABO EZZAT", 19, WHITE, true));
-        brandText.addView(text("SHARE  •  متصفح وإرسال الوسائط", 11, MUTED, false));
+        brandText.addView(text("Abo Ezzat Cast", 19, WHITE, true));
+        brandText.addView(text("SHARE NEW  •  النسخة المطوّرة", 11, MUTED, false));
         brandRow.addView(brandText, new LinearLayout.LayoutParams(0, -2, 1));
         TextView receiver = button("☰", PANEL2, WHITE);
         receiver.setContentDescription("القائمة");
@@ -859,8 +859,7 @@ public class MainActivity extends Activity {
 
         drawerPanel = column();
         drawerPanel.setPadding(dp(16), dp(22), dp(16), dp(18));
-        drawerPanel.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.rgb(20, 29, 49), Color.rgb(12, 18, 33)}));
+        drawerPanel.setBackgroundColor(Color.rgb(30, 30, 36));
         drawerPanel.setElevation(dp(20));
         drawerPanel.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         FrameLayout.LayoutParams drawerLp = new FrameLayout.LayoutParams(dp(300), -1, Gravity.RIGHT | Gravity.TOP);
@@ -874,7 +873,7 @@ public class MainActivity extends Activity {
         brand.addView(mark, lp(48, 48));
         LinearLayout brandText = column();
         brandText.setPadding(dp(10), 0, 0, 0);
-        brandText.addView(text("ABO EZZAT SHARE", 17, WHITE, true), lp(-1, 27));
+        brandText.addView(text("Abo Ezzat Cast", 17, WHITE, true), lp(-1, 27));
         brandText.addView(text("القائمة الرئيسية", 11, MUTED, false), lp(-1, 22));
         brand.addView(brandText, new LinearLayout.LayoutParams(0, -2, 1));
         drawerPanel.addView(brand, lp(-1, 52));
