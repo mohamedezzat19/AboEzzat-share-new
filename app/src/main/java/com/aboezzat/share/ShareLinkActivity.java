@@ -261,6 +261,8 @@ public class ShareLinkActivity extends Activity {
         } catch (Exception ignored) {
             captureWindowOpen = false;
             captureWindowClosed = true;
+            if (pendingEngines == 0) mainHandler.post(() -> finishExtraction(
+                    "تعذّر تشغيل الالتقاط الخلفي؛ هبعت الرابط الأصلي للريسيفر."));
         }
     }
 
@@ -302,6 +304,7 @@ public class ShareLinkActivity extends Activity {
                         || url.equals(originalSharedUrl)) return;
                 captureWindowClosed = true;
                 captureWindowOpen = false;
+                extractionFinalized = true;
                 mainHandler.removeCallbacks(extractionTimeout);
                 destroyBackgroundCapture();
                 sendResolvedToReceiver(url, Collections.emptyMap(),
