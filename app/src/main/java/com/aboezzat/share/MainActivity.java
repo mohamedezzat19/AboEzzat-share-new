@@ -3179,7 +3179,7 @@ public class MainActivity extends Activity {
         main.setBackgroundColor(Color.parseColor("#181818"));
         main.setPadding(dp(14), dp(14), dp(14), dp(12));
 
-        TextView heading = text("المسارات المكتشفة (" + snapshot.size() + ")", 16, WHITE, true);
+        TextView heading = text("المسارات المكتشفة (" + snapshot.size() + ") - محددة تلقائياً", 16, WHITE, true);
         heading.setGravity(Gravity.CENTER);
         heading.setPadding(0, dp(8), 0, dp(14));
         main.addView(heading, lp(-1, -2));
@@ -3189,7 +3189,7 @@ public class MainActivity extends Activity {
         for (String url : snapshot) {
             LinearLayout item = row();
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(8), dp(9), dp(8), dp(9));
+            item.setPadding(dp(10), dp(12), dp(10), dp(12));
             item.setBackgroundColor(Color.parseColor("#1F1F1F"));
             LinearLayout.LayoutParams rowParams = lp(-1, -2);
             rowParams.bottomMargin = dp(2);
@@ -3227,16 +3227,32 @@ public class MainActivity extends Activity {
             ImageView thumb = new ImageView(this);
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackgroundColor(Color.parseColor("#2C2C2C"));
-            LinearLayout.LayoutParams thumbParams = lp(dp(90), dp(66));
+            LinearLayout.LayoutParams thumbParams = lp(dp(120), dp(100));
             item.addView(thumb, thumbParams);
             String poster = mediaPosters.get(url);
             if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
             item.setOnClickListener(v -> new AlertDialog.Builder(this)
                     .setTitle(capturedTitle)
-                    .setItems(new String[]{"📺 بث هذا المسار", "⬇ تحميل هذا المسار", "✓ تحديد / إلغاء التحديد"}, (d, choice) -> {
-                        if (choice == 0) { dialog.dismiss(); castUrl(url); }
-                        else if (choice == 1) downloadUrl(url, null);
-                        else check.setChecked(!check.isChecked());
+                    .setItems(new String[]{
+                            "🔗 دمج وبث بصوت وصورة",
+                            "📺 بث هذا المسار منفرداً",
+                            "🎬 تحميل هذا المسار",
+                            "🎵 تحميل الصوت فقط",
+                            "✓ تحديد / إلغاء التحديد"
+                    }, (d, choice) -> {
+                        if (choice == 0) {
+                            dialog.dismiss();
+                            sendSelectedMediaTracks();
+                        } else if (choice == 1) {
+                            dialog.dismiss();
+                            castUrl(url);
+                        } else if (choice == 2) {
+                            downloadUrl(url, null);
+                        } else if (choice == 3) {
+                            downloadUrl(url, "audio/*");
+                        } else {
+                            check.setChecked(!check.isChecked());
+                        }
                     }).show());
         }
         scroll.addView(rows);
