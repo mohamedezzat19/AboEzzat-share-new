@@ -355,21 +355,6 @@ public class ShareLinkActivity extends Activity {
         sendResolvedToReceiver(url, Collections.emptyMap(), note);
     }
 
-    /*
-            mainHandler.post(() -> {
-                if (completed.get() || captureWindowClosed || !BrowserEngine.isWebUrl(url)
-                        || url.equals(originalSharedUrl)) return;
-                captureWindowClosed = true;
-                captureWindowOpen = false;
-                extractionFinalized = true;
-                mainHandler.removeCallbacks(extractionTimeout);
-                destroyBackgroundCapture();
-                sendResolvedToReceiver(url, Collections.emptyMap(),
-                        "تم التقاط الفيديو النشط من صفحة المشاركة وإرساله إلى Receiver.");
-            });
-        }
-    }
-
     private void destroyBackgroundCapture() {
         mainHandler.removeCallbacks(captureScanRunnable);
         android.webkit.WebView old = captureWebView;
