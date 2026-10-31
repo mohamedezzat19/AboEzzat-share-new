@@ -1391,91 +1391,123 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
-        header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
+        header.setVisibility(View.VISIBLE);
+        bottom.setVisibility(View.VISIBLE);
         currentPage = "home";
         resetContent();
+
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         LinearLayout page = column();
-        page.setPadding(0, dp(4), 0, dp(16));
+        page.setPadding(dp(16), dp(8), dp(16), dp(18));
+        scroll.addView(page);
+        content.addView(scroll, lp(-1, -1));
 
-        // Compact Google-style address/search bar replaces the old welcome card.
-        LinearLayout searchBar = row();
-        searchBar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        searchBar.setPadding(dp(10), dp(5), dp(7), dp(5));
-        searchBar.setBackground(shape(PANEL, PANEL2, 18));
-        TextView searchIcon = text("⌕", 27, BLUE, true);
-        searchIcon.setGravity(Gravity.CENTER);
-        searchIcon.setContentDescription("بحث");
-        searchBar.addView(searchIcon, lp(38, 44));
+        LinearLayout statusRow = row();
+        statusRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView status = text(receiverConnected ? "● متصل بالشاشة" : "🔍 فحص الشاشة تلقائياً", 13,
+                receiverConnected ? Color.rgb(0, 230, 118) : Color.rgb(0, 230, 118), true);
+        status.setPadding(dp(10), dp(5), dp(10), dp(5));
+        status.setBackground(shape(Color.rgb(27, 46, 35), Color.rgb(27, 46, 35), 8));
+        status.setOnClickListener(v -> showReceiverPicker());
+        statusRow.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView receiverButton = button("📡 جهاز الاستقبال", PANEL2, BLUE);
+        statusRow.addView(receiverButton, lp(-2, 42));
+        receiverButton.setOnClickListener(v -> showReceiverPicker());
+        page.addView(statusRow, lp(-1, 46));
 
-        EditText homeSearch = new EditText(this);
-        homeSearch.setSingleLine(true);
-        homeSearch.setTextSize(15);
-        homeSearch.setTextColor(WHITE);
-        homeSearch.setHintTextColor(MUTED);
-        homeSearch.setHint("ابحث في جوجل أو اكتب رابط موقع");
-        homeSearch.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        homeSearch.setImeOptions(EditorInfo.IME_ACTION_GO);
-        homeSearch.setSelectAllOnFocus(false);
-        homeSearch.setPadding(dp(7), 0, dp(7), 0);
-        homeSearch.setBackgroundColor(Color.TRANSPARENT);
-        searchBar.addView(homeSearch, new LinearLayout.LayoutParams(0, dp(46), 1));
-
-        TextView voiceSearch = button("🎙", PANEL2, GOLD);
-        voiceSearch.setContentDescription("البحث الصوتي");
-        searchBar.addView(voiceSearch, lp(40, 40));
-        voiceSearch.setOnClickListener(v -> beginNativeVoiceSearch(homeSearch));
-
-        TextView clearSearch = button("×", PANEL2, MUTED);
-        clearSearch.setContentDescription("مسح البحث");
-        clearSearch.setPadding(dp(8), 0, dp(8), 0);
-        searchBar.addView(clearSearch, lp(36, 40));
-        clearSearch.setOnClickListener(v -> homeSearch.setText(""));
-
-        TextView goSearch = button("➜", BLUE, WHITE);
-        goSearch.setContentDescription("بحث أو فتح الرابط");
-        goSearch.setPadding(dp(8), 0, dp(8), 0);
-        LinearLayout.LayoutParams goSearchParams = lp(40, 40);
-        goSearchParams.setMargins(dp(4), 0, 0, 0);
-        searchBar.addView(goSearch, goSearchParams);
-
-        Runnable submitHomeSearch = () -> {
-            String query = homeSearch.getText().toString().trim();
-            if (query.isEmpty()) {
-                homeSearch.setError("اكتب كلمة للبحث أو رابط الموقع");
-                homeSearch.requestFocus();
+        LinearLayout connection = column();
+        connection.setPadding(dp(16), dp(14), dp(16), dp(14));
+        connection.setBackground(shape(PANEL, PANEL2, 12));
+        TextView connectionTitle = text("📡 الاتصال بجهاز الاستقبال (TV Receiver)", 14, BLUE, true);
+        connection.addView(connectionTitle, lp(-1, 28));
+        LinearLayout ipRow = row();
+        EditText ipInput = new EditText(this);
+        ipInput.setSingleLine(true);
+        ipInput.setTextSize(13);
+        ipInput.setTextColor(WHITE);
+        ipInput.setHintTextColor(MUTED);
+        ipInput.setHint("عنوان IP الشاشة (مثال: 192.168.1.15)");
+        ipInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        ipInput.setPadding(dp(10), 0, dp(10), 0);
+        ipInput.setBackground(shape(PANEL2, PANEL2, 8));
+        ipInput.setText(receiverIp == null ? "" : receiverIp);
+        ipRow.addView(ipInput, new LinearLayout.LayoutParams(0, dp(46), 1));
+        TextView saveIp = button("حفظ", GOLD, Color.BLACK);
+        LinearLayout.LayoutParams saveParams = lp(68, 46);
+        saveParams.setMargins(dp(8), 0, 0, 0);
+        ipRow.addView(saveIp, saveParams);
+        saveIp.setOnClickListener(v -> {
+            String value = ipInput.getText().toString().trim();
+            String normalized = normalizeReceiverIp(value);
+            if (normalized == null) {
+                ipInput.setError("أدخل عنوان IP صحيح");
                 return;
             }
-            showBrowser();
-            address.setText(query);
-            loadAddress();
-        };
-        goSearch.setOnClickListener(v -> submitHomeSearch.run());
-        homeSearch.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_GO
-                    || actionId == EditorInfo.IME_ACTION_SEARCH
-                    || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
-                    && event.getAction() == KeyEvent.ACTION_DOWN)) {
-                submitHomeSearch.run();
-                return true;
-            }
-            return false;
+            receiverIp = normalized;
+            receiverConnected = false;
+            prefs.edit().putString("receiver_ip", receiverIp).apply();
+            refreshConnectionLabel();
+            Toast.makeText(this, "تم حفظ عنوان جهاز الاستقبال", Toast.LENGTH_SHORT).show();
         });
-        LinearLayout.LayoutParams searchBarParams = lp(-1, 58);
-        searchBarParams.setMargins(0, dp(6), 0, dp(10));
-        page.addView(searchBar, searchBarParams);
-        addSection(page, "منصاتك ومواقعك", "اضغط على البطاقة لفتح الموقع، واضغط + لإضافة أي موقع جديد");
+        connection.addView(ipRow);
+        LinearLayout.LayoutParams connectionParams = lp(-1, -2);
+        connectionParams.setMargins(0, dp(10), 0, dp(16));
+        page.addView(connection, connectionParams);
+
+        addSection(page, "أدوات ومصادر البث", null);
+        LinearLayout browserCard = legacyHomeCard("🌐", "المتصفح وقانص الوسائط",
+                "تصفح مواقع الفيديو، إنستجرام، فيسبوك وبث فوري", true);
+        page.addView(browserCard, lp(-1, 88));
+        browserCard.setOnClickListener(v -> showBrowser());
+
+        LinearLayout mediaRow = row();
+        LinearLayout localCard = legacyHomeCard("🎬", "وسائط الهاتف", "بث فيديو، صورة أو صوت منفرد", false);
+        LinearLayout slideCard = legacyHomeCard("🖼️", "معرض متتابع", "عرض ألبوم صور وراء بعض", false);
+        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, dp(112), 1);
+        half.setMargins(0, dp(10), dp(5), 0);
+        mediaRow.addView(localCard, half);
+        LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, dp(112), 1);
+        half2.setMargins(dp(5), dp(10), 0, 0);
+        mediaRow.addView(slideCard, half2);
+        localCard.setOnClickListener(v -> openLocalMediaPicker());
+        slideCard.setOnClickListener(v -> showPhoneGallery());
+        page.addView(mediaRow, lp(-1, -2));
+
+        addSection(page, "التحكم بالشاشة (Quick Remote)", null);
+        LinearLayout remote = column();
+        remote.setPadding(dp(10), dp(10), dp(10), dp(10));
+        remote.setBackground(shape(PANEL, PANEL2, 10));
+        LinearLayout transport = row();
+        addLegacyRemoteButton(transport, "التالي ⏭️", PANEL2, () -> sendRemoteCommand("next"), 1f);
+        addLegacyRemoteButton(transport, "⏯️ تشغيل", BLUE, () -> sendRemoteCommand("play_pause"), 1.2f);
+        addLegacyRemoteButton(transport, "⏮️ السابق", PANEL2, () -> sendRemoteCommand("prev"), 1f);
+        remote.addView(transport, lp(-1, 42));
+        LinearLayout seek = row();
+        addLegacyRemoteButton(seek, "10s تقديم ⏩", PANEL2, () -> sendRemoteCommand("ff"), 1f);
+        addLegacyRemoteButton(seek, "⏪ 10s تأخير", PANEL2, () -> sendRemoteCommand("rw"), 1f);
+        LinearLayout.LayoutParams seekParams = lp(-1, 42);
+        seekParams.topMargin = dp(7);
+        remote.addView(seek, seekParams);
+        LinearLayout volume = row();
+        addLegacyRemoteButton(volume, "🔊 تعلية", PANEL2, () -> sendRemoteCommand("vol_up"), 1f);
+        addLegacyRemoteButton(volume, "🔇 كتم", Color.rgb(211, 47, 47), () -> sendRemoteCommand("mute"), 1f);
+        addLegacyRemoteButton(volume, "🔉 تقليل", PANEL2, () -> sendRemoteCommand("vol_down"), 1f);
+        LinearLayout.LayoutParams volumeParams = lp(-1, 42);
+        volumeParams.topMargin = dp(7);
+        remote.addView(volume, volumeParams);
+        LinearLayout.LayoutParams remoteParams = lp(-1, -2);
+        remoteParams.topMargin = dp(8);
+        page.addView(remote, remoteParams);
+
+        addSection(page, "منصاتك ومواقعك", "اختصارات سريعة للمواقع — ويمكنك إضافة مواقعك الخاصة");
         LinearLayout siteGrid = null;
         int siteCountInRow = 0;
         ArrayList<JSONObject> allSites = new ArrayList<>();
         String[][] builtInSites = {
-            {"YouTube", "https://m.youtube.com"},
-            {"Facebook", "https://m.facebook.com"},
-            {"TikTok", "https://www.tiktok.com"},
-            {"Instagram", "https://www.instagram.com"},
-            {"X / Twitter", "https://x.com"},
-            {"Threads", "https://www.threads.net"}
+            {"YouTube", "https://m.youtube.com"}, {"Facebook", "https://m.facebook.com"},
+            {"TikTok", "https://www.tiktok.com"}, {"Instagram", "https://www.instagram.com"},
+            {"X / Twitter", "https://x.com"}, {"Threads", "https://www.threads.net"}
         };
         JSONArray hiddenArray;
         try { hiddenArray = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
@@ -1483,8 +1515,7 @@ public class MainActivity extends Activity {
         java.util.HashSet<String> hiddenKeys = new java.util.HashSet<>();
         for (int h = 0; h < hiddenArray.length(); h++) hiddenKeys.add(hiddenArray.optString(h));
         for (String[] site : builtInSites) {
-            String key = site[1];
-            if (hiddenKeys.contains(key)) continue;
+            if (hiddenKeys.contains(site[1])) continue;
             JSONObject item = new JSONObject();
             try { item.put("name", site[0]); item.put("url", site[1]); item.put("builtin", true); allSites.add(item); }
             catch (org.json.JSONException ignored) { }
@@ -1495,65 +1526,58 @@ public class MainActivity extends Activity {
             if (item == null) continue;
             String siteUrl = item.optString("url", "").trim();
             if (!BrowserEngine.isWebUrl(siteUrl)) continue;
-            try {
-                JSONObject copy = new JSONObject(item.toString());
-                copy.put("builtin", false);
-                allSites.add(copy);
-            } catch (org.json.JSONException ignored) { }
+            try { JSONObject copy = new JSONObject(item.toString()); copy.put("builtin", false); allSites.add(copy); }
+            catch (org.json.JSONException ignored) { }
         }
         JSONArray savedOrder;
         try { savedOrder = new JSONArray(prefs.getString("site_order_json", "[]")); }
         catch (Exception ignored) { savedOrder = new JSONArray(); }
         java.util.HashMap<String, Integer> orderMap = new java.util.HashMap<>();
         for (int oi = 0; oi < savedOrder.length(); oi++) orderMap.put(savedOrder.optString(oi), oi);
-        allSites.sort((a, b) -> Integer.compare(
-                orderMap.getOrDefault(a.optString("url"), Integer.MAX_VALUE),
+        allSites.sort((a, b) -> Integer.compare(orderMap.getOrDefault(a.optString("url"), Integer.MAX_VALUE),
                 orderMap.getOrDefault(b.optString("url"), Integer.MAX_VALUE)));
         for (int i = 0; i < allSites.size(); i++) {
             JSONObject item = allSites.get(i);
-            String siteUrl = item.optString("url", "");
-            String siteName = item.optString("name", siteHostLabel(siteUrl));
-            if (siteName.isEmpty()) siteName = siteHostLabel(siteUrl);
             if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
-            addWebsiteCard(siteGrid, siteName, siteUrl, i, !item.optBoolean("builtin", false));
+            String url = item.optString("url", "");
+            String name = item.optString("name", siteHostLabel(url));
+            addWebsiteCard(siteGrid, name, url, i, !item.optBoolean("builtin", false));
             siteCountInRow = (siteCountInRow + 1) % 3;
         }
-        if (siteCountInRow == 0) {
-            siteGrid = row();
-            page.addView(siteGrid, lp(-1, -2));
+        if (siteGrid == null || siteCountInRow != 0) {
+            if (siteGrid == null) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
         }
-        LinearLayout addSiteCard = column();
-        addSiteCard.setGravity(Gravity.CENTER);
-        addSiteCard.setPadding(dp(5), dp(8), dp(5), dp(8));
-        addSiteCard.setBackground(shape(PANEL, GOLD, 16));
-        TextView plus = text("+", 30, GOLD, true);
-        plus.setGravity(Gravity.CENTER);
-        plus.setBackground(shape(PANEL2, GOLD, 12));
-        LinearLayout.LayoutParams plusParams = new LinearLayout.LayoutParams(dp(42), dp(42));
-        plusParams.gravity = Gravity.CENTER_HORIZONTAL;
-        addSiteCard.addView(plus, plusParams);
-        TextView addLabel = text("إضافة موقع", 11, WHITE, true);
-        addLabel.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams addLabelParams = lp(-1, 22);
-        addLabelParams.topMargin = dp(4);
-        addSiteCard.addView(addLabel, addLabelParams);
-        addSiteCard.setContentDescription("إضافة موقع جديد إلى بطاقات المنصات");
-        addSiteCard.setOnClickListener(v -> showAddCustomSiteDialog());
-        LinearLayout.LayoutParams addCardParams = new LinearLayout.LayoutParams(0, dp(94), 1);
-        addCardParams.setMargins(dp(3), dp(4), dp(3), dp(4));
-        siteGrid.addView(addSiteCard, addCardParams);
-        int cardsInFinalRow = siteCountInRow + 1;
-        for (int i = cardsInFinalRow; i < 3; i++) {
-            View spacer = new View(this);
-            LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, dp(94), 1);
-            spacerParams.setMargins(dp(3), dp(4), dp(3), dp(4));
-            siteGrid.addView(spacer, spacerParams);
-        }
+        LinearLayout addSite = legacyHomeCard("+", "إضافة موقع", "أضف موقعًا إلى اختصاراتك", false);
+        addSite.setOnClickListener(v -> showAddCustomSiteDialog());
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(0, dp(96), 1f);
+        addParams.setMargins(dp(3), dp(4), dp(3), dp(4));
+        siteGrid.addView(addSite, addParams);
+    }
 
-        // These tools already live in the sidebar; avoid duplicate home cards.
-        page.addView(text("ملاحظة: اكتشاف الوسائط يختلف حسب الموقع، وبعض المنصات تستخدم بثًا محميًا لا يمكن التقاطه أو إرساله مباشرة.", 11, MUTED, false), lp(-1, -2));
-        scroll.addView(page);
-        content.addView(scroll, lp(-1, -1));
+    private LinearLayout legacyHomeCard(String icon, String title, String description, boolean wide) {
+        LinearLayout card = column();
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(14), dp(10), dp(14), dp(10));
+        card.setBackground(shape(wide ? Color.rgb(30, 35, 48) : PANEL, PANEL2, 10));
+        TextView iconView = text(icon, wide ? 27 : 25, GOLD, true);
+        card.addView(iconView, lp(-1, wide ? 34 : 34));
+        TextView titleView = text(title, wide ? 16 : 15, WHITE, true);
+        card.addView(titleView, lp(-1, 25));
+        TextView descView = text(description, 11, MUTED, false);
+        card.addView(descView, lp(-1, -2));
+        card.setFocusable(true);
+        card.setClickable(true);
+        return card;
+    }
+
+    private void addLegacyRemoteButton(LinearLayout parent, String label, int color, Runnable action, float weight) {
+        TextView control = button(label, color, color == BLUE || color == Color.rgb(211, 47, 47) ? Color.BLACK : WHITE);
+        control.setTextSize(11);
+        control.setPadding(dp(2), 0, dp(2), 0);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, weight);
+        params.setMargins(dp(2), 0, dp(2), 0);
+        parent.addView(control, params);
+        control.setOnClickListener(v -> action.run());
     }
 
     private JSONArray readCustomSites() {
