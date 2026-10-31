@@ -1449,57 +1449,7 @@ public class MainActivity extends Activity {
         homeSearchParams.bottomMargin = dp(10);
         page.addView(homeSearch, 0, homeSearchParams);
 
-        LinearLayout statusRow = row();
-        statusRow.setGravity(Gravity.CENTER_VERTICAL);
-        TextView status = text(receiverConnected ? "● متصل بالشاشة" : "🔍 فحص الشاشة تلقائياً", 13,
-                receiverConnected ? Color.rgb(0, 230, 118) : Color.rgb(0, 230, 118), true);
-        status.setPadding(dp(10), dp(5), dp(10), dp(5));
-        status.setBackground(shape(Color.rgb(27, 46, 35), Color.rgb(27, 46, 35), 8));
-        status.setOnClickListener(v -> showReceiverPicker());
-        statusRow.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView receiverButton = button("📡 جهاز الاستقبال", PANEL2, BLUE);
-        statusRow.addView(receiverButton, lp(-2, 42));
-        receiverButton.setOnClickListener(v -> showReceiverPicker());
-        page.addView(statusRow, lp(-1, 46));
-
-        LinearLayout connection = column();
-        connection.setPadding(dp(16), dp(14), dp(16), dp(14));
-        connection.setBackground(shape(PANEL, PANEL2, 12));
-        TextView connectionTitle = text("📡 الاتصال بجهاز الاستقبال (TV Receiver)", 14, BLUE, true);
-        connection.addView(connectionTitle, lp(-1, 28));
-        LinearLayout ipRow = row();
-        EditText ipInput = new EditText(this);
-        ipInput.setSingleLine(true);
-        ipInput.setTextSize(13);
-        ipInput.setTextColor(WHITE);
-        ipInput.setHintTextColor(MUTED);
-        ipInput.setHint("عنوان IP الشاشة (مثال: 192.168.1.15)");
-        ipInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        ipInput.setPadding(dp(10), 0, dp(10), 0);
-        ipInput.setBackground(shape(PANEL2, PANEL2, 8));
-        ipInput.setText(receiverIp == null ? "" : receiverIp);
-        ipRow.addView(ipInput, new LinearLayout.LayoutParams(0, dp(46), 1));
-        TextView saveIp = button("حفظ", GOLD, Color.BLACK);
-        LinearLayout.LayoutParams saveParams = lp(68, 46);
-        saveParams.setMargins(dp(8), 0, 0, 0);
-        ipRow.addView(saveIp, saveParams);
-        saveIp.setOnClickListener(v -> {
-            String value = ipInput.getText().toString().trim();
-            String normalized = normalizeReceiverIp(value);
-            if (normalized == null) {
-                ipInput.setError("أدخل عنوان IP صحيح");
-                return;
-            }
-            receiverIp = normalized;
-            receiverConnected = false;
-            prefs.edit().putString("receiver_ip", receiverIp).apply();
-            refreshConnectionLabel();
-            Toast.makeText(this, "تم حفظ عنوان جهاز الاستقبال", Toast.LENGTH_SHORT).show();
-        });
-        connection.addView(ipRow);
-        LinearLayout.LayoutParams connectionParams = lp(-1, -2);
-        connectionParams.setMargins(0, dp(10), 0, dp(16));
-        page.addView(connection, connectionParams);
+        // Receiver connection controls are centralized in the side drawer.
 
         addSection(page, "أدوات ومصادر البث", null);
         LinearLayout browserCard = legacyHomeCard("🌐", "المتصفح وقانص الوسائط",
@@ -1546,58 +1496,9 @@ public class MainActivity extends Activity {
         remoteParams.topMargin = dp(8);
         page.addView(remote, remoteParams);
 
-        addSection(page, "منصاتك ومواقعك", "اختصارات سريعة للمواقع — ويمكنك إضافة مواقعك الخاصة");
-        LinearLayout siteGrid = null;
-        int siteCountInRow = 0;
-        ArrayList<JSONObject> allSites = new ArrayList<>();
-        String[][] builtInSites = {
-            {"YouTube", "https://m.youtube.com"}, {"Facebook", "https://m.facebook.com"},
-            {"TikTok", "https://www.tiktok.com"}, {"Instagram", "https://www.instagram.com"},
-            {"X / Twitter", "https://x.com"}, {"Threads", "https://www.threads.net"}
-        };
-        JSONArray hiddenArray;
-        try { hiddenArray = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
-        catch (Exception ignored) { hiddenArray = new JSONArray(); }
-        java.util.HashSet<String> hiddenKeys = new java.util.HashSet<>();
-        for (int h = 0; h < hiddenArray.length(); h++) hiddenKeys.add(hiddenArray.optString(h));
-        for (String[] site : builtInSites) {
-            if (hiddenKeys.contains(site[1])) continue;
-            JSONObject item = new JSONObject();
-            try { item.put("name", site[0]); item.put("url", site[1]); item.put("builtin", true); allSites.add(item); }
-            catch (org.json.JSONException ignored) { }
-        }
-        JSONArray customSites = readCustomSites();
-        for (int i = 0; i < customSites.length(); i++) {
-            JSONObject item = customSites.optJSONObject(i);
-            if (item == null) continue;
-            String siteUrl = item.optString("url", "").trim();
-            if (!BrowserEngine.isWebUrl(siteUrl)) continue;
-            try { JSONObject copy = new JSONObject(item.toString()); copy.put("builtin", false); allSites.add(copy); }
-            catch (org.json.JSONException ignored) { }
-        }
-        JSONArray savedOrder;
-        try { savedOrder = new JSONArray(prefs.getString("site_order_json", "[]")); }
-        catch (Exception ignored) { savedOrder = new JSONArray(); }
-        java.util.HashMap<String, Integer> orderMap = new java.util.HashMap<>();
-        for (int oi = 0; oi < savedOrder.length(); oi++) orderMap.put(savedOrder.optString(oi), oi);
-        allSites.sort((a, b) -> Integer.compare(orderMap.getOrDefault(a.optString("url"), Integer.MAX_VALUE),
-                orderMap.getOrDefault(b.optString("url"), Integer.MAX_VALUE)));
-        for (int i = 0; i < allSites.size(); i++) {
-            JSONObject item = allSites.get(i);
-            if (siteCountInRow == 0) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
-            String url = item.optString("url", "");
-            String name = item.optString("name", siteHostLabel(url));
-            addWebsiteCard(siteGrid, name, url, i, !item.optBoolean("builtin", false));
-            siteCountInRow = (siteCountInRow + 1) % 3;
-        }
-        if (siteGrid == null || siteCountInRow != 0) {
-            if (siteGrid == null) { siteGrid = row(); page.addView(siteGrid, lp(-1, -2)); }
-        }
-        LinearLayout addSite = legacyHomeCard("+", "إضافة موقع", "أضف موقعًا إلى اختصاراتك", false);
-        addSite.setOnClickListener(v -> showAddCustomSiteDialog());
-        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(0, dp(96), 1f);
-        addParams.setMargins(dp(3), dp(4), dp(3), dp(4));
-        siteGrid.addView(addSite, addParams);
+        // Site shortcuts are intentionally kept out of the home screen.
+        // Open the browser from its home card to browse; site management stays in the drawer.
+
     }
 
     private LinearLayout legacyHomeCard(String icon, String title, String description, boolean wide) {
@@ -1973,6 +1874,46 @@ public class MainActivity extends Activity {
         t.setOnClickListener(v->{showBrowser(); address.setText(url);loadAddress();});
     }
 
+    private void showQuickSitesDialog() {
+        ArrayList<JSONObject> sites = new ArrayList<>();
+        String[][] builtIns = {
+                {"YouTube", "https://m.youtube.com"}, {"Facebook", "https://m.facebook.com"},
+                {"TikTok", "https://www.tiktok.com"}, {"Instagram", "https://www.instagram.com"},
+                {"X / Twitter", "https://x.com"}, {"Threads", "https://www.threads.net"}
+        };
+        JSONArray hidden;
+        try { hidden = new JSONArray(prefs.getString("hidden_builtin_sites", "[]")); }
+        catch (Exception ignored) { hidden = new JSONArray(); }
+        java.util.HashSet<String> hiddenUrls = new java.util.HashSet<>();
+        for (int i = 0; i < hidden.length(); i++) hiddenUrls.add(hidden.optString(i));
+        for (String[] site : builtIns) {
+            if (hiddenUrls.contains(site[1])) continue;
+            JSONObject item = new JSONObject();
+            try { item.put("name", site[0]); item.put("url", site[1]); sites.add(item); }
+            catch (org.json.JSONException ignored) { }
+        }
+        JSONArray custom = readCustomSites();
+        for (int i = 0; i < custom.length(); i++) {
+            JSONObject item = custom.optJSONObject(i);
+            if (item != null && BrowserEngine.isWebUrl(item.optString("url", ""))) sites.add(item);
+        }
+        if (sites.isEmpty()) {
+            Toast.makeText(this, "لا توجد مواقع سريعة", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] labels = new String[sites.size()];
+        for (int i = 0; i < sites.size(); i++) labels[i] = sites.get(i).optString("name", siteHostLabel(sites.get(i).optString("url", "")));
+        new AlertDialog.Builder(this).setTitle("المواقع السريعة")
+                .setItems(labels, (dialog, which) -> {
+                    String url = sites.get(which).optString("url", "");
+                    showBrowser();
+                    address.setText(url);
+                    loadAddress();
+                })
+                .setPositiveButton("إضافة موقع", (dialog, which) -> showAddCustomSiteDialog())
+                .setNegativeButton("إغلاق", null).show();
+    }
+
     private void showBrowser() {
         header.setVisibility(View.GONE); bottom.setVisibility(View.GONE);
         currentPage="browser";
@@ -2030,17 +1971,25 @@ public class MainActivity extends Activity {
         browserProgressParams.setMargins(dp(4),0,dp(4),dp(3));
         browserTools.addView(browserProgressBar,browserProgressParams);
         LinearLayout controls=row();
-        // Classic Cast browser parity: keep the side menu reachable from the browser
-        // itself, then expose the familiar navigation, home and tab controls.
-        addSmallControl(controls,"☰",()->openSideDrawer());
+        controls.setGravity(Gravity.CENTER_VERTICAL);
+        controls.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        TextView more = button("⋮", PANEL2, GOLD);
+        more.setContentDescription("المزيد من أدوات المتصفح");
+        controls.addView(more, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        more.setOnClickListener(v -> {
+            android.widget.PopupMenu menu = new android.widget.PopupMenu(this, more);
+            menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { openNewBrowserTab(); return true; });
+            menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showBrowserTabsDialog(); return true; });
+            menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
+            menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> { saveBookmark(); return true; });
+            menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> { showBrowserSettingsDialog(); return true; });
+            menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> { openSideDrawer(); return true; });
+            menu.show();
+        });
         addSmallControl(controls,"‹",()->{if(web.canGoBack())web.goBack();else Toast.makeText(this,"مفيش صفحة سابقة",Toast.LENGTH_SHORT).show();});
         addSmallControl(controls,"›",()->{if(web.canGoForward())web.goForward();else Toast.makeText(this,"مفيش صفحة تالية",Toast.LENGTH_SHORT).show();});
         addSmallControl(controls,"↻",()->web.reload());
         addSmallControl(controls,"⌂",()->showHome());
-        addSmallControl(controls,"▣",()->showBrowserTabsDialog());
-        addSmallControl(controls,"＋",()->openNewBrowserTab());
-        addSmallControl(controls,"☆",()->saveBookmark());
-        addSmallControl(controls,"⚙",()->showBrowserSettingsDialog());
         content.addView(browserTools,lp(-1,-2));
         pageTitle=text("جاهز للتصفح",11,MUTED,false);
         pageTitle.setVisibility(View.GONE);
@@ -3459,11 +3408,6 @@ public class MainActivity extends Activity {
         TextView pickLocal = button("اختيار فيديوهات أو ملفات صوتية من الهاتف", BLUE, WHITE);
         content.addView(pickLocal,lp(-1,48));
         pickLocal.setOnClickListener(v -> openLocalMediaPicker());
-        TextView iptv = button("إدخال رابط بث مباشر IPTV", PANEL2, GOLD);
-        LinearLayout.LayoutParams iptvParams = lp(-1, 46);
-        iptvParams.topMargin = dp(6);
-        content.addView(iptv, iptvParams);
-        iptv.setOnClickListener(v -> showIptvUrlDialog());
         TextView recentCast = button("الوسائط المرسلة مؤخرًا", PANEL2, WHITE);
         LinearLayout.LayoutParams recentParams = lp(-1, 44);
         recentParams.topMargin = dp(6);
@@ -3484,11 +3428,6 @@ public class MainActivity extends Activity {
                 playSelectedLocalMedia();
             }
         });
-        if (!localMediaQueue.isEmpty()) {
-            Uri current = localMediaQueue.get(Math.min(currentLocalMediaIndex, localMediaQueue.size()-1));
-            TextView now = text("يعمل حاليًا: " + getDisplayName(current), 13, WHITE, true);
-            now.setPadding(dp(4),dp(8),dp(4),dp(8)); content.addView(now,lp(-1,-2));
-        }
         LinearLayout remote = column();
         // Compact TV remote: zero horizontal padding, zero row spacing, no rounded gaps.
         remote.setPadding(0,0,0,0);
@@ -3776,6 +3715,17 @@ public class MainActivity extends Activity {
     }
 
     private void showReceiverPicker() {
+        new AlertDialog.Builder(this)
+                .setTitle("جهاز الاستقبال")
+                .setItems(new String[]{"فحص الشاشة تلقائيًا", "إدخال IP يدويًا", "إعادة البحث"}, (dialog, which) -> {
+                    if (which == 0 || which == 2) discoverReceiverDevices();
+                    else receiverSettings();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private void discoverReceiverDevices() {
         Toast.makeText(this, "جاري البحث عن أجهزة الاستقبال على الشبكة…", Toast.LENGTH_SHORT).show();
         CastingManager.discover(this, devices -> runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
@@ -3826,38 +3776,6 @@ public class MainActivity extends Activity {
         input.setText(receiverIp);
         LinearLayout box=column();box.setPadding(dp(20),dp(10),dp(20),0);
         box.addView(text("اكتب عنوان IP الظاهر في تطبيق AboEzzat Receiver على نفس شبكة الواي فاي.",13,MUTED,false));
-        TextView discover = button("⌕ البحث تلقائيًا عن Receiver", PANEL2, GOLD);
-        box.addView(discover, lp(-1, 42));
-        discover.setOnClickListener(v -> {
-            discover.setText("جاري البحث على شبكة الواي فاي…");
-            CastingManager.discover(this, devices -> runOnUiThread(() -> {
-                if (devices.isEmpty()) {
-                    discover.setText("لم يتم العثور عليه — اكتب IP يدويًا");
-                    Toast.makeText(this, "تأكد أن Receiver مفتوح وعلى نفس شبكة الواي فاي", Toast.LENGTH_LONG).show();
-                } else {
-                    discover.setText("تم العثور على " + devices.size() + " جهاز — اختر يدويًا");
-                    String[] choices = devices.toArray(new String[0]);
-                    new AlertDialog.Builder(this)
-                        .setTitle("اختار جهاز الاستقبال")
-                        .setItems(choices, (dialog, which) -> {
-                            String selectedIp = normalizeReceiverIp(choices[which]);
-                            if (selectedIp == null) {
-                                Toast.makeText(this, "عنوان الجهاز المكتشف غير صالح", Toast.LENGTH_LONG).show();
-                                return;
-                            }
-                            input.setText(selectedIp);
-                            // The discovery routine already protocol-verified this IP.
-                            receiverIp = selectedIp;
-                            receiverConnected = true;
-                            prefs.edit().putString("receiver_ip", selectedIp).apply();
-                            refreshConnectionLabel();
-                            Toast.makeText(this, "تم اختيار الريسيفر وحفظه: " + selectedIp, Toast.LENGTH_LONG).show();
-                        })
-                        .setNegativeButton("إلغاء", null)
-                        .show();
-                }
-            }));
-        });
         box.addView(input,lp(-1,52));
         EditText portInput = new EditText(this);
         portInput.setSingleLine(true);
