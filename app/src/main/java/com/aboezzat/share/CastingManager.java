@@ -223,6 +223,38 @@ public final class CastingManager {
         });
     }
 
+    /** Prefer the real Wi-Fi/Ethernet LAN interface; VPN/tunnel interfaces often
+     * receive multicast packets but advertise an unreachable address to the TV. */
+    private static NetworkInterface getLanInterface() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            NetworkInterface fallback = null;
+            while (interfaces != null && interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
+                String name = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
+                if (name.contains("tun") || name.contains("tap") || name.contains("vpn")
+                        || name.contains("ppp") || name.contains("wg")) continue;
+                boolean hasLanIpv4 = false;
+                Enumeration<InetAddress> addresses = ni.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address instanceof Inet4Address && address.isSiteLocalAddress()
+                            && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
+                        hasLanIpv4 = true;
+                        break;
+                    }
+                }
+                if (!hasLanIpv4) continue;
+                if (name.contains("wlan") || name.contains("wifi") || name.contains("eth")) return ni;
+                if (fallback == null) fallback = ni;
+            }
+            return fallback;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     public static void discover(Context context, DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> found = new ArrayList<>();
@@ -237,10 +269,12 @@ public final class CastingManager {
             try (MulticastSocket listener = new MulticastSocket(null)) {
                 listener.setReuseAddress(true);
                 listener.bind(new InetSocketAddress(37020));
-                listener.setSoTimeout(3000);
+                listener.setSoTimeout(4500);
                 InetAddress group = InetAddress.getByName("239.255.42.99");
+                NetworkInterface lanInterface = getLanInterface();
+                if (lanInterface != null) listener.setNetworkInterface(lanInterface);
                 listener.joinGroup(group);
-                long until = System.currentTimeMillis() + 3000L;
+                long until = System.currentTimeMillis() + 4500L;
                 while (System.currentTimeMillis() < until) {
                     byte[] buffer = new byte[512];
                     java.net.DatagramPacket packet = new java.net.DatagramPacket(buffer, buffer.length);
