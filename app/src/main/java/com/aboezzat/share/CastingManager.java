@@ -111,8 +111,8 @@ public final class CastingManager {
                 String key = entry.getKey() == null ? "" : entry.getKey().toLowerCase(java.util.Locale.ROOT);
                 String value = entry.getValue();
                 if (("user-agent".equals(key) || "referer".equals(key) || "origin".equals(key)
-                        || "accept".equals(key) || "accept-language".equals(key))
-                        && value != null && value.length() <= 2048
+                        || "accept".equals(key) || "accept-language".equals(key) || "cookie".equals(key))
+                        && value != null && value.length() <= ("cookie".equals(key) ? 8192 : 2048)
                         && !value.contains("\r") && !value.contains("\n")) {
                     safeHeaders.put(key, value);
                 }
