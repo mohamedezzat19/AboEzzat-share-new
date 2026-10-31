@@ -23,6 +23,8 @@ import java.util.regex.Pattern;
  * extraction engines as MainActivity, then sends the best direct result to Receiver.
  */
 public class ShareLinkActivity extends Activity {
+    private static final String NOTIFICATION_CHANNEL = "aboezzat_extraction_progress";
+    private static final int NOTIFICATION_ID = 4708;
     private final AtomicBoolean completed = new AtomicBoolean(false);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<MediaCandidate> candidates = new ArrayList<>();
@@ -270,12 +272,42 @@ public class ShareLinkActivity extends Activity {
         }
     }
 
+    private void showResultNotification(String message) {
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        android.app.NotificationManager manager =
+                (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                    NOTIFICATION_CHANNEL, "استخراج الفيديو", android.app.NotificationManager.IMPORTANCE_LOW);
+            channel.setSound(null, null);
+            channel.enableVibration(false);
+            channel.setShowBadge(false);
+            manager.createNotificationChannel(channel);
+        }
+        android.app.Notification.Builder builder = android.os.Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(this, NOTIFICATION_CHANNEL)
+                : new android.app.Notification.Builder(this);
+        builder.setSmallIcon(android.R.drawable.ic_media_play)
+                .setContentTitle("AboEzzat Share")
+                .setContentText(message)
+                .setStyle(new android.app.Notification.BigTextStyle().bigText(message))
+                .setCategory(android.app.Notification.CATEGORY_STATUS)
+                .setOnlyAlertOnce(true)
+                .setOngoing(false)
+                .setAutoCancel(true);
+        if (android.os.Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(6000L);
+        manager.notify(NOTIFICATION_ID, builder.build());
+    }
+
     private void finishWithMessage(String message) {
         if (!completed.compareAndSet(false, true)) return;
         mainHandler.post(() -> {
             mainHandler.removeCallbacks(extractionTimeout);
             mainHandler.removeCallbacks(activityTimeout);
-            Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show();
+            showResultNotification(message);
             finish();
         });
     }
