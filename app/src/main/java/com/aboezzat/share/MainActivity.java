@@ -3205,7 +3205,8 @@ public class MainActivity extends Activity {
 
             String title = mediaTitles.get(url);
             if (title == null || title.trim().isEmpty()) title = "مقطع فيديو";
-            TextView titleView = text(title, 13, WHITE, true);
+            final String capturedTitle = title;
+            TextView titleView = text(capturedTitle, 13, WHITE, true);
             titleView.setMaxLines(2);
             titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
             info.addView(titleView, lp(-1, -2));
@@ -3228,7 +3229,7 @@ public class MainActivity extends Activity {
             String poster = mediaPosters.get(url);
             if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
             item.setOnClickListener(v -> new AlertDialog.Builder(this)
-                    .setTitle(title)
+                    .setTitle(capturedTitle)
                     .setItems(new String[]{"📺 بث هذا المسار", "⬇ تحميل هذا المسار", "✓ تحديد / إلغاء التحديد"}, (d, choice) -> {
                         if (choice == 0) { dialog.dismiss(); castUrl(url); }
                         else if (choice == 1) downloadUrl(url, null);
