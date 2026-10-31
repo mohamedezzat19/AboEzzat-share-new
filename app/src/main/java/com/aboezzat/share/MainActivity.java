@@ -584,29 +584,26 @@ public class MainActivity extends Activity {
 
                 sharedCaptureFinishRunnable = () -> {
                     if (generation != extractionGeneration || isFinishing() || sharedCaptureSent) return;
-                    if (!hasCapturedVideoMedia()) {
-                        destroySharedCaptureWebView();
-                        pendingExternalShareCapture = false;
-                        updateExtractionNotification("لم ينجح الالتقاط المباشر",
-                                "لم يظهر رابط فيديو مباشر؛ جاري فتح الصفحة في متصفح Share كخطة بديلة.", true);
-                        startConfiguredFallbackExtractors(pageUrl, generation);
-                        if (!isFinishing()) {
-                            showBrowser();
-                            if (web != null) {
-                                if (address != null) address.setText(pageUrl);
-                                web.loadUrl(pageUrl);
-                            }
-                        }
-                    }
+                    // A CDN request alone is not proof that the active video was captured.
+                    // Always end the hidden WebView session at timeout and run configured
+                    // extractors if the active-player bridge did not confirm a playable URL.
+                    boolean sawVideoRequests = hasCapturedVideoMedia();
+                    destroySharedCaptureWebView();
+                    pendingExternalShareCapture = false;
+                    updateExtractionNotification(
+                            sawVideoRequests ? "تم رصد مصادر دون تأكيد الفيديو" : "لم ينجح الالتقاط المباشر",
+                            sawVideoRequests
+                                    ? "تم رصد طلبات فيديو، لكن لم يتم تأكيد رابط التشغيل النشط. جاري تجربة المحركات الاحتياطية…"
+                                    : "لم يظهر بث فيديو مباشر بعد فحص الصفحة. جاري تجربة المحركات الاحتياطية…",
+                            true);
+                    startConfiguredFallbackExtractors(pageUrl, generation);
                 };
                 receiverMonitorHandler.postDelayed(sharedCaptureFinishRunnable, 20000L);
             } catch (Exception error) {
                 destroySharedCaptureWebView();
                 pendingExternalShareCapture = false;
-                showBrowser();
-                if (web != null) web.loadUrl(pageUrl);
                 updateExtractionNotification("تعذّر تشغيل الالتقاط الخلفي",
-                        "تم فتح صفحة الفيديو في متصفح Share بدلًا منه.", false);
+                        "تعذّر تشغيل الالتقاط في الخلفية. افتح الرابط يدويًا من المتصفح إذا أردت المحاولة مرة أخرى.", false);
             }
         });
     }
@@ -622,7 +619,13 @@ public class MainActivity extends Activity {
                 + "var active=!v.paused&&!v.ended&&v.currentTime>0&&v.readyState>=2;"
                 + "var area=Math.min(r.width,innerWidth)*Math.min(r.height,innerHeight);"
                 + "if(visible&&!ad&&active&&area>bestArea){best=v;bestArea=area;}}"
-                + "if(best){var u=best.currentSrc||best.src||'';if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
+                + "if(best){var u=best.currentSrc||best.src||'';"
+                + "if(!/^https?:/i.test(u)){var entries=performance.getEntriesByType('resource');var now=performance.now();"
+                + "for(var j=entries.length-1;j>=0;j--){var x=entries[j].name||'';"
+                + "var fresh=now-entries[j].startTime<90000;"
+                + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"
+                + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
+                + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(u,document.title||'',best.poster||'');}"
                 + "}catch(e){}})()";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
@@ -2610,14 +2613,21 @@ public class MainActivity extends Activity {
     }
 
     private int mediaQualityHintScore(String mediaUrl) {
-        String value = mediaUrl == null ? "" : mediaUrl.toLowerCase(Locale.ROOT);
+        if (mediaUrl == null) return 0;
+        String value = mediaUrl.toLowerCase(Locale.ROOT);
+        // Use the same quality label shown in the classic-style list first.
+        String detected = MediaDetector.quality(mediaUrl);
+        java.util.regex.Matcher qualityMatcher =
+                java.util.regex.Pattern.compile("(2160|1440|1080|720|540|480|360|240)p").matcher(detected);
+        if (qualityMatcher.find()) {
+            try { return Integer.parseInt(qualityMatcher.group(1)); } catch (Exception ignored) { }
+        }
         int[] heights = {2160, 1440, 1080, 720, 540, 480, 360, 240};
         for (int height : heights) {
             String number = String.valueOf(height);
             if (value.contains(number + "p") || value.contains("height=" + number)
-                    || value.contains("quality=" + number) || value.contains("res=" + number)) {
-                return height;
-            }
+                    || value.contains("quality=" + number) || value.contains("res=" + number)
+                    || value.contains("resolution=" + number)) return height;
         }
         if (value.contains("quality=hd") || value.contains("high")) return 700;
         if (value.contains("quality=sd") || value.contains("medium")) return 400;
@@ -2821,19 +2831,21 @@ public class MainActivity extends Activity {
 
         @android.webkit.JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
-            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
+            if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || !isVideoCandidate(mediaUrl)) return;
             if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
             if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
-            if (isVideoCandidate(mediaUrl)) {
+
+            // JavascriptInterface methods run on a WebView background thread. Keep all
+            // WebView teardown, notifications, Toasts and casting state on Android's UI thread.
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 if (currentPlayingVideoUrl != null && !currentPlayingVideoUrl.isEmpty()
                         && !currentPlayingVideoUrl.equals(mediaUrl)) {
-                    synchronized (mediaOrder) {
-                        media.clear(); mediaOrder.clear(); mediaRequestHeaders.clear();
-                        mediaTitles.clear(); mediaPosters.clear(); selectedTrackUrls.clear();
-                    }
+                    clearDetectedMedia();
                 }
                 currentPlayingVideoUrl = mediaUrl;
                 detectMedia(mediaUrl);
+
                 // Only the background scanner calls this after confirming a visible,
                 // currently-playing video. Network requests alone are never auto-cast.
                 if (pendingExternalShareCapture && sharedCaptureWebView != null
@@ -2845,7 +2857,7 @@ public class MainActivity extends Activity {
                     destroySharedCaptureWebView();
                     sendPlatformLinkToReceiver(mediaUrl);
                 }
-            }
+            });
         }
     }
 
@@ -2938,6 +2950,58 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private String mediaIdentityKey(String url) {
+        try {
+            Uri uri = Uri.parse(url);
+            String query = uri.getQuery();
+            if (query != null) {
+                for (String pair : query.split("&")) {
+                    int equals = pair.indexOf('=');
+                    if (equals <= 0) continue;
+                    String key = pair.substring(0, equals).toLowerCase(Locale.ROOT);
+                    if (key.equals("video_id") || key.equals("media_id") || key.equals("aweme_id")
+                            || key.equals("item_id") || key.equals("fbid") || key.equals("tweet_id")) {
+                        return key + "=" + pair.substring(equals + 1);
+                    }
+                }
+            }
+            String host = uri.getHost();
+            String path = uri.getPath();
+            if (path == null) path = "";
+            path = path.toLowerCase(Locale.ROOT);
+            // Quality suffixes are variants of the same media, not separate videos.
+            path = path.replaceAll("_(?:2160p|1440p|1080p|720p|540p|480p|360p|240p|hd|sd|hq|n|s)(?=\\.[a-z0-9]+$)", "");
+            // Include the CDN host in fallback identity: unrelated providers can
+            // legitimately expose the same generic path (for example /video.mp4).
+            return (host == null ? "" : host.toLowerCase(Locale.ROOT)) + path;
+        } catch (Exception ignored) {
+            return url == null ? "" : url.toLowerCase(Locale.ROOT).split("\\?")[0];
+        }
+    }
+
+    private void clearDetectedMedia() {
+        synchronized (mediaOrder) {
+            media.clear();
+            mediaOrder.clear();
+            mediaRequestHeaders.clear();
+            mediaTitles.clear();
+            mediaPosters.clear();
+            selectedTrackUrls.clear();
+        }
+        // This callback can arrive from WebView's JavaScript thread. Keep all
+        // view mutations on the main thread and preserve the newly-playing URL.
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (mediaLabel != null) mediaLabel.setText("المصادر المكتشفة: 0");
+            if (mediaPanel != null) mediaPanel.setVisibility(View.GONE);
+            if (castActionButton != null) {
+                castActionButton.clearAnimation();
+                castActionButton.setText("🎯 0");
+                castActionButton.setContentDescription("لا توجد مصادر ملتقطة حاليًا");
+            }
+        });
+    }
+
     private synchronized void detectMedia(String url){ detectMedia(url, java.util.Collections.emptyMap()); }
 
     private synchronized void detectMedia(String url, java.util.Map<String,String> requestHeaders){
@@ -2960,6 +3024,34 @@ public class MainActivity extends Activity {
         if (media.containsKey(url)) return;
         runOnUiThread(()->{
             if(media.containsKey(url))return;
+            // Keep at most two quality variants for the same underlying video.
+            // Prefer a candidate with a known higher resolution; unknown duplicates
+            // never displace an already captured working candidate.
+            if (isVideoCandidate(url)) {
+                String identity = mediaIdentityKey(url);
+                ArrayList<String> sameVideo = new ArrayList<>();
+                for (String existing : mediaOrder) {
+                    if (isVideoCandidate(existing) && identity.equals(mediaIdentityKey(existing))) {
+                        sameVideo.add(existing);
+                    }
+                }
+                if (sameVideo.size() >= 2) {
+                    String lowest = sameVideo.get(0);
+                    int lowestScore = mediaQualityHintScore(lowest);
+                    for (String existing : sameVideo) {
+                        int score = mediaQualityHintScore(existing);
+                        if (score < lowestScore) { lowest = existing; lowestScore = score; }
+                    }
+                    int newScore = mediaQualityHintScore(url);
+                    if (newScore <= lowestScore) return;
+                    media.remove(lowest);
+                    mediaOrder.remove(lowest);
+                    mediaRequestHeaders.remove(lowest);
+                    mediaTitles.remove(lowest);
+                    mediaPosters.remove(lowest);
+                    selectedTrackUrls.remove(lowest);
+                }
+            }
             media.put(url,url);mediaOrder.add(url);
             String pageTitle = lastPageMediaTitle;
             if ((pageTitle == null || pageTitle.trim().isEmpty()) && web != null) {
@@ -2970,18 +3062,9 @@ public class MainActivity extends Activity {
             if (lastPageMediaPoster != null && BrowserEngine.isWebUrl(lastPageMediaPoster)) {
                 mediaPosters.put(url, lastPageMediaPoster);
             }
-            if (isVideoCandidate(url)) currentPlayingVideoUrl = url;
             autoSelectDetectedTrack(url);
-            // Automatically cast a captured direct video from the current platform page.
-            // Debounce for five seconds so Share can collect multiple quality variants first.
-            if (isVideoCandidate(url) && web != null && "browser".equals(currentPage) && !pendingExternalShareCapture) {
-                String activePage = web.getUrl();
-                if (isDirectPlatformUrl(activePage)) {
-                    pendingAutoCastPageUrl = activePage;
-                    receiverMonitorHandler.removeCallbacks(autoCastDetectedMediaRunnable);
-                    receiverMonitorHandler.postDelayed(autoCastDetectedMediaRunnable, 5000L);
-                }
-            }
+            // Detection is passive: never cast merely because a URL was discovered.
+            // The user explicitly chooses "إرسال المحدد" in the media list.
             if(mediaLabel!=null)mediaLabel.setText("المصادر المكتشفة: "+mediaOrder.size());
             if(mediaPanel!=null)mediaPanel.setVisibility(View.VISIBLE);
             if (castActionButton != null) {
@@ -3000,44 +3083,120 @@ public class MainActivity extends Activity {
     }
 
     private void showDetectedMediaDialog() {
-        if (mediaOrder.isEmpty()) { Toast.makeText(this, "لسه مفيش روابط للفيديو الحالي. شغّل الفيديو الأول.", Toast.LENGTH_LONG).show(); return; }
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout list = column();
-        list.setPadding(dp(12), dp(12), dp(12), dp(12));
-        LinearLayout bulk = row();
-        TextView send = button("▣ إرسال المحدد", BLUE, WHITE);
-        TextView download = button("⬇ تنزيل المحدد", PANEL2, WHITE);
-        bulk.addView(send, new LinearLayout.LayoutParams(0, dp(42), 1f));
-        bulk.addView(download, new LinearLayout.LayoutParams(0, dp(42), 1f));
-        list.addView(bulk, lp(-1, dp(44)));
-        send.setOnClickListener(v -> sendSelectedMediaTracks());
-        download.setOnClickListener(v -> {
-            int count=0;
-            for (String u : new ArrayList<>(selectedTrackUrls.keySet())) if (Boolean.TRUE.equals(selectedTrackUrls.get(u))) { downloadUrl(u, null); count++; }
-            if (count==0) Toast.makeText(this,"حدد رابطًا واحدًا على الأقل للتنزيل",Toast.LENGTH_SHORT).show();
-        });
-        synchronized (mediaOrder) {
-            for (String url : new ArrayList<>(mediaOrder)) {
-                LinearLayout card=column(); card.setPadding(dp(8),dp(8),dp(8),dp(8)); card.setBackground(shape(PANEL,PANEL2,12));
-                LinearLayout.LayoutParams cp=lp(-1,-2); cp.bottomMargin=dp(7); list.addView(card,cp);
-                LinearLayout item=row();
-                android.widget.CheckBox check=new android.widget.CheckBox(this);
-                check.setButtonTintList(android.content.res.ColorStateList.valueOf(BLUE));
-                check.setChecked(Boolean.TRUE.equals(selectedTrackUrls.get(url)));
-                check.setOnCheckedChangeListener((v,checked)->selectedTrackUrls.put(url,checked));
-                item.addView(check,new LinearLayout.LayoutParams(dp(38),dp(48)));
-                String poster=mediaPosters.get(url);
-                if(poster!=null&&BrowserEngine.isWebUrl(poster)){ImageView thumb=new ImageView(this);thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);thumb.setBackground(shape(PANEL2,PANEL2,8));item.addView(thumb,new LinearLayout.LayoutParams(dp(76),dp(56)));loadDetectedPoster(poster,thumb);}
-                LinearLayout details=column(); details.setPadding(dp(8),0,0,0);
-                String title=mediaTitles.get(url); if(title==null||title.trim().isEmpty())title="مصدر "+mediaType(url);
-                TextView tv=text(title,13,WHITE,true);tv.setMaxLines(2);tv.setEllipsize(android.text.TextUtils.TruncateAt.END);details.addView(tv,lp(-1,-2));
-                String host=Uri.parse(url).getHost();details.addView(text(mediaType(url)+" • "+MediaDetector.quality(url)+" • "+(host==null?"مصدر مباشر":host),11,MUTED,false),lp(-1,22));
-                TextView link=text(url,9,MUTED,false);link.setMaxLines(1);link.setEllipsize(android.text.TextUtils.TruncateAt.END);details.addView(link,lp(-1,20));
-                item.addView(details,new LinearLayout.LayoutParams(0,-2,1f));card.addView(item,lp(-1,-2));
-            }
+        final ArrayList<String> snapshot;
+        synchronized (mediaOrder) { snapshot = new ArrayList<>(mediaOrder); }
+        if (snapshot.isEmpty()) {
+            Toast.makeText(this, "لا توجد فيديوهات ملتقطة لهذا المقطع بعد. شغّل الفيديو ثم افتح القائمة مرة أخرى.", Toast.LENGTH_LONG).show();
+            return;
         }
-        scroll.addView(list);
-        new AlertDialog.Builder(this).setTitle("مصادر الفيديو الحالي ("+mediaOrder.size()+")").setView(scroll).setPositiveButton("إغلاق",null).show();
+
+        // Match the classic Share capture list: dark surface, centered heading,
+        // compact rows, checkbox, title/format, thumbnail and gold cast action.
+        final android.app.Dialog dialog = new android.app.Dialog(this);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout main = column();
+        main.setBackgroundColor(Color.parseColor("#181818"));
+        main.setPadding(dp(14), dp(14), dp(14), dp(12));
+
+        TextView heading = text("المسارات المكتشفة (" + snapshot.size() + ")", 16, WHITE, true);
+        heading.setGravity(Gravity.CENTER);
+        heading.setPadding(0, dp(8), 0, dp(14));
+        main.addView(heading, lp(-1, -2));
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout rows = column();
+        for (String url : snapshot) {
+            LinearLayout item = row();
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(8), dp(9), dp(8), dp(9));
+            item.setBackgroundColor(Color.parseColor("#1F1F1F"));
+            LinearLayout.LayoutParams rowParams = lp(-1, -2);
+            rowParams.bottomMargin = dp(2);
+            rows.addView(item, rowParams);
+
+            android.widget.CheckBox check = new android.widget.CheckBox(this);
+            check.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FFC107")));
+            check.setChecked(Boolean.TRUE.equals(selectedTrackUrls.get(url)));
+            check.setOnCheckedChangeListener((button, checked) -> selectedTrackUrls.put(url, checked));
+            item.addView(check, new LinearLayout.LayoutParams(dp(42), dp(52)));
+
+            LinearLayout info = column();
+            LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0, -2, 1f);
+            infoParams.setMargins(dp(7), 0, dp(8), 0);
+            item.addView(info, infoParams);
+
+            String title = mediaTitles.get(url);
+            if (title == null || title.trim().isEmpty()) title = "مقطع فيديو";
+            TextView titleView = text(title, 13, WHITE, true);
+            titleView.setMaxLines(2);
+            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            info.addView(titleView, lp(-1, -2));
+
+            String type = mediaType(url);
+            String quality = MediaDetector.quality(url);
+            String host = Uri.parse(url).getHost();
+            TextView formatView = text(type + "  •  " + quality + "  •  " +
+                    (host == null ? "مصدر مباشر" : host), 11,
+                    "صوت".equals(type) ? Color.parseColor("#FF9800") : Color.parseColor("#4CAF50"), false);
+            formatView.setMaxLines(1);
+            formatView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            info.addView(formatView, lp(-1, dp(22)));
+
+            ImageView thumb = new ImageView(this);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackgroundColor(Color.parseColor("#2C2C2C"));
+            LinearLayout.LayoutParams thumbParams = lp(dp(90), dp(66));
+            item.addView(thumb, thumbParams);
+            String poster = mediaPosters.get(url);
+            if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
+            item.setOnClickListener(v -> check.setChecked(!check.isChecked()));
+        }
+        scroll.addView(rows);
+        main.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        TextView cast = button("📺 بث فوري على الشاشة", Color.parseColor("#FFD700"), Color.BLACK);
+        cast.setTextSize(14);
+        LinearLayout.LayoutParams castParams = lp(-1, dp(46));
+        castParams.topMargin = dp(10);
+        main.addView(cast, castParams);
+        cast.setOnClickListener(v -> {
+            boolean selectedVideo = false;
+            for (String url : selectedTrackUrls.keySet()) {
+                if (Boolean.TRUE.equals(selectedTrackUrls.get(url)) && isVideoCandidate(url)) {
+                    selectedVideo = true; break;
+                }
+            }
+            if (!selectedVideo) {
+                Toast.makeText(this, "حدد فيديو واحدًا على الأقل قبل الإرسال", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dialog.dismiss();
+            sendSelectedMediaTracks();
+        });
+
+        TextView download = button("⬇ تحميل المحدد", Color.parseColor("#2E7D32"), WHITE);
+        LinearLayout.LayoutParams downloadParams = lp(-1, dp(42));
+        downloadParams.topMargin = dp(6);
+        main.addView(download, downloadParams);
+        download.setOnClickListener(v -> {
+            int count = 0;
+            for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
+                if (Boolean.TRUE.equals(selectedTrackUrls.get(url))) {
+                    downloadUrl(url, null); count++;
+                }
+            }
+            if (count == 0) Toast.makeText(this, "حدد رابطًا واحدًا على الأقل للتنزيل", Toast.LENGTH_SHORT).show();
+            else dialog.dismiss();
+        });
+
+        dialog.setContentView(main);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            dialog.getWindow().setLayout(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    Math.min(getResources().getDisplayMetrics().heightPixels - dp(48), dp(620)));
+        }
     }
 
     private LinearLayout.LayoutParams remoteButtonParams() {
@@ -3413,11 +3572,12 @@ public class MainActivity extends Activity {
     private String mediaType(String url){
         String path = Uri.parse(url).getPath();
         String u = (path == null ? url : path).toLowerCase(Locale.ROOT);
-        if(u.endsWith(".m3u8"))return "HLS";
-        if(u.endsWith(".mpd"))return "DASH";
+        if(u.endsWith(".m3u8"))return "فيديو (HLS)";
+        if(u.endsWith(".mpd"))return "فيديو (DASH)";
         if(u.endsWith(".jpg")||u.endsWith(".jpeg")||u.endsWith(".png")||u.endsWith(".webp")||u.endsWith(".gif")||u.endsWith(".bmp")||u.endsWith(".avif"))return "صورة";
         if(u.endsWith(".mp3")||u.endsWith(".m4a")||u.endsWith(".aac")||u.endsWith(".ogg")||u.endsWith(".oga")||u.endsWith(".opus")||u.endsWith(".wav")||u.endsWith(".flac")||u.endsWith(".mid")||u.endsWith(".midi"))return "صوت";
         if(u.endsWith(".mp4")||u.endsWith(".m4v")||u.endsWith(".webm")||u.endsWith(".mov")||u.endsWith(".avi")||u.endsWith(".mkv")||u.endsWith(".3gp")||u.endsWith(".ts"))return "فيديو";
+        if (isVideoCandidate(url)) return "فيديو";
         return "وسائط";
     }
 
@@ -3971,7 +4131,10 @@ public class MainActivity extends Activity {
         // Instagram/TikTok/X use their own video path/codec markers.
         // The legacy browser accepted Facebook CDN URLs even when the path omitted a codec marker.
         // Keep that fallback; explicit image/audio checks above still exclude obvious non-video files.
-        return (socialCdn && (hasVideoMarker || lowerHost.contains("fbcdn.net")))
+        // Do not classify every fbcdn.net request as video: Facebook serves
+        // posters, avatars and thumbnails from the same CDN. Require a video
+        // path/codec marker for extensionless CDN URLs.
+        return (socialCdn && hasVideoMarker)
                 || ("video.twimg.com".equals(lowerHost) && knownVideoPath);
     }
 

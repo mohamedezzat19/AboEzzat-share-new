@@ -19,6 +19,8 @@
 
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="AboEzzat Share"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AboEzzatShare">
@@ -43,7 +45,6 @@
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="text/plain" />
             </intent-filter>
 
             <intent-filter>
@@ -65,6 +66,18 @@
             </intent-filter>
         </activity>
 
+
+        <activity
+            android:name=".ShareLinkActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.AboEzzatShare.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <provider
             android:name="androidx.core.content.FileProvider"
