@@ -45,6 +45,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="video/*" />
                 <data android:mimeType="audio/*" />
                 <data android:mimeType="image/*" />
@@ -71,17 +77,12 @@
         </activity>
 
 
+        <!-- Kept for internal compatibility only; external text shares are routed to MainActivity. -->
         <activity
             android:name=".ShareLinkActivity"
-            android:exported="true"
+            android:exported="false"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.AboEzzatShare.Transparent">
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-        </activity>
+            android:theme="@style/Theme.AboEzzatShare.Transparent" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
