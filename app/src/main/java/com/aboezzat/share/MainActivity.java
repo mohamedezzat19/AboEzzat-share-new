@@ -1403,6 +1403,53 @@ public class MainActivity extends Activity {
         scroll.addView(page);
         content.addView(scroll, lp(-1, -1));
 
+        // Keep Share New's direct search/address entry while restoring Cast's home layout.
+        LinearLayout homeSearch = row();
+        homeSearch.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        homeSearch.setPadding(dp(8), dp(4), dp(6), dp(4));
+        homeSearch.setGravity(Gravity.CENTER_VERTICAL);
+        homeSearch.setBackground(shape(PANEL, PANEL2, 14));
+        EditText homeAddress = new EditText(this);
+        homeAddress.setSingleLine(true);
+        homeAddress.setTextSize(14);
+        homeAddress.setTextColor(WHITE);
+        homeAddress.setHintTextColor(MUTED);
+        homeAddress.setHint("ابحث في جوجل أو اكتب رابط موقع");
+        homeAddress.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        homeAddress.setImeOptions(EditorInfo.IME_ACTION_GO);
+        homeAddress.setBackgroundColor(Color.TRANSPARENT);
+        homeAddress.setPadding(dp(8), 0, dp(8), 0);
+        homeSearch.addView(homeAddress, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        TextView voiceSearch = button("🎙", PANEL2, GOLD);
+        voiceSearch.setContentDescription("البحث الصوتي");
+        homeSearch.addView(voiceSearch, lp(40, 40));
+        voiceSearch.setOnClickListener(v -> beginNativeVoiceSearch(homeAddress));
+        TextView clearHomeSearch = button("×", PANEL2, MUTED);
+        homeSearch.addView(clearHomeSearch, lp(34, 40));
+        clearHomeSearch.setOnClickListener(v -> homeAddress.setText(""));
+        TextView goHomeSearch = button("➜", BLUE, WHITE);
+        LinearLayout.LayoutParams goHomeParams = lp(38, 40);
+        goHomeParams.setMargins(dp(4), 0, 0, 0);
+        homeSearch.addView(goHomeSearch, goHomeParams);
+        Runnable submitHomeSearch = () -> {
+            String query = homeAddress.getText().toString().trim();
+            if (query.isEmpty()) { homeAddress.setError("اكتب كلمة للبحث أو رابط الموقع"); return; }
+            showBrowser();
+            address.setText(query);
+            loadAddress();
+        };
+        goHomeSearch.setOnClickListener(v -> submitHomeSearch.run());
+        homeAddress.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_SEARCH
+                    || (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN)) {
+                submitHomeSearch.run(); return true;
+            }
+            return false;
+        });
+        LinearLayout.LayoutParams homeSearchParams = lp(-1, 54);
+        homeSearchParams.bottomMargin = dp(10);
+        page.addView(homeSearch, 0, homeSearchParams);
+
         LinearLayout statusRow = row();
         statusRow.setGravity(Gravity.CENTER_VERTICAL);
         TextView status = text(receiverConnected ? "● متصل بالشاشة" : "🔍 فحص الشاشة تلقائياً", 13,
@@ -3180,7 +3227,13 @@ public class MainActivity extends Activity {
             item.addView(thumb, thumbParams);
             String poster = mediaPosters.get(url);
             if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
-            item.setOnClickListener(v -> check.setChecked(!check.isChecked()));
+            item.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setItems(new String[]{"📺 بث هذا المسار", "⬇ تحميل هذا المسار", "✓ تحديد / إلغاء التحديد"}, (d, choice) -> {
+                        if (choice == 0) { dialog.dismiss(); castUrl(url); }
+                        else if (choice == 1) downloadUrl(url, null);
+                        else check.setChecked(!check.isChecked());
+                    }).show());
         }
         scroll.addView(rows);
         main.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -3218,6 +3271,43 @@ public class MainActivity extends Activity {
             }
             if (count == 0) Toast.makeText(this, "حدد رابطًا واحدًا على الأقل للتنزيل", Toast.LENGTH_SHORT).show();
             else dialog.dismiss();
+        });
+
+        LinearLayout downloadActions = row();
+        TextView downloadVideo = button("🎬 تحميل الفيديو المحدد", Color.parseColor("#2E7D32"), WHITE);
+        TextView downloadAudio = button("🎵 تحميل الصوت المحدد", Color.parseColor("#E65100"), WHITE);
+        LinearLayout.LayoutParams actionHalf = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        actionHalf.setMargins(0, dp(6), dp(3), 0);
+        downloadActions.addView(downloadVideo, actionHalf);
+        LinearLayout.LayoutParams actionHalf2 = new LinearLayout.LayoutParams(0, dp(42), 1f);
+        actionHalf2.setMargins(dp(3), dp(6), 0, 0);
+        downloadActions.addView(downloadAudio, actionHalf2);
+        main.addView(downloadActions);
+        downloadVideo.setOnClickListener(v -> {
+            int count = 0;
+            for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
+                if (Boolean.TRUE.equals(selectedTrackUrls.get(url)) && isVideoCandidate(url)) { downloadUrl(url, null); count++; }
+            }
+            if (count == 0) Toast.makeText(this, "حدد فيديو للتنزيل أولاً", Toast.LENGTH_SHORT).show();
+            else dialog.dismiss();
+        });
+        downloadAudio.setOnClickListener(v -> {
+            int count = 0;
+            for (String url : new ArrayList<>(selectedTrackUrls.keySet())) {
+                if (Boolean.TRUE.equals(selectedTrackUrls.get(url)) && "صوت".equals(mediaType(url))) { downloadUrl(url, "audio/*"); count++; }
+            }
+            if (count == 0) Toast.makeText(this, "حدد مسار صوت للتنزيل أولاً", Toast.LENGTH_SHORT).show();
+            else dialog.dismiss();
+        });
+        TextView clearList = button("مسح قائمة الوسائط المكتشفة", PANEL2, MUTED);
+        LinearLayout.LayoutParams clearParams = lp(-1, dp(38));
+        clearParams.topMargin = dp(6);
+        main.addView(clearList, clearParams);
+        clearList.setOnClickListener(v -> {
+            synchronized (mediaOrder) { mediaOrder.clear(); }
+            mediaTitles.clear(); mediaPosters.clear(); selectedTrackUrls.clear();
+            dialog.dismiss();
+            Toast.makeText(this, "تم مسح قائمة الوسائط المكتشفة", Toast.LENGTH_SHORT).show();
         });
 
         dialog.setContentView(main);
