@@ -3184,8 +3184,33 @@ public class MainActivity extends Activity {
         heading.setPadding(0, dp(8), 0, dp(14));
         main.addView(heading, lp(-1, -2));
 
+        TextView selectionStatus = text("", 11, MUTED, false);
+        selectionStatus.setGravity(Gravity.CENTER);
+        selectionStatus.setPadding(0, 0, 0, dp(8));
+        Runnable updateSelectionStatus = () -> {
+            int selectedCount = 0;
+            for (String selectedUrl : snapshot) {
+                if (Boolean.TRUE.equals(selectedTrackUrls.get(selectedUrl))) selectedCount++;
+            }
+            selectionStatus.setText("المحدد: " + selectedCount + " من " + snapshot.size());
+        };
+        updateSelectionStatus.run();
+        main.addView(selectionStatus, lp(-1, dp(24)));
+
+        LinearLayout selectionActions = row();
+        TextView selectAll = button("تحديد الكل", PANEL2, GOLD);
+        TextView clearSelection = button("إلغاء التحديد", PANEL2, WHITE);
+        LinearLayout.LayoutParams selectionButtonParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        selectionButtonParams.setMargins(0, 0, dp(4), dp(8));
+        selectionActions.addView(selectAll, selectionButtonParams);
+        LinearLayout.LayoutParams clearSelectionParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        clearSelectionParams.setMargins(dp(4), 0, 0, dp(8));
+        selectionActions.addView(clearSelection, clearSelectionParams);
+        main.addView(selectionActions, lp(-1, dp(46)));
+
         ScrollView scroll = new ScrollView(this);
         LinearLayout rows = column();
+        ArrayList<android.widget.CheckBox> rowChecks = new ArrayList<>();
         for (String url : snapshot) {
             LinearLayout item = row();
             item.setGravity(Gravity.CENTER_VERTICAL);
@@ -3198,7 +3223,11 @@ public class MainActivity extends Activity {
             android.widget.CheckBox check = new android.widget.CheckBox(this);
             check.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FFC107")));
             check.setChecked(Boolean.TRUE.equals(selectedTrackUrls.get(url)));
-            check.setOnCheckedChangeListener((button, checked) -> selectedTrackUrls.put(url, checked));
+            check.setOnCheckedChangeListener((button, checked) -> {
+                selectedTrackUrls.put(url, checked);
+                updateSelectionStatus.run();
+            });
+            rowChecks.add(check);
             item.addView(check, new LinearLayout.LayoutParams(dp(42), dp(52)));
 
             LinearLayout info = column();
@@ -3239,6 +3268,21 @@ public class MainActivity extends Activity {
                         else check.setChecked(!check.isChecked());
                     }).show());
         }
+        selectAll.setOnClickListener(v -> {
+            for (int i = 0; i < snapshot.size(); i++) {
+                selectedTrackUrls.put(snapshot.get(i), true);
+                rowChecks.get(i).setChecked(true);
+            }
+            updateSelectionStatus.run();
+        });
+        clearSelection.setOnClickListener(v -> {
+            for (int i = 0; i < snapshot.size(); i++) {
+                selectedTrackUrls.put(snapshot.get(i), false);
+                rowChecks.get(i).setChecked(false);
+            }
+            updateSelectionStatus.run();
+        });
+
         scroll.addView(rows);
         main.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
