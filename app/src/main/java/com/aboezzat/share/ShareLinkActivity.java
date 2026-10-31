@@ -117,8 +117,7 @@ public class ShareLinkActivity extends Activity {
         captureWindowClosed = !useWebView;
         if (useWebView) startBackgroundCapture(pageUrl);
         if (pendingEngines == 0 && !useWebView) {
-            sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
-                    "لا يوجد محرك استخراج مفعّل؛ أرسلت الرابط الأصلي للريسيفر.");
+            finishWithMessage("لا يوجد محرك استخراج مفعّل. لم يتم إرسال صفحة الموقع إلى Receiver لأنها ليست رابط فيديو مباشر.");
             return;
         }
 
@@ -212,10 +211,10 @@ public class ShareLinkActivity extends Activity {
             sendResolvedToReceiver(best.url, best.headers,
                     "تم استخراج رابط مباشر بواسطة " + best.engine + " من " + candidates.size() + " نتيجة.");
         } else {
-            sendResolvedToReceiver(originalSharedUrl, Collections.emptyMap(),
-                    fallbackMessage == null
-                            ? "لم يعثر أي محرك على رابط مباشر؛ أرسلت الرابط الأصلي للريسيفر."
-                            : fallbackMessage);
+            String reason = fallbackMessage == null
+                    ? "لم يعثر أي محرك على رابط فيديو مباشر."
+                    : fallbackMessage;
+            finishWithMessage(reason + " لم نرسل رابط صفحة الموقع إلى Receiver حتى لا يظهر كأنه فيديو صالح.");
         }
     }
 
