@@ -2025,7 +2025,7 @@ public class MainActivity extends Activity {
         address.setOnEditorActionListener((v,id,event)->{
             if(id==EditorInfo.IME_ACTION_GO || (event!=null && event.getKeyCode()==KeyEvent.KEYCODE_ENTER && event.getAction()==KeyEvent.ACTION_DOWN)){loadAddress();return true;} return false;
         });
-        if(web.getUrl()!=null) address.setText(web.getUrl());
+        if(hasPage) address.setText(web.getUrl());
         refreshConnectionLabel();
     }
 
