@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
     private static final int EXTRACTION_NOTIFICATION_ID = 4708;
     private volatile boolean extractionTracking = false;
     private android.webkit.PermissionRequest pendingWebPermissionRequest;
-    private LinearLayout root, header, content, bottom, browserTools, mediaPanel;
+    private LinearLayout root, header, content, bottom, browserTools, mediaPanel, browserLanding;
     private FrameLayout contentFrame, shellOverlay;
     private LinearLayout drawerPanel;
     private View drawerScrim;
@@ -1925,7 +1925,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBrowser() {
-        header.setVisibility(View.GONE); bottom.setVisibility(View.GONE);
+        header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage="browser";
         resetContent();
         if(web==null) createWebView();
@@ -1969,6 +1969,8 @@ public class MainActivity extends Activity {
         go.setContentDescription("فتح الرابط أو تنفيذ البحث");
         LinearLayout.LayoutParams gp=lp(34,42);gp.setMargins(dp(3),0,0,0);addressRow.addView(go,gp);
         browserTools.addView(addressRow);
+        browserLanding = buildInstalledSocialLanding();
+        browserTools.addView(browserLanding, lp(-1, -2));
         browserProgressBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         browserProgressBar.setMax(100);
         browserProgressBar.setProgress(0);
@@ -2006,6 +2008,10 @@ public class MainActivity extends Activity {
         content.addView(pageTitle,lp(-1,0));
         if(web.getParent()!=null) ((android.view.ViewGroup)web.getParent()).removeView(web);
         content.addView(web,new LinearLayout.LayoutParams(-1,0,1));
+        boolean hasPage = web.getUrl() != null && !web.getUrl().trim().isEmpty()
+                && !"about:blank".equalsIgnoreCase(web.getUrl());
+        web.setVisibility(hasPage ? View.VISIBLE : View.GONE);
+        browserLanding.setVisibility(hasPage ? View.GONE : View.VISIBLE);
         // Keep browser navigation controls, but move video capture into the compact TV icon beside the URL.
         castActionButton = capture;
         capture.setText("🎯" + (mediaOrder.isEmpty() ? "" : " " + mediaOrder.size()));
@@ -2027,6 +2033,58 @@ public class MainActivity extends Activity {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
+    private LinearLayout buildInstalledSocialLanding() {
+        LinearLayout landing = column();
+        landing.setPadding(dp(8), dp(12), dp(8), dp(8));
+        TextView heading = text("التطبيقات", 15, WHITE, true);
+        heading.setGravity(Gravity.CENTER);
+        landing.addView(heading, lp(-1, 30));
+
+        String[][] apps = {
+                {"YouTube", "com.google.android.youtube"},
+                {"Facebook", "com.facebook.katana"},
+                {"TikTok", "com.zhiliaoapp.musically"},
+                {"Instagram", "com.instagram.android"},
+                {"X", "com.twitter.android"},
+                {"Threads", "com.instagram.barcelona"}
+        };
+        HorizontalScrollView horizontal = new HorizontalScrollView(this);
+        horizontal.setHorizontalScrollBarEnabled(false);
+        LinearLayout strip = row();
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        for (String[] app : apps) {
+            android.content.Intent launch = getPackageManager().getLaunchIntentForPackage(app[1]);
+            if (launch == null) continue;
+            LinearLayout tile = column();
+            tile.setGravity(Gravity.CENTER);
+            tile.setPadding(dp(5), dp(4), dp(5), dp(4));
+            ImageView icon = new ImageView(this);
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            try { icon.setImageDrawable(getPackageManager().getApplicationIcon(app[1])); }
+            catch (Exception ignored) { continue; }
+            tile.addView(icon, lp(48, 48));
+            TextView label = text(app[0], 10, WHITE, true);
+            label.setGravity(Gravity.CENTER);
+            tile.addView(label, lp(62, 22));
+            tile.setContentDescription(app[0]);
+            tile.setFocusable(true);
+            tile.setOnClickListener(v -> {
+                try { launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(launch); }
+                catch (Exception e) { Toast.makeText(this, "التطبيق غير متاح", Toast.LENGTH_SHORT).show(); }
+            });
+            strip.addView(tile, lp(68, 82));
+        }
+        if (strip.getChildCount() == 0) {
+            TextView empty = text("لا توجد تطبيقات سوشيال مثبتة", 12, MUTED, false);
+            empty.setGravity(Gravity.CENTER);
+            landing.addView(empty, lp(-1, 70));
+        } else {
+            horizontal.addView(strip);
+            landing.addView(horizontal, lp(-1, 90));
+        }
+        return landing;
+    }
+
     private void ensureBrowserTabRegistered() {
         if (web == null) return;
         int existing = browserTabs.indexOf(web);
@@ -2816,7 +2874,11 @@ public class MainActivity extends Activity {
         String url=BrowserEngine.normalizeAddress(input);
         saveHistory(url);
         address.setText(url);
-        if(web!=null)web.loadUrl(url);
+        if(web!=null) {
+            web.setVisibility(View.VISIBLE);
+            if (browserLanding != null) browserLanding.setVisibility(View.GONE);
+            web.loadUrl(url);
+        }
     }
 
     /**
