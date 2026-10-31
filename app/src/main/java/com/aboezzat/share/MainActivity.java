@@ -3580,64 +3580,7 @@ public class MainActivity extends Activity {
         ff.setOnClickListener(v -> sendRemoteCommand("ff"));
         stop.setOnClickListener(v -> sendRemoteCommand("stop"));
         content.addView(remote,lp(-1,-2));
-        for(String url:new ArrayList<>(mediaOrder)){
-            LinearLayout card=column();card.setPadding(dp(12),dp(10),dp(12),dp(10));card.setBackground(shape(PANEL,PANEL2,14));
-            String host=Uri.parse(url).getHost();if(host==null)host=url;
-            LinearLayout itemRow = row();
-            String posterUrl = mediaPosters.get(url);
-            if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) {
-                ImageView posterView = new ImageView(this);
-                posterView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                posterView.setBackground(shape(PANEL2, PANEL2, 8));
-                itemRow.addView(posterView, new LinearLayout.LayoutParams(dp(88), dp(64)));
-                loadDetectedPoster(posterUrl, posterView);
-            }
-            LinearLayout details = column();
-            details.setPadding(dp(9), 0, 0, 0);
-            String displayTitle = mediaTitles.get(url);
-            if (displayTitle == null || displayTitle.trim().isEmpty()) displayTitle = "فيديو مكتشف";
-            TextView titleView = text(displayTitle,14,WHITE,true);
-            titleView.setMaxLines(2);
-            titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            details.addView(titleView,lp(-1,-2));
-            details.addView(text(mediaType(url)+"  •  "+MediaDetector.quality(url)+"  •  "+host,12,MUTED,false),lp(-1,24));
-            TextView small=text(url,10,MUTED,false);small.setMaxLines(1);small.setEllipsize(android.text.TextUtils.TruncateAt.END);details.addView(small,lp(-1,22));
-            itemRow.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
-            card.addView(itemRow, lp(-1, -2));
-            LinearLayout actions=row();
-            TextView cast=button("إرسال",BLUE,WHITE);
-            TextView best=button("أفضل جودة",PANEL2,GOLD);
-            TextView download=button("تنزيل",PANEL2,WHITE);
-            actions.addView(cast,new LinearLayout.LayoutParams(0,dp(40),1));
-            actions.addView(best,new LinearLayout.LayoutParams(0,dp(40),1));
-            actions.addView(download,new LinearLayout.LayoutParams(0,dp(40),1));
-            card.addView(actions,lp(-1,42));
-            cast.setOnClickListener(v->castUrl(url));
-            best.setOnClickListener(v->castBestQuality());
-            download.setOnClickListener(v->downloadUrl(url, null));
-            TextView selectTrack = button(selectedTrackUrls.containsKey(url) ? "✓ محدد لمسارات التشغيل" : "اختيار كمسار فيديو/صوت", PANEL2, WHITE);
-            LinearLayout.LayoutParams selectParams = lp(-1, 36);
-            selectParams.topMargin = dp(4);
-            card.addView(selectTrack, selectParams);
-            selectTrack.setOnClickListener(v -> {
-                if (selectedTrackUrls.containsKey(url)) {
-                    selectedTrackUrls.remove(url);
-                    selectTrack.setText("اختيار كمسار فيديو/صوت");
-                } else {
-                    selectedTrackUrls.put(url, true);
-                    selectTrack.setText("✓ محدد لمسارات التشغيل");
-                }
-            });
-            TextView save=button(isInSavedMedia(url) ? "✓ محفوظ" : "＋ حفظ الرابط",PANEL2,GOLD);
-            LinearLayout.LayoutParams saveP=lp(-1,38);saveP.topMargin=dp(5);card.addView(save,saveP);
-            save.setOnClickListener(v -> { saveMediaUrl(url); showMedia(); });
-            LinearLayout.LayoutParams cp=lp(-1,-2);cp.topMargin=dp(7);list.addView(card,cp);
-        }
-        if(mediaOrder.isEmpty()){
-            TextView empty=text("لسه مفيش مصادر مكتشفة.\nافتح موقع فيديو من المتصفح وشغّل المقطع، وبعدها ارجع هنا.",14,MUTED,false);
-            empty.setGravity(Gravity.CENTER);empty.setPadding(dp(18),dp(30),dp(18),dp(30));list.addView(empty,lp(-1,130));
-        }
-        scroll.addView(list);content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+
         TextView open=button("الرجوع للمتصفح",PANEL2,WHITE);content.addView(open,lp(-1,46));open.setOnClickListener(v->showBrowser());
     }
 
