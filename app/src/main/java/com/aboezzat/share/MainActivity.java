@@ -2876,7 +2876,10 @@ public class MainActivity extends Activity {
         if(web!=null) {
             web.setVisibility(View.VISIBLE);
             if (browserLanding != null) browserLanding.setVisibility(View.GONE);
-            web.loadUrl(url);
+            // Match the proven legacy browser search behavior and request language.
+            java.util.Map<String, String> navigationHeaders = new java.util.HashMap<>();
+            navigationHeaders.put("Accept-Language", "ar-EG,ar;q=0.9,en-US;q=0.8");
+            web.loadUrl(url, navigationHeaders);
         }
     }
 
