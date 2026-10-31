@@ -3133,18 +3133,27 @@ public class MainActivity extends Activity {
         // analytics and unrelated page requests must never enter the detected-media list.
         if (!isVideoCandidate(url) && !isAudioTrackCandidate(url)
                 && !confirmedPlayerVideoUrls.contains(url)) return;
+        java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
         if (requestHeaders != null && !requestHeaders.isEmpty()) {
-            java.util.LinkedHashMap<String,String> safe = new java.util.LinkedHashMap<>();
             for (java.util.Map.Entry<String,String> entry : requestHeaders.entrySet()) {
                 String key = entry.getKey() == null ? "" : entry.getKey().toLowerCase(Locale.ROOT);
                 String value = entry.getValue();
                 if (("user-agent".equals(key) || "referer".equals(key) || "origin".equals(key)
-                        || "accept".equals(key) || "accept-language".equals(key))
-                        && value != null && value.length() <= 2048
+                        || "accept".equals(key) || "accept-language".equals(key) || "cookie".equals(key))
+                        && value != null && value.length() <= ("cookie".equals(key) ? 8192 : 2048)
                         && !value.contains("\\r") && !value.contains("\\n")) safe.put(key, value);
             }
-            if (!safe.isEmpty()) mediaRequestHeaders.put(url, safe);
         }
+        // WebView may omit Cookie from WebResourceRequest headers; retrieve the
+        // matching site's session cookie for this exact media URL as a fallback.
+        if (!safe.containsKey("cookie")) {
+            try {
+                String cookie = CookieManager.getInstance().getCookie(url);
+                if (cookie != null && !cookie.trim().isEmpty() && cookie.length() <= 8192
+                        && !cookie.contains("\\r") && !cookie.contains("\\n")) safe.put("cookie", cookie);
+            } catch (Exception ignored) { }
+        }
+        if (!safe.isEmpty()) mediaRequestHeaders.put(url, safe);
         if (media.containsKey(url)) return;
         runOnUiThread(()->{
             if(media.containsKey(url))return;
