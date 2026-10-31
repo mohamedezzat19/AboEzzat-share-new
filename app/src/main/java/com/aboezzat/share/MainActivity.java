@@ -661,7 +661,6 @@ public class MainActivity extends Activity {
             return;
         }
         pendingPlatformUrl = url;
-        Toast.makeText(this, isImageUrl(url) ? "جاري العثور على Receiver لإرسال الصورة…" : "جاري العثور على Receiver لإرسال الوسائط…", Toast.LENGTH_LONG).show();
         discoverReceiverInBackground();
     }
 
@@ -2742,12 +2741,10 @@ public class MainActivity extends Activity {
             if (success) {
                 String notice = "Receiver استلم طلب التشغيل؛ جاري التحقق من بدء الفيديو على الشاشة.";
                 updateExtractionNotification("تم إرسال الفيديو", notice, false);
-                Toast.makeText(MainActivity.this, "تم الإرسال", Toast.LENGTH_SHORT).show();
                 trackReceiverExtraction(ip);
             } else {
                 String error = message == null ? "تعذر إرسال الرابط إلى Receiver." : message;
                 updateExtractionNotification("فشل إرسال الفيديو", error, false);
-                Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
             }
         }));
     }
