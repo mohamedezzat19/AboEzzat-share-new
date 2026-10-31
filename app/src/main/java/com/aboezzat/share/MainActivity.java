@@ -1980,7 +1980,7 @@ public class MainActivity extends Activity {
         controls.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         TextView more = button("⋮", PANEL2, GOLD);
         more.setContentDescription("المزيد من أدوات المتصفح");
-        controls.addView(more, new LinearLayout.LayoutParams(0, dp(42), 1f));
+        controls.addView(more, new LinearLayout.LayoutParams(0, dp(34), 1f));
         more.setOnClickListener(v -> {
             android.widget.PopupMenu menu = new android.widget.PopupMenu(this, more);
             menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { openNewBrowserTab(); return true; });
@@ -3163,13 +3163,13 @@ public class MainActivity extends Activity {
         LinearLayout selectionActions = row();
         TextView selectAll = button("تحديد الكل", PANEL2, GOLD);
         TextView clearSelection = button("إلغاء التحديد", PANEL2, WHITE);
-        LinearLayout.LayoutParams selectionButtonParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        LinearLayout.LayoutParams selectionButtonParams = new LinearLayout.LayoutParams(0, dp(32), 1f);
         selectionButtonParams.setMargins(0, 0, dp(4), dp(8));
         selectionActions.addView(selectAll, selectionButtonParams);
         LinearLayout.LayoutParams clearSelectionParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
         clearSelectionParams.setMargins(dp(4), 0, 0, dp(8));
         selectionActions.addView(clearSelection, clearSelectionParams);
-        main.addView(selectionActions, lp(-1, dp(46)));
+        main.addView(selectionActions, lp(-1, dp(38)));
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout rows = column();
@@ -3177,7 +3177,7 @@ public class MainActivity extends Activity {
         for (String url : snapshot) {
             LinearLayout item = row();
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(10), dp(12), dp(10), dp(12));
+            item.setPadding(dp(8), dp(6), dp(8), dp(6));
             item.setBackgroundColor(Color.parseColor("#1F1F1F"));
             LinearLayout.LayoutParams rowParams = lp(-1, -2);
             rowParams.bottomMargin = dp(2);
@@ -3191,7 +3191,7 @@ public class MainActivity extends Activity {
                 updateSelectionStatus.run();
             });
             rowChecks.add(check);
-            item.addView(check, new LinearLayout.LayoutParams(dp(42), dp(52)));
+            item.addView(check, new LinearLayout.LayoutParams(dp(34), dp(40)));
 
             LinearLayout info = column();
             LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0, -2, 1f);
@@ -3219,7 +3219,7 @@ public class MainActivity extends Activity {
             ImageView thumb = new ImageView(this);
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackgroundColor(Color.parseColor("#2C2C2C"));
-            LinearLayout.LayoutParams thumbParams = lp(dp(120), dp(100));
+            LinearLayout.LayoutParams thumbParams = lp(dp(88), dp(66));
             item.addView(thumb, thumbParams);
             String poster = mediaPosters.get(url);
             if (BrowserEngine.isWebUrl(poster)) loadDetectedPoster(poster, thumb);
@@ -3267,7 +3267,7 @@ public class MainActivity extends Activity {
 
         TextView cast = button("📺 بث فوري على الشاشة", Color.parseColor("#FFD700"), Color.BLACK);
         cast.setTextSize(14);
-        LinearLayout.LayoutParams castParams = lp(-1, dp(46));
+        LinearLayout.LayoutParams castParams = lp(-1, dp(38));
         castParams.topMargin = dp(10);
         main.addView(cast, castParams);
         cast.setOnClickListener(v -> {
@@ -3286,7 +3286,7 @@ public class MainActivity extends Activity {
         });
 
         TextView download = button("⬇ تحميل المحدد", Color.parseColor("#2E7D32"), WHITE);
-        LinearLayout.LayoutParams downloadParams = lp(-1, dp(42));
+        LinearLayout.LayoutParams downloadParams = lp(-1, dp(36));
         downloadParams.topMargin = dp(6);
         main.addView(download, downloadParams);
         download.setOnClickListener(v -> {
@@ -3327,7 +3327,7 @@ public class MainActivity extends Activity {
             else dialog.dismiss();
         });
         TextView clearList = button("مسح قائمة الوسائط المكتشفة", PANEL2, MUTED);
-        LinearLayout.LayoutParams clearParams = lp(-1, dp(38));
+        LinearLayout.LayoutParams clearParams = lp(-1, dp(32));
         clearParams.topMargin = dp(6);
         main.addView(clearList, clearParams);
         clearList.setOnClickListener(v -> {
