@@ -43,30 +43,25 @@ public final class MediaDetector {
             .readTimeout(18, TimeUnit.SECONDS)
             .build();
 
-    // روابط الفيديو الصريحة مع دعم البث المباشر وملفات m3u8 و flv
     private static final Pattern VIDEO_URL_PATTERN = Pattern.compile(
             "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)(?:\\?[^\\s\\\"'<>]*)?)");
 
     private static final Pattern VIDEO_EXTENSION = Pattern.compile(
             "(?i)\\.(?:mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$");
 
-    // أنماط JSON المستهدفة للفيديوهات الكاملة والبثوث الحية
     private static final Pattern[] JSON_VIDEO_PATTERNS = new Pattern[]{
-            // تيك توك: البثوث الحية والفيديوهات المباشرة
             Pattern.compile("\"hls_pull_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"live_hls_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"pull_data\"\\s*:\\s*\\{[^}]*?\"stream_data\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"download_addr\"\\s*:\\s*\\{[^}]*?\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
             Pattern.compile("\"play_addr\"\\s*:\\s*\\{[^}]*?\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
 
-            // تويتر / X (الأولوية لـ m3u8 والبث الكامل)
             Pattern.compile("\"playbackUrl\"\\s*:\\s*\"([^\"]+?\\.m3u8[^\"]*)\""),
             Pattern.compile("\"contentUrl\"\\s*:\\s*\"([^\"]+?\\.m3u8[^\"]*)\""),
             Pattern.compile("\"playbackUrl\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"contentUrl\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"video_url\"\\s*:\\s*\"([^\"]+)\""),
 
-            // إنستجرام وفيسبوك وثريدز (الصوت المدمج بالصورة)
             Pattern.compile("\"browser_native_hd_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"playable_url_quality_hd\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"browser_native_sd_url\"\\s*:\\s*\"([^\"]+)\""),
@@ -94,12 +89,14 @@ public final class MediaDetector {
                 .replace("\\u002f", "/")
                 .replace("\\u0026", "&")
                 .replace("\\u003D", "=")
-                .replace("\\u003d", "=");
+                .replace("\\u003d", "=")
+                .replace("&quot;", "")
+                .replace("&#39;", "");
 
         if (clean.contains("&bytestart=")) {
             clean = clean.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
         }
-        return clean;
+        return clean.replaceAll("[),.?!;،؛؟\\]}]+$", "");
     }
 
     public static String kind(String url) {
@@ -115,9 +112,9 @@ public final class MediaDetector {
     }
 
     public static String quality(String url) {
-        if (url == null) return "جودة قياسية";
+        if (url == null) return "720p HD";
         String lower = url.toLowerCase(Locale.ROOT);
-        if (lower.contains(".m3u8") || lower.contains("live")) return "أفضل بث متاح (HD)";
+        if (lower.contains(".m3u8") || lower.contains("live")) return "أفضل جودة (HLS)";
 
         Matcher m = Pattern.compile("(?i)(2160|1440|1080|720|540|480|360)p").matcher(url);
         if (m.find()) return m.group(1) + "p";
@@ -125,7 +122,7 @@ public final class MediaDetector {
         if (lower.contains("hd_url") || lower.contains("_hd") || lower.contains("720") || lower.contains("1080")) {
             return "720p HD";
         }
-        return "جودة قياسية";
+        return "720p";
     }
 
     public static boolean isDirectVideoUrl(String url) {
@@ -139,7 +136,6 @@ public final class MediaDetector {
             String lower = url.toLowerCase(Locale.ROOT);
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
 
-            // استبعاد الصور والمعاينات
             if (lowerPath.matches(".*\\.(jpe?g|png|webp|gif|bmp|avif)$")
                     || lower.contains(".jpg?") || lower.contains(".jpeg?")
                     || lower.contains(".png?") || lower.contains(".webp?")) {
@@ -150,7 +146,6 @@ public final class MediaDetector {
                 if (lower.contains(ad)) return false;
             }
 
-            // استبعاد أجزاء البث المجزأة والسكريبتات
             if (lower.contains(".ts") || lower.contains("seg-") || lower.contains("fragment")
                     || lower.contains(".js") || lower.contains(".css")
                     || lower.contains("preview") || lower.contains("rsrc.php")
@@ -158,23 +153,21 @@ public final class MediaDetector {
                 return false;
             }
 
-            // تويتر / X - تصفية الروابط العشوائية وتثبيت HLS أو MP4 مكتمل
             if (host.equals("video.twimg.com") || lower.contains("twimg.com")) {
-                // منع التقاط ملفات الصوت المنفصلة لتويتر
                 if (lower.contains("/audio/") || lower.contains("audio_") || lower.contains(".m4a") || lower.contains(".aac")) {
                     return false;
                 }
-                // قبول ملفات البث m3u8 وروابط MP4 الصحيحة فقط
-                if (lower.contains(".m3u8") || lowerPath.endsWith(".mp4")) {
+                if (lower.contains(".m3u8")) {
                     return true;
                 }
-                return false;
+                if (lower.contains("/amplify_video/") || lower.contains("/ext_tw_video/")) {
+                    return lower.contains(".mp4");
+                }
+                return lowerPath.endsWith(".mp4");
             }
 
-            // صيغ البث المباشر وملفات التشغيل الصريحة
             if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$")) return true;
 
-            // تيك توك: الفيديوهات المباشرة + بث مباشر
             if (host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
                     || host.contains("ibytedtos") || host.contains("musical.ly") || host.contains("ttlivecdn")) {
                 if (lowerPath.contains("/video/") || lowerPath.contains("/obj/") || lowerPath.contains("/tos")
@@ -183,7 +176,6 @@ public final class MediaDetector {
                 }
             }
 
-            // إنستجرام وفيسبوك وثريدز
             if (host.contains("cdninstagram.com") || host.contains("fbcdn.net")) {
                 if ((lowerPath.contains("/v/") || lowerPath.contains("/t50.") || lowerPath.contains("/t42.")
                         || lower.contains("video") || lower.contains("_n.mp4"))
@@ -192,7 +184,6 @@ public final class MediaDetector {
                 }
             }
 
-            // محددات وسائط البث
             if (lower.contains("mime=video") || lower.contains("type=video")
                     || lower.contains("contenttype=video") || lower.contains("format=mp4")
                     || lower.contains("video_playback") || lower.contains("/videoplayback")
@@ -258,6 +249,12 @@ public final class MediaDetector {
             return;
         }
 
+        String cleanUrl = pageUrl.trim();
+        if (cleanUrl.contains("x.com/") || cleanUrl.contains("twitter.com/")) {
+            extractTwitterSyndication(cleanUrl, listener);
+            return;
+        }
+
         boolean engineAttempted = false;
         if (context != null) {
             SharedPreferences prefs = context.getSharedPreferences("aboezzat_browser", Context.MODE_PRIVATE);
@@ -267,17 +264,89 @@ public final class MediaDetector {
 
             if (enabled && !apiBase.isEmpty() && token.length() >= 32) {
                 engineAttempted = true;
-                tryEngineExtraction(apiBase, token, pageUrl, listener, () -> fallbackInspectHtml(pageUrl, listener));
+                tryEngineExtraction(apiBase, token, cleanUrl, listener, () -> fallbackInspectHtml(cleanUrl, listener));
             }
         }
 
         if (!engineAttempted) {
-            fallbackInspectHtml(pageUrl, listener);
+            fallbackInspectHtml(cleanUrl, listener);
         }
     }
 
     public static void inspectPage(String pageUrl, Listener listener) {
         inspectPage(null, pageUrl, listener);
+    }
+
+    private static void extractTwitterSyndication(String tweetUrl, Listener listener) {
+        Matcher matcher = Pattern.compile("status/(\\d+)").matcher(tweetUrl);
+        if (!matcher.find()) {
+            fallbackInspectHtml(tweetUrl, listener);
+            return;
+        }
+
+        String tweetId = matcher.group(1);
+        String apiUrl = "https://cdn.syndication.twimg.com/tweet-result?id=" + tweetId + "&token=x";
+
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36")
+                .build();
+
+        CLIENT.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                fallbackInspectHtml(tweetUrl, listener);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                try (Response r = response) {
+                    if (!r.isSuccessful() || r.body() == null) {
+                        fallbackInspectHtml(tweetUrl, listener);
+                        return;
+                    }
+
+                    String json = r.body().string();
+                    JSONObject root = new JSONObject(json);
+
+                    if (root.has("video")) {
+                        JSONObject video = root.getJSONObject("video");
+                        JSONArray variants = video.optJSONArray("variants");
+                        if (variants != null && variants.length() > 0) {
+                            String bestUrl = "";
+                            int bestBitrate = -1;
+
+                            for (int i = 0; i < variants.length(); i++) {
+                                JSONObject v = variants.getJSONObject(i);
+                                String src = v.optString("src");
+                                int bitrate = v.optInt("bitrate", 0);
+
+                                if (src.contains(".m3u8")) {
+                                    String clean = cleanMediaUrl(src);
+                                    dispatchMediaFound(listener, clean, "HLS", "أفضل جودة (HLS)");
+                                    return;
+                                }
+
+                                if (src.contains(".mp4") && bitrate > bestBitrate) {
+                                    bestBitrate = bitrate;
+                                    bestUrl = src;
+                                }
+                            }
+
+                            if (!bestUrl.isEmpty()) {
+                                String clean = cleanMediaUrl(bestUrl);
+                                dispatchMediaFound(listener, clean, "Video", quality(clean));
+                                return;
+                            }
+                        }
+                    }
+
+                    fallbackInspectHtml(tweetUrl, listener);
+                } catch (Exception e) {
+                    fallbackInspectHtml(tweetUrl, listener);
+                }
+            }
+        });
     }
 
     private static void tryEngineExtraction(String apiBase, String token, String targetUrl, Listener listener, Runnable onFallback) {
@@ -311,7 +380,6 @@ public final class MediaDetector {
                         JSONObject root = new JSONObject(respStr);
                         String directUrl = null;
 
-                        // 1. الأولوية لروابط البث المباشر HLS
                         if (root.has("formats")) {
                             JSONArray formats = root.optJSONArray("formats");
                             if (formats != null && formats.length() > 0) {
@@ -328,7 +396,6 @@ public final class MediaDetector {
                             }
                         }
 
-                        // 2. إذا لم يكن بثاً، نختار صيغة مدمجة بالصوت والصورة وبأعلى دقة
                         if (directUrl == null && root.has("formats")) {
                             JSONArray formats = root.optJSONArray("formats");
                             if (formats != null && formats.length() > 0) {
@@ -399,7 +466,6 @@ public final class MediaDetector {
                     Set<String> found = new LinkedHashSet<>();
                     HttpUrl baseHttpUrl = r.request().url();
 
-                    // فحص الـ JSON بالأنماط المرتبة
                     for (Pattern p : JSON_VIDEO_PATTERNS) {
                         Matcher jm = p.matcher(html);
                         while (jm.find()) {
@@ -411,7 +477,6 @@ public final class MediaDetector {
                         }
                     }
 
-                    // وسوم الفيديو المباشرة
                     String[] tags = {
                             "(?is)<meta[^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)[\\\"'][^>]+content=[\\\"']([^\\\"']+)",
                             "(?is)<meta[^>]+content=[\\\"']([^\\\"']+)[\\\"'][^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)[\\\"']",
@@ -435,7 +500,6 @@ public final class MediaDetector {
                         }
                     }
 
-                    // إذا وُجد رابط m3u8 لتويتر نتجاهل بقية روابط الـ mp4 العشوائية لتجنب الروابط المضروبة
                     boolean hasHls = false;
                     for (String c : found) {
                         if (c.contains(".m3u8")) {
@@ -446,7 +510,7 @@ public final class MediaDetector {
 
                     for (String candidate : found) {
                         if (hasHls && candidate.contains("video.twimg.com") && !candidate.contains(".m3u8")) {
-                            continue; // تجاوز الروابط الفرعية الضعيفة لتويتر طالما وجدنا رابط البث
+                            continue;
                         }
                         dispatchMediaFound(listener, candidate, kind(candidate), quality(candidate));
                     }
