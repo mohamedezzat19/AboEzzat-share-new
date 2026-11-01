@@ -10,7 +10,9 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -18,31 +20,75 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class MediaDetector {
-    public interface Listener { void onMediaFound(String url, String kind, String quality); }
+
+    public interface Listener {
+        void onMediaFound(String url, String kind, String quality);
+    }
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
-            .followRedirects(true).followSslRedirects(true)
-            .connectTimeout(6, TimeUnit.SECONDS).readTimeout(8, TimeUnit.SECONDS).build();
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .build();
 
     private static final Pattern URL_PATTERN = Pattern.compile(
-            "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|ts|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpe?g|png|webp|gif|bmp|avif)(?:\\?[^\\s\\\"'<>]*)?)");
+            "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpe?g|png|webp|gif|bmp|avif)(?:\\?[^\\s\\\"'<>]*)?)");
+
     private static final Pattern MEDIA_EXTENSION = Pattern.compile(
-            "(?i)\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|ts|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|mid|midi|jpe?g|png|webp|gif|bmp|avif)$");
+            "(?i)\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpe?g|png|webp|gif|bmp|avif)$");
+
+    private static final List<String> AD_DOMAINS = Arrays.asList(
+            "doubleclick.net", "googleads", "pagead2", "adservice.google",
+            "googletagmanager", "adcolony", "criteo", "adnxs", "outbrain",
+            "taboola", "popads", "popcash", "propellerads", "adsterra",
+            "exoclick", "smartadserver", "scorecardresearch",
+            "zedo", "adroll", "pubmatic", "rubiconproject"
+    );
 
     private MediaDetector() {}
 
+    /**
+     * تنظيف الرابط من معاملات التجزئة ليعمل في المشغل بسلاسة
+     */
+    public static String cleanMediaUrl(String url) {
+        if (url == null) return "";
+        String clean = url;
+        if (clean.contains("&bytestart=")) {
+            clean = clean.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
+        }
+        return clean;
+    }
+
+    /**
+     * فحص نوع الميديا وتحديد الصيغة بدقة مثل كود BrowserActivity القديم
+     */
     public static String kind(String url) {
-        Uri uri = Uri.parse(url);
-        String path = uri.getPath();
-        String p = (path == null ? url : path).toLowerCase(Locale.ROOT);
-        if (p.endsWith(".m3u8")) return "HLS";
-        if (p.endsWith(".mpd")) return "DASH";
-        if (p.endsWith(".mp3") || p.endsWith(".m4a") || p.endsWith(".aac")
-                || p.endsWith(".ogg") || p.endsWith(".oga") || p.endsWith(".opus")
-                || p.endsWith(".wav") || p.endsWith(".flac")) return "Audio";
-        if (p.endsWith(".jpg") || p.endsWith(".jpeg") || p.endsWith(".png")
-                || p.endsWith(".webp") || p.endsWith(".gif") || p.endsWith(".bmp")
-                || p.endsWith(".avif")) return "Image";
+        if (url == null) return "Video";
+        String lower = url.toLowerCase(Locale.ROOT);
+
+        if (lower.contains("audio") || lower.contains("dash_ln_heaac") || (lower.contains("bytestart=0") && lower.contains("mime=audio"))) {
+            return "Audio";
+        }
+        if (lower.contains(".flv") || lower.contains("pull-")) {
+            return "Live-FLV";
+        }
+        if (lower.contains(".m3u8")) {
+            return "HLS";
+        }
+        if (lower.contains(".mpd")) {
+            return "DASH";
+        }
+        if (lower.contains(".mp3") || lower.contains(".m4a") || lower.contains(".aac")
+                || lower.contains(".ogg") || lower.contains(".oga") || lower.contains(".opus")
+                || lower.contains(".wav") || lower.contains(".flac")) {
+            return "Audio";
+        }
+        if (lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png")
+                || lower.contains(".webp") || lower.contains(".gif") || lower.contains(".bmp")
+                || lower.contains(".avif")) {
+            return "Image";
+        }
         return "Video";
     }
 
@@ -52,12 +98,12 @@ public final class MediaDetector {
     }
 
     /**
-     * Recognizes direct video stream endpoints, including extensionless CDN URLs
-     * used by Facebook, Instagram/Threads, TikTok and X. A normal post/player page
-     * must never be treated as a playable stream.
+     * التحقق الصارم من روابط الفيديو المباشرة ومسارات السوشيال ميديا والبث الحي
      */
     public static boolean isDirectVideoUrl(String url) {
-        if (!BrowserEngine.isWebUrl(url)) return false;
+        if (url == null || url.trim().isEmpty()) return false;
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
+
         try {
             Uri uri = Uri.parse(url);
             String path = uri.getPath();
@@ -65,41 +111,79 @@ public final class MediaDetector {
             String lower = url.toLowerCase(Locale.ROOT);
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
 
+            // استبعاد نطاقات الإعلانات
+            for (String ad : AD_DOMAINS) {
+                if (lower.contains(ad)) return false;
+            }
+
+            // استبعاد أجزاء البث الفرعية والملفات الثابتة ومقاطع الإعلانات
+            if (lower.contains(".ts") || lower.contains("seg-")
+                    || lower.contains(".js") || lower.contains(".css")
+                    || lower.contains("preview") || lower.contains("rsrc.php")
+                    || lower.contains("google_ads") || lower.contains("ad-interrupting")) {
+                return false;
+            }
+
+            // امتدادات الفيديو والبث المباشر
             if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd)$")) return true;
+
+            // روابط البث الحي وتيارات السيرفرات المباشرة
+            if (lower.contains("pull-") || lower.contains(".flv") || lower.contains(".m3u8")) return true;
+
+            // بارامترات وسوم الفيديو والـ MIME
             if (lower.contains("mime=video") || lower.contains("type=video")
                     || lower.contains("contenttype=video") || lower.contains("content-type=video")
                     || lower.contains("format=mp4") || lower.contains("video_playback")
                     || lower.contains("/videoplayback") || lower.contains("/ext_tw_video/")
                     || lower.contains("/amplify_video/") || lower.contains("/tweet_video/")) return true;
 
+            // تويتر / X
             if (host.equals("video.twimg.com")) return true;
+
+            // تيك توك وسيرفرات ByteDance
             if ((host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
                     || host.contains("ibytedtos"))
                     && (lowerPath.contains("/video/") || lowerPath.contains("/obj/")
                     || lowerPath.contains("/tos"))) return true;
-            if (host.endsWith("fbcdn.net")
-                    && (host.startsWith("video.") || lowerPath.contains("/t42."))) return true;
+
+            // فيسبوك وإنستجرام
+            if (host.endsWith("fbcdn.net") && (host.startsWith("video.") || lowerPath.contains("/t42.") || lower.contains("video"))) return true;
             if (host.endsWith("cdninstagram.com") && lowerPath.contains("/t50.")) return true;
+
             return false;
         } catch (Exception ignored) {
             return false;
         }
     }
 
-    private static boolean isMediaCandidate(String url) {
-        if (!BrowserEngine.isWebUrl(url)) return false;
-        Uri uri = Uri.parse(url);
-        String path = uri.getPath();
-        String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
-        if (MEDIA_EXTENSION.matcher(lowerPath).find()) return true;
+    public static boolean isMediaCandidate(String url) {
+        if (url == null || (!url.startsWith("http://") && !url.startsWith("https://"))) return false;
 
-        // Reuse the shared direct-stream rules so TikTok and other extensionless
-        // social CDN URLs are treated consistently by every extractor.
-        if (isDirectVideoUrl(url)) return true;
-        // Keep remaining extensionless detection narrow: these are recognizable
-        // media endpoints, not arbitrary page URLs or generic query strings.
         String lower = url.toLowerCase(Locale.ROOT);
+
+        // استبعاد الإعلانات
+        for (String ad : AD_DOMAINS) {
+            if (lower.contains(ad)) return false;
+        }
+
+        if (lower.contains(".ts") || lower.contains("seg-")
+                || lower.contains(".js") || lower.contains(".css")
+                || lower.contains("preview") || lower.contains("rsrc.php")
+                || lower.contains("google_ads") || lower.contains("ad-interrupting")) {
+            return false;
+        }
+
+        try {
+            Uri uri = Uri.parse(url);
+            String path = uri.getPath();
+            String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
+            if (MEDIA_EXTENSION.matcher(lowerPath).find()) return true;
+        } catch (Exception ignored) {}
+
+        if (isDirectVideoUrl(url)) return true;
+
         return lower.contains("mime=video") || lower.contains("mime=audio")
+                || lower.contains("dash_ln_heaac") || lower.contains("pull-")
                 || lower.contains("video_playback") || lower.contains("/videoplayback")
                 || lower.contains("format=mp4") || lower.contains("type=video")
                 || lower.contains("type=audio") || lower.contains("contenttype=video")
@@ -115,11 +199,12 @@ public final class MediaDetector {
         if (value.isEmpty() || value.startsWith("blob:") || value.startsWith("data:")
                 || value.startsWith("javascript:")) return null;
         HttpUrl resolved = base.resolve(value);
-        return resolved == null ? null : resolved.toString();
+        return resolved == null ? null : cleanMediaUrl(resolved.toString());
     }
 
     public static void inspectPage(String pageUrl, Listener listener) {
-        if (!BrowserEngine.isWebUrl(pageUrl) || listener == null) return;
+        if (pageUrl == null || (!pageUrl.startsWith("http://") && !pageUrl.startsWith("https://")) || listener == null) return;
+
         Request request = new Request.Builder().url(pageUrl)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
                 .header("Accept", "text/html,application/xhtml+xml,*/*;q=0.8").build();
@@ -131,15 +216,14 @@ public final class MediaDetector {
                 try (Response r = response) {
                     if (!r.isSuccessful() || r.body() == null) return;
                     String type = r.header("Content-Type", "");
-                    String finalUrl = r.request().url().toString();
+                    String finalUrl = cleanMediaUrl(r.request().url().toString());
 
-                    // A direct media URL is accepted only when the server confirms its MIME type.
-                    if (type.toLowerCase(Locale.ROOT).startsWith("video/")
-                            || type.toLowerCase(Locale.ROOT).startsWith("audio/")) {
+                    if (type != null && (type.toLowerCase(Locale.ROOT).startsWith("video/")
+                            || type.toLowerCase(Locale.ROOT).startsWith("audio/"))) {
                         listener.onMediaFound(finalUrl, kind(finalUrl), quality(finalUrl));
                         return;
                     }
-                    if (!type.isEmpty() && !type.toLowerCase(Locale.ROOT).contains("html")) return;
+                    if (type != null && !type.isEmpty() && !type.toLowerCase(Locale.ROOT).contains("html")) return;
 
                     String html;
                     try { html = r.body().string(); } catch (IOException e) { return; }
@@ -152,9 +236,9 @@ public final class MediaDetector {
                     }
 
                     String[] tags = {
-                        "(?is)<meta[^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|twitter:player:stream)[\\\"'][^>]+content=[\\\"']([^\\\"']+)",
-                        "(?is)<meta[^>]+content=[\\\"']([^\\\"']+)[\\\"'][^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|twitter:player:stream)[\\\"']",
-                        "(?is)<(?:video|source|audio)[^>]+(?:src|data-src)=[\\\"']([^\\\"']+)"
+                            "(?is)<meta[^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|twitter:player:stream)[\\\"'][^>]+content=[\\\"']([^\\\"']+)",
+                            "(?is)<meta[^>]+content=[\\\"']([^\\\"']+)[\\\"'][^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|twitter:player:stream)[\\\"']",
+                            "(?is)<(?:video|source|audio)[^>]+(?:src|data-src)=[\\\"']([^\\\"']+)"
                     };
                     for (String tag : tags) {
                         Matcher tm = Pattern.compile(tag).matcher(html);
@@ -167,9 +251,7 @@ public final class MediaDetector {
                     for (String candidate : found) {
                         listener.onMediaFound(candidate, kind(candidate), quality(candidate));
                     }
-                } catch (Exception ignored) {
-                    // Page inspection is best-effort; it must not interrupt browser playback.
-                }
+                } catch (Exception ignored) {}
             }
         });
     }
