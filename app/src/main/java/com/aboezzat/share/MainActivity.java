@@ -5296,21 +5296,36 @@ public class MainActivity extends Activity {
         }
         if (resultCode != RESULT_OK || data == null) return;
         if (requestCode == PICK_LOCAL_MEDIA_REQUEST) {
+            // Build the replacement selection first. Some document providers can return
+            // RESULT_OK with empty/null ClipData items; never erase a working playlist then.
+            java.util.LinkedHashSet<Uri> selectedUris = new java.util.LinkedHashSet<>();
+            if (data.getClipData() != null) {
+                android.content.ClipData clips = data.getClipData();
+                for (int i = 0; i < clips.getItemCount(); i++) {
+                    Uri uri = clips.getItemAt(i) == null ? null : clips.getItemAt(i).getUri();
+                    if (uri != null) selectedUris.add(uri);
+                }
+            } else if (data.getData() != null) {
+                selectedUris.add(data.getData());
+            }
+            if (selectedUris.isEmpty()) {
+                Toast.makeText(this, "لم يتم اختيار ملفات؛ قائمة التشغيل الحالية كما هي", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            for (Uri uri : selectedUris) {
+                try {
+                    getContentResolver().takePersistableUriPermission(
+                            uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (Exception ignored) {
+                    // ACTION_OPEN_DOCUMENT providers may grant temporary-only access.
+                }
+            }
             localMediaQueue.clear();
+            localMediaQueue.addAll(selectedUris);
             slideshowQueue.clear();
             selectedImageUri = null;
             saveUriQueue("slideshow_queue", slideshowQueue);
-            if (data.getClipData() != null) {
-                android.content.ClipData clips = data.getClipData();
-                for (int i=0; i<clips.getItemCount(); i++) {
-                    Uri uri = clips.getItemAt(i).getUri();
-                    localMediaQueue.add(uri);
-                    try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
-                }
-            } else if (data.getData() != null) {
-                localMediaQueue.add(data.getData());
-                try { getContentResolver().takePersistableUriPermission(data.getData(), Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
-            }
             currentLocalMediaIndex = 0;
             saveUriQueue("local_media_queue", localMediaQueue);
             prefs.edit().putInt("local_media_index", 0).apply();
