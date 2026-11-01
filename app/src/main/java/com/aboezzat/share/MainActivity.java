@@ -2692,7 +2692,13 @@ public class MainActivity extends Activity {
                 return;
             }
             if (autoSend) {
-                openSharedPageForCapture(pageUrl, generation);
+                // All background capture and configured extractor attempts have finished.
+                // Do not restart the hidden WebView here: that created an endless retry loop
+                // whenever every extractor returned no playable direct URL.
+                pendingExternalShareCapture = false;
+                updateExtractionNotification("تعذّر استخراج رابط مباشر",
+                        "انتهت محاولات الالتقاط والمحركات المفعّلة دون العثور على بث قابل للتشغيل. يمكنك فتح الرابط يدويًا داخل Share والمحاولة من مشغل الصفحة.",
+                        false);
                 return;
             }
             if (fallbackToReceiver) {
