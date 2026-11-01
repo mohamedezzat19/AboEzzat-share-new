@@ -9,7 +9,9 @@ import android.os.Looper;
 import android.webkit.CookieManager;
 import android.widget.Toast;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,12 +40,21 @@ public class ShareLinkActivity extends Activity {
     private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
 
+    private static final List<String> AD_DOMAINS = Arrays.asList(
+            "doubleclick.net", "googleads", "pagead2", "adservice.google",
+            "googletagmanager", "adcolony", "criteo", "adnxs", "outbrain",
+            "taboola", "popads", "popcash", "propellerads", "adsterra",
+            "exoclick", "smartadserver", "scorecardresearch",
+            "zedo", "adroll", "pubmatic", "rubiconproject"
+    );
+
     private final Runnable extractionTimeout = () -> {
         captureWindowClosed = true;
         captureWindowOpen = false;
         destroyBackgroundCapture();
         finishExtraction("انتهت مهلة الالتقاط السريع ولم يظهر رابط فيديو مباشر. لم يتم إرسال صفحة الموقع كرابط فيديو.");
     };
+
     private final Runnable captureScanRunnable = new Runnable() {
         @Override public void run() {
             android.webkit.WebView view = captureWebView;
@@ -67,15 +78,20 @@ public class ShareLinkActivity extends Activity {
         }
         originalSharedUrl = url;
 
-        // Load the same configured Receiver port as the main Share app. Without this,
-        // background shares silently fall back to 8081 even when the user changed the port.
+        // قراءة المنفذ والـ IP مع فحص المرجعين القديم والجديد لضمان عدم ضياع العنوان
         android.content.SharedPreferences settings =
                 getSharedPreferences("aboezzat_browser", MODE_PRIVATE);
-        CastingManager.setReceiverPort(settings.getInt("receiver_port", 8081));
+        android.content.SharedPreferences legacyPrefs =
+                getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
 
-        // Honor the IP explicitly selected in Share settings. A temporary failure
-        // must not trigger discovery that silently switches to another receiver.
+        int port = settings.getInt("receiver_port", 8081);
+        CastingManager.setReceiverPort(port);
+
         String savedIp = settings.getString("receiver_ip", "").trim();
+        if (savedIp.isEmpty()) {
+            savedIp = legacyPrefs.getString("tv_ip", "").trim();
+        }
+
         if (!savedIp.isEmpty()) {
             activeReceiverIp = savedIp;
             selectedReceiver = true;
@@ -94,6 +110,8 @@ public class ShareLinkActivity extends Activity {
             selectedReceiver = false;
             getSharedPreferences("aboezzat_browser", MODE_PRIVATE).edit()
                     .putString("receiver_ip", receiverIp).apply();
+            getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE).edit()
+                    .putString("tv_ip", receiverIp).apply();
             startConfiguredExtraction(url);
         }));
     }
@@ -128,11 +146,6 @@ public class ShareLinkActivity extends Activity {
             return;
         }
 
-        // Do not leave a share action spinning for tens of seconds. A valid direct
-        // stream is sent immediately by addCandidate(); this is only the hard fallback.
-        // Local parsers use a 12-second call timeout; optional hosted engines can
-        // legitimately take longer. Keep every attempt bounded without cutting off
-        // a valid extractor before its own network deadline.
         long extractionDeadline = useSocial ? 36000L : (useRapid ? 26000L : 14000L);
         if (useWebView) extractionDeadline = Math.max(extractionDeadline, 15000L);
         mainHandler.postDelayed(extractionTimeout, extractionDeadline);
@@ -198,19 +211,16 @@ public class ShareLinkActivity extends Activity {
                 || type.equals("application/dash+xml");
     }
 
-    private void addCandidate(String url, String engine, Map<String, String> headers, String declaredType) {
+    private void addCandidate(String rawUrl, String engine, Map<String, String> headers, String declaredType) {
         mainHandler.post(() -> {
             if (completed.get() || extractionFinalized) return;
+            String url = MediaDetector.cleanMediaUrl(rawUrl);
             if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)
                     || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType))) {
                 engineFinished();
                 return;
             }
 
-            // External share is a "cast now" action, not a quality-selection session.
-            // Send the first direct candidate immediately instead of waiting for every
-            // extractor and the hidden WebView's full timeout. The browser's media list
-            // remains available for manual quality selection when the user is browsing.
             candidates.clear();
             candidates.add(new MediaCandidate(url, engine, headers));
             extractionFinalized = true;
@@ -254,8 +264,7 @@ public class ShareLinkActivity extends Activity {
         }
     }
 
-
-    /** Hidden WebView fallback mirrors the legacy browser capture without opening Share UI. */
+    /** Hidden WebView fallback with Ad-blocking & Sniffing */
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private void startBackgroundCapture(String pageUrl) {
         try {
@@ -272,7 +281,7 @@ public class ShareLinkActivity extends Activity {
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
-            settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+            settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
             CookieManager cookies = CookieManager.getInstance();
             cookies.setAcceptCookie(true);
             cookies.setAcceptThirdPartyCookies(view, true);
@@ -281,34 +290,47 @@ public class ShareLinkActivity extends Activity {
             view.setBackgroundColor(android.graphics.Color.BLACK);
             view.setAlpha(0.01f);
             view.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-            view.setWebChromeClient(new android.webkit.WebChromeClient());
+            view.setWebChromeClient(new android.webkit.WebChromeClient() {
+                @Override
+                public void onProgressChanged(android.webkit.WebView v, int newProgress) {
+                    super.onProgressChanged(v, newProgress);
+                    injectAdKillerAndSniff(v);
+                }
+            });
             view.setWebViewClient(new android.webkit.WebViewClient() {
-                /**
-                 * Legacy AboEzzat Cast capture path: inspect actual network resources.
-                 * Social sites often expose the media request before currentSrc is readable.
-                 * This callback runs off the UI thread; the bridge posts accepted URLs to main.
-                 */
-                @Override public android.webkit.WebResourceResponse shouldInterceptRequest(
+                @Override
+                public android.webkit.WebResourceResponse shouldInterceptRequest(
                         android.webkit.WebView webView,
                         android.webkit.WebResourceRequest request) {
                     String resourceUrl = request.getUrl() == null ? "" : request.getUrl().toString();
                     String lower = resourceUrl.toLowerCase(java.util.Locale.ROOT);
+
+                    // حجب نطاقات الإعلانات فوراً
+                    for (String ad : AD_DOMAINS) {
+                        if (lower.contains(ad)) {
+                            return new android.webkit.WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream("".getBytes()));
+                        }
+                    }
+
                     boolean junk = lower.contains(".ts") || lower.contains("seg-")
+                            || lower.contains(".js") || lower.contains(".css")
                             || lower.contains("preview") || lower.contains("google_ads")
                             || lower.contains("ad-interrupting");
-                    // Do not require a filename extension: social CDN video URLs are
-                    // commonly signed and extensionless (Facebook/Instagram/TikTok/X).
+
                     boolean media = MediaDetector.isDirectVideoUrl(resourceUrl);
                     if (!junk && media && BrowserEngine.isWebUrl(resourceUrl)) {
+                        String clean = MediaDetector.cleanMediaUrl(resourceUrl);
                         BackgroundCaptureBridge bridge = backgroundCaptureBridge;
-                        if (bridge != null) bridge.onNetworkMediaFound(resourceUrl);
+                        if (bridge != null) bridge.onNetworkMediaFound(clean);
                     }
                     return super.shouldInterceptRequest(webView, request);
                 }
 
-                @Override public void onPageFinished(android.webkit.WebView webView, String loadedUrl) {
+                @Override
+                public void onPageFinished(android.webkit.WebView webView, String loadedUrl) {
                     super.onPageFinished(webView, loadedUrl);
                     if (webView != captureWebView || captureWindowClosed || completed.get()) return;
+                    injectAdKillerAndSniff(webView);
                     installBackgroundVideoHook(webView);
                     scanBackgroundVideo(webView);
                 }
@@ -316,13 +338,44 @@ public class ShareLinkActivity extends Activity {
             root.addView(view, new android.widget.FrameLayout.LayoutParams(-1, -1));
             view.loadUrl(pageUrl);
             mainHandler.removeCallbacks(captureScanRunnable);
-            mainHandler.postDelayed(captureScanRunnable, 1500L);
+            mainHandler.postDelayed(captureScanRunnable, 1200L);
         } catch (Exception ignored) {
             captureWindowOpen = false;
             captureWindowClosed = true;
             if (pendingEngines == 0) mainHandler.post(() -> finishExtraction(
                     "تعذّر تشغيل الالتقاط الخلفي ولم يتم العثور على رابط فيديو مباشر."));
         }
+    }
+
+    private void injectAdKillerAndSniff(android.webkit.WebView view) {
+        String js = "javascript:(function(){" +
+                "  try {" +
+                "    var style = document.getElementById('abo-ezzat-adblock');" +
+                "    if(!style){" +
+                "      style = document.createElement('style');" +
+                "      style.id = 'abo-ezzat-adblock';" +
+                "      style.innerHTML = '.ytp-ad-overlay-container, .ytp-ad-message-container, " +
+                "                         ytd-promoted-sparkles-web-renderer, ytd-banner-promo-renderer, " +
+                "                         ytd-ad-slot-renderer, .ad-container, .ad-div, ytd-in-feed-ad-layout-renderer, " +
+                "                         ytm-promoted-sparkles-web-renderer, .ytp-ad-action-interstitial, " +
+                "                         [id^=\"google_ads_\"], iframe[src*=\"doubleclick\"] { display: none !important; width:0px!important; height:0px!important; }';" +
+                "      document.head.appendChild(style);" +
+                "    }" +
+                "  } catch(e){}" +
+                "  try {" +
+                "    var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton');" +
+                "    if (skipBtn) { skipBtn.click(); }" +
+                "    var adVideos = document.querySelectorAll('video');" +
+                "    for(var i=0; i<adVideos.length; i++){" +
+                "      var v = adVideos[i];" +
+                "      if (document.querySelector('.ad-interrupting, .ad-showing') || v.classList.contains('ad-interrupting')) {" +
+                "        v.muted = true;" +
+                "        if(!isNaN(v.duration) && v.duration > 0){ v.currentTime = v.duration + 1; }" +
+                "      }" +
+                "    }" +
+                "  } catch(e) {}" +
+                "})()";
+        try { view.evaluateJavascript(js, null); } catch (Exception ignored) {}
     }
 
     private void installBackgroundVideoHook(android.webkit.WebView view) {
@@ -370,9 +423,10 @@ public class ShareLinkActivity extends Activity {
         }
     }
 
-    private void acceptCapturedMedia(String url, String note) {
-        if (completed.get() || captureWindowClosed || !BrowserEngine.isWebUrl(url)
-                || url.equals(originalSharedUrl)) return;
+    private void acceptCapturedMedia(String rawUrl, String note) {
+        if (completed.get() || captureWindowClosed) return;
+        String url = MediaDetector.cleanMediaUrl(rawUrl);
+        if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)) return;
         if (!MediaDetector.isDirectVideoUrl(url)) return;
         captureWindowClosed = true;
         captureWindowOpen = false;
@@ -407,8 +461,10 @@ public class ShareLinkActivity extends Activity {
         return 1;
     }
 
-    private void sendResolvedToReceiver(String url, Map<String, String> headers, String note) {
+    private void sendResolvedToReceiver(String rawUrl, Map<String, String> headers, String note) {
         if (completed.get()) return;
+        final String url = MediaDetector.cleanMediaUrl(rawUrl);
+
         CastingManager.Callback callback = (success, message) -> mainHandler.post(() -> {
             if (success) finishWithMessage(note + " تم إرسال الطلب إلى Receiver.");
             else if (selectedReceiver) {
@@ -419,8 +475,7 @@ public class ShareLinkActivity extends Activity {
                 finishWithMessage("ماقدرتش أبعت الوسائط للشاشة: " + message);
             }
         });
-        // Always use Receiver's direct /play endpoint. The legacy /?url= route
-        // can trigger its own page extractor instead of playing the resolved stream.
+
         java.util.Map<String, String> playbackHeaders = new java.util.LinkedHashMap<>();
         if (headers != null) {
             for (Map.Entry<String, String> entry : headers.entrySet()) {
@@ -467,8 +522,6 @@ public class ShareLinkActivity extends Activity {
         if (intent == null) return null;
         StringBuilder sharedContent = new StringBuilder();
 
-        // Most social apps use EXTRA_TEXT, but some put the shared URL in
-        // ClipData, EXTRA_STREAM, or the intent data field instead.
         try {
             if (Intent.ACTION_SEND.equals(intent.getAction())) {
                 CharSequence sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
@@ -495,7 +548,7 @@ public class ShareLinkActivity extends Activity {
                     : intent.getExtras().get(Intent.EXTRA_STREAM);
             if (stream instanceof Uri) sharedContent.append(stream.toString()).append(' ');
             else if (stream instanceof CharSequence) sharedContent.append(stream).append(' ');
-        } catch (Exception ignored) { }
+        } catch (Exception ignored) {}
 
         try {
             Uri data = intent.getData();
