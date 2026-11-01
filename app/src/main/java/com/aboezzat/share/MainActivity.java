@@ -3246,50 +3246,105 @@ public class MainActivity extends Activity {
         snapshot.removeIf(url -> url == null || !BrowserEngine.isWebUrl(url)
                 || !isVideoCandidate(url) || isObviousNonVideoMedia(url));
         if (snapshot.isEmpty()) {
-            Toast.makeText(this, "لم يتم العثور على رابط فيديو مباشر صالح بعد. افتح الفيديو وانتظر تحميله ثم أعد المحاولة.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "لم يتم العثور على رابط فيديو مباشر صالح بعد. شغّل الفيديو وانتظر تحميله ثم أعد المحاولة.", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // Keep only distinct media URLs and put the clearest quality candidate first.
+        // Remove duplicate stream URLs and rank the best available quality first.
         java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>(snapshot);
         snapshot.clear();
         snapshot.addAll(unique);
         java.util.Collections.sort(snapshot, (left, right) ->
                 Integer.compare(mediaQualityHintScore(right), mediaQualityHintScore(left)));
 
-        final String pageTitle = lastPageMediaTitle == null || lastPageMediaTitle.trim().isEmpty()
-                ? "فيديو فيسبوك" : lastPageMediaTitle.trim();
-        final String[] labels = new String[snapshot.size()];
+        String title = lastPageMediaTitle == null || lastPageMediaTitle.trim().isEmpty()
+                ? "مصادر الفيديو المكتشفة" : lastPageMediaTitle.trim();
+        LinearLayout list = column();
+        list.setPadding(dp(10), dp(4), dp(10), dp(4));
         for (int i = 0; i < snapshot.size(); i++) {
-            String url = snapshot.get(i);
-            String quality = MediaDetector.quality(url);
-            if (quality == null || quality.trim().isEmpty()
-                    || "غير معروف".equalsIgnoreCase(quality)) quality = "الجودة غير محددة";
+            final String selectedUrl = snapshot.get(i);
+            final int position = i;
+            LinearLayout item = row();
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(8), dp(7), dp(8), dp(7));
+            item.setBackground(shape(PANEL2, PANEL, 12));
+            item.setFocusable(true);
+            item.setClickable(true);
+            item.setContentDescription("اختيار مصدر الفيديو رقم " + (i + 1));
+
+            ImageView poster = new ImageView(this);
+            poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            poster.setBackground(shape(Color.rgb(48, 50, 60), Color.rgb(75, 78, 92), 8));
+            LinearLayout.LayoutParams posterParams = lp(dp(82), dp(58));
+            posterParams.setMargins(0, 0, dp(10), 0);
+            item.addView(poster, posterParams);
+            String posterUrl = mediaPosters.get(selectedUrl);
+            if (posterUrl == null || posterUrl.trim().isEmpty()) posterUrl = lastPageMediaPoster;
+            if (posterUrl != null && !posterUrl.trim().isEmpty()) loadDetectedPoster(posterUrl, poster);
+
+            LinearLayout details = column();
+            details.setGravity(Gravity.CENTER_VERTICAL);
+            String mediaTitle = mediaTitles.get(selectedUrl);
+            if (mediaTitle == null || mediaTitle.trim().isEmpty()) mediaTitle = title;
+            TextView name = text(mediaTitle, 13, WHITE, true);
+            name.setMaxLines(2);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            details.addView(name, lp(-1, -2));
+
+            int height = mediaQualityHintScore(selectedUrl);
+            String quality = height > 0 ? height + "p" : "الجودة غير محددة";
             String host;
-            try { host = Uri.parse(url).getHost(); } catch (Exception ignored) { host = null; }
-            labels[i] = (i == 0 ? "⭐ الأفضل المتاح  •  " : "")
-                    + quality + "  •  " + (host == null ? "رابط فيديو مباشر" : host);
+            try { host = Uri.parse(selectedUrl).getHost(); }
+            catch (Exception ignored) { host = "رابط مباشر"; }
+            String format = MediaDetector.kind(selectedUrl);
+            String subtitle = (position == 0 ? "⭐ الأفضل المتاح  •  " : "")
+                    + quality + "  •  " + format;
+            TextView meta = text(subtitle, 12, position == 0 ? GOLD : BLUE, true);
+            details.addView(meta, lp(-1, -2));
+            TextView source = text(host == null ? "مصدر فيديو مباشر" : host, 10, MUTED, false);
+            source.setMaxLines(1);
+            source.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            details.addView(source, lp(-1, -2));
+            item.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
+
+            item.setOnClickListener(v -> {
+                currentPlayingVideoUrl = selectedUrl;
+                java.util.Map<String,String> headers = mediaRequestHeaders.get(selectedUrl);
+                Toast.makeText(this, "جاري إرسال " + (mediaQualityHintScore(selectedUrl) > 0
+                        ? mediaQualityHintScore(selectedUrl) + "p" : "مصدر الفيديو") + " إلى الشاشة…",
+                        Toast.LENGTH_SHORT).show();
+                castExtractedUrlSilently(selectedUrl, extractionGeneration,
+                        headers == null ? java.util.Collections.emptyMap() : headers);
+            });
+            item.setOnFocusChangeListener((v, focused) ->
+                    v.setBackground(shape(focused ? PANEL2 : PANEL, focused ? BLUE : PANEL, 12)));
+            LinearLayout.LayoutParams itemParams = lp(-1, -2);
+            itemParams.setMargins(0, 0, 0, dp(7));
+            list.addView(item, itemParams);
         }
 
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(true);
+        scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(pageTitle)
-                .setMessage(snapshot.size() == 1
-                        ? "تم العثور على مصدر فيديو واحد. اضغط عليه لإرساله إلى الشاشة."
-                        : "اختار مصدر الفيديو. الأفضل المتاح ظاهر أولاً، وسيتم إرساله مباشرة إلى Receiver.")
-                .setItems(labels, (d, which) -> {
-                    if (which < 0 || which >= snapshot.size()) return;
-                    String selectedUrl = snapshot.get(which);
-                    currentPlayingVideoUrl = selectedUrl;
-                    Toast.makeText(this, "جاري إرسال الفيديو إلى الشاشة…", Toast.LENGTH_SHORT).show();
-                    castUrl(selectedUrl);
-                })
+                .setTitle(title)
+                .setMessage("اختار الجودة أو المصدر الذي تريد تشغيله على الشاشة. كل اختيار في سطر مستقل ويمكن تحديده باللمس أو ريموت التلفزيون.")
+                .setView(scroll)
                 .setPositiveButton("▶ بث أفضل جودة تلقائياً", (d, which) -> {
                     String bestUrl = snapshot.get(0);
                     currentPlayingVideoUrl = bestUrl;
-                    castUrl(bestUrl);
+                    java.util.Map<String,String> headers = mediaRequestHeaders.get(bestUrl);
+                    castExtractedUrlSilently(bestUrl, extractionGeneration,
+                            headers == null ? java.util.Collections.emptyMap() : headers);
                 })
                 .setNegativeButton("إغلاق", null)
                 .create();
+        dialog.setOnShowListener(ignored -> {
+            if (!snapshot.isEmpty() && dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setFocusable(true);
+            }
+        });
         dialog.show();
     }
 
