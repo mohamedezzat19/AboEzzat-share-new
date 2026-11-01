@@ -36,6 +36,9 @@ public class ShareLinkActivity extends Activity {
     private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
 
+    private static final String DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
     private static final List<String> AD_DOMAINS = Arrays.asList(
             "doubleclick.net", "googleads", "pagead2", "adservice.google",
             "googletagmanager", "adcolony", "criteo", "adnxs", "outbrain",
@@ -119,7 +122,7 @@ public class ShareLinkActivity extends Activity {
         if (url == null) return false;
         String lower = url.toLowerCase(Locale.ROOT);
         return lower.contains("instagram.com") || lower.contains("threads.net")
-                || (lower.contains("tiktok.com") && lower.contains("/live"));
+                || (lower.contains("tiktok.com") && (lower.contains("/live") || lower.contains("live.")));
     }
 
     private void startConfiguredExtraction(String pageUrl) {
@@ -154,8 +157,8 @@ public class ShareLinkActivity extends Activity {
 
         if (useWebView) startBackgroundCapture(pageUrl);
 
-        long extractionDeadline = useSocial ? 30000L : (useRapid ? 22000L : 12000L);
-        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 16000L);
+        long extractionDeadline = useSocial ? 30000L : (useRapid ? 22000L : 14000L);
+        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 18000L);
         mainHandler.postDelayed(extractionTimeout, extractionDeadline);
 
         String cookies = "";
@@ -221,7 +224,8 @@ public class ShareLinkActivity extends Activity {
         if (value == null) return false;
         String type = value.trim().toLowerCase(Locale.ROOT);
         return type.equals("video") || type.equals("mp4") || type.equals("hls")
-                || type.equals("dash") || type.equals("video/mp4")
+                || type.equals("dash") || type.equals("flv") || type.equals("live-flv")
+                || type.equals("video/mp4")
                 || type.equals("application/vnd.apple.mpegurl")
                 || type.equals("application/x-mpegurl")
                 || type.equals("application/dash+xml");
@@ -233,11 +237,6 @@ public class ShareLinkActivity extends Activity {
             String url = MediaDetector.cleanMediaUrl(rawUrl);
             if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)
                     || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType))) {
-                engineFinished();
-                return;
-            }
-
-            if (url.toLowerCase(Locale.ROOT).contains("pull-flv")) {
                 engineFinished();
                 return;
             }
@@ -301,7 +300,10 @@ public class ShareLinkActivity extends Activity {
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
-            settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36");
+            
+            // استخدام Desktop User-Agent للتعامل مع بثوث تيك توك وإنستجرام
+            settings.setUserAgentString(DESKTOP_USER_AGENT);
+
             CookieManager cookies = CookieManager.getInstance();
             cookies.setAcceptCookie(true);
             cookies.setAcceptThirdPartyCookies(view, true);
@@ -334,7 +336,7 @@ public class ShareLinkActivity extends Activity {
                     boolean junk = lower.contains(".ts") || lower.contains("seg-")
                             || lower.contains("fragment") || lower.contains(".js") || lower.contains(".css")
                             || lower.contains("preview") || lower.contains("google_ads")
-                            || lower.contains("ad-interrupting") || lower.contains("pull-flv")
+                            || lower.contains("ad-interrupting")
                             || (lower.contains("twimg.com") && (lower.contains("/audio/") || lower.contains(".m4a")));
 
                     boolean media = MediaDetector.isDirectVideoUrl(resourceUrl);
@@ -422,8 +424,8 @@ public class ShareLinkActivity extends Activity {
                 + "var es=performance.getEntriesByType(\"resource\"),now=performance.now();"
                 + "for(var j=es.length-1;j>=0;j--){var x=es[j].name||\"\";"
                 + "if(now-es[j].startTime<90000&&/^https?:/i.test(x)&&"
-                + "/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
-                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos|ttlivecdn)[^\\/]*\\/(?:video|obj|tos|pull-hls|live)[^\\/]*\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
+                + "/\\.(mp4|m3u8|mpd|webm|flv)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
+                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos|ttlivecdn)[^\\/]*\\/(?:video|obj|tos|pull-|live)[^\\/]*\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatShareCapture)window.AboEzzatShareCapture.onActiveVideoFound(u);}"
                 + "}catch(e){}})();";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
@@ -447,7 +449,7 @@ public class ShareLinkActivity extends Activity {
         if (completed.get() || captureWindowClosed) return;
         String url = MediaDetector.cleanMediaUrl(rawUrl);
         if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)) return;
-        if (!MediaDetector.isDirectVideoUrl(url) || url.toLowerCase(Locale.ROOT).contains("pull-flv")) return;
+        if (!MediaDetector.isDirectVideoUrl(url)) return;
         captureWindowClosed = true;
         captureWindowOpen = false;
         extractionFinalized = true;
@@ -473,8 +475,8 @@ public class ShareLinkActivity extends Activity {
         String lower = url.toLowerCase(Locale.ROOT);
 
         if (lower.contains(".m3u8") || lower.contains("/live/") || lower.contains("pull-hls")) return 5000;
+        if (lower.contains(".flv") || lower.contains("pull-flv")) return 4500;
         if (lower.contains(".mpd")) return 4000;
-        if (lower.contains(".flv") || lower.contains("pull-flv")) return 3000;
 
         Matcher matcher = Pattern.compile("(?i)(2160|1440|1080|720|540|480|360|240)p").matcher(url);
         if (matcher.find()) {
@@ -508,20 +510,39 @@ public class ShareLinkActivity extends Activity {
                 }
             }
         }
-        playbackHeaders.putIfAbsent("user-agent",
-                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36");
-        playbackHeaders.putIfAbsent("referer", originalSharedUrl);
+
+        // إرفاق هيدرز الجلسة الكاملة لضمان فتح البث المباشر (TikTok Live / Instagram / Threads)
+        String lower = url.toLowerCase(Locale.ROOT);
+        if (lower.contains("tiktokcdn.com") || lower.contains("byteoversea") || originalSharedUrl.contains("tiktok.com")) {
+            playbackHeaders.put("referer", "https://www.tiktok.com/");
+            playbackHeaders.put("origin", "https://www.tiktok.com");
+            playbackHeaders.put("user-agent", DESKTOP_USER_AGENT);
+        } else if (lower.contains("cdninstagram.com") || originalSharedUrl.contains("instagram.com")) {
+            playbackHeaders.put("referer", "https://www.instagram.com/");
+            playbackHeaders.put("origin", "https://www.instagram.com");
+            playbackHeaders.put("user-agent", DESKTOP_USER_AGENT);
+        } else if (originalSharedUrl.contains("threads.net")) {
+            playbackHeaders.put("referer", "https://www.threads.net/");
+            playbackHeaders.put("origin", "https://www.threads.net");
+            playbackHeaders.put("user-agent", DESKTOP_USER_AGENT);
+        } else {
+            playbackHeaders.putIfAbsent("user-agent", DESKTOP_USER_AGENT);
+            playbackHeaders.putIfAbsent("referer", originalSharedUrl);
+        }
+
         playbackHeaders.putIfAbsent("accept", "*/*");
         playbackHeaders.putIfAbsent("accept-language", "en-US,en;q=0.8");
+
         try {
             String mediaCookies = CookieManager.getInstance().getCookie(url);
             if (mediaCookies == null || mediaCookies.trim().isEmpty()) {
                 mediaCookies = CookieManager.getInstance().getCookie(originalSharedUrl);
             }
             if (mediaCookies != null && !mediaCookies.trim().isEmpty()) {
-                playbackHeaders.putIfAbsent("cookie", mediaCookies);
+                playbackHeaders.put("cookie", mediaCookies);
             }
         } catch (Exception ignored) { }
+
         CastingManager.sendWithHeaders(activeReceiverIp, url, playbackHeaders, callback);
     }
 
