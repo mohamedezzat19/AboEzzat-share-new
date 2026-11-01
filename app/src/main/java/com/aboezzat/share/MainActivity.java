@@ -131,6 +131,8 @@ public class MainActivity extends Activity {
     private volatile String pendingExtractedMediaUrl = "";
     private volatile java.util.Map<String, String> pendingExtractedMediaHeaders = java.util.Collections.emptyMap();
     private volatile int pendingExtractedMediaGeneration = 0;
+    // Prevent endless rediscovery loops: one verified LAN rediscovery per media generation.
+    private volatile int receiverRediscoveryAttemptGeneration = -1;
     private String pendingAutoCastPageUrl = "";
     private final Runnable autoCastDetectedMediaRunnable = () -> {
         if (web == null || isFinishing() || !"browser".equals(currentPage)) return;
@@ -2903,12 +2905,29 @@ public class MainActivity extends Activity {
             receiverConnected = success;
             refreshConnectionLabel();
             if (success) {
+                receiverRediscoveryAttemptGeneration = -1;
                 updateExtractionNotification("تم إرسال الفيديو",
                         "Receiver استلم الرابط؛ جاري التحقق من بدء تشغيل الفيديو على الشاشة.", false);
                 trackReceiverExtraction(ip);
             } else {
                 String error = message == null ? "تعذر إرسال الرابط إلى Receiver." : message;
-                updateExtractionNotification("فشل إرسال الفيديو", error, false);
+                // A saved IP/port can become stale after the TV changes network or port.
+                // Keep the exact stream and its headers, then perform one verified rescan.
+                if (receiverRediscoveryAttemptGeneration != generation) {
+                    receiverRediscoveryAttemptGeneration = generation;
+                    pendingExtractedMediaUrl = mediaUrl;
+                    pendingExtractedMediaHeaders = headers == null
+                            ? java.util.Collections.emptyMap() : new java.util.LinkedHashMap<>(headers);
+                    pendingExtractedMediaGeneration = generation;
+                    updateExtractionNotification("إعادة البحث عن Receiver",
+                            "فشل الاتصال بالعنوان المحفوظ؛ جاري البحث عن الشاشة مرة أخرى قبل إعلان الفشل.", true);
+                    discoverReceiverInBackground();
+                } else {
+                    receiverRediscoveryAttemptGeneration = -1;
+                    updateExtractionNotification("فشل إرسال الفيديو", error, false);
+                    Toast.makeText(this, "تعذر الاتصال بالريسيفر بعد إعادة البحث: " + error,
+                            Toast.LENGTH_LONG).show();
+                }
             }
         }));
     }
