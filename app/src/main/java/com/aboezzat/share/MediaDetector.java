@@ -50,15 +50,24 @@ public final class MediaDetector {
             "(?i)\\.(?:mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$");
 
     private static final Pattern[] JSON_VIDEO_PATTERNS = new Pattern[]{
+            // تيك توك لايف: التقاط بث HLS المباشر الصريح المدعوم للشاشات
+            Pattern.compile("\"hls_pull_url\"\\s*:\\s*\"([^\"]+)\""),
+            Pattern.compile("\"live_hls_url\"\\s*:\\s*\"([^\"]+)\""),
+            Pattern.compile("\"hls_url\"\\s*:\\s*\"([^\"]+)\""),
+            Pattern.compile("\"pull_data\"\\s*:\\s*\\{[^}]*?\"stream_data\"\\s*:\\s*\"([^\"]+)\""),
+
+            // تيك توك العادي
             Pattern.compile("\"download_addr\"\\s*:\\s*\\{[^}]*?\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
             Pattern.compile("\"play_addr\"\\s*:\\s*\\{[^}]*?\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
 
+            // تويتر / X
             Pattern.compile("\"playbackUrl\"\\s*:\\s*\"([^\"]+?\\.m3u8[^\"]*)\""),
             Pattern.compile("\"contentUrl\"\\s*:\\s*\"([^\"]+?\\.m3u8[^\"]*)\""),
             Pattern.compile("\"playbackUrl\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"contentUrl\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"video_url\"\\s*:\\s*\"([^\"]+)\""),
 
+            // فيسبوك وإنستجرام وثريدز
             Pattern.compile("\"browser_native_hd_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"playable_url_quality_hd\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"browser_native_sd_url\"\\s*:\\s*\"([^\"]+)\""),
@@ -111,7 +120,7 @@ public final class MediaDetector {
     public static String quality(String url) {
         if (url == null) return "720p HD";
         String lower = url.toLowerCase(Locale.ROOT);
-        if (lower.contains(".m3u8") || lower.contains("live")) return "أفضل جودة (HLS)";
+        if (lower.contains(".m3u8") || lower.contains("live") || lower.contains("pull-hls")) return "بث مباشر (HD)";
 
         Matcher m = Pattern.compile("(?i)(2160|1440|1080|720|540|480|360)p").matcher(url);
         if (m.find()) return m.group(1) + "p";
@@ -150,13 +159,7 @@ public final class MediaDetector {
                 return false;
             }
 
-            if (host.contains("tiktok") || host.contains("byteoversea") || host.contains("ibytedtos") || host.contains("ttlivecdn")) {
-                if (lower.contains("/live/") || lower.contains("live.m3u8") || lower.contains("pull-hls")
-                        || lower.contains("pull-flv") || lower.contains("ttlivecdn") || lower.contains("webcast")) {
-                    return false;
-                }
-            }
-
+            // تويتر / X
             if (host.equals("video.twimg.com") || lower.contains("twimg.com")) {
                 if (lower.contains("/audio/") || lower.contains("audio_") || lower.contains(".m4a") || lower.contains(".aac")) {
                     return false;
@@ -170,15 +173,19 @@ public final class MediaDetector {
                 return lowerPath.endsWith(".mp4");
             }
 
+            // صيغ البث المباشر الشائعة
             if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$")) return true;
 
+            // تيك توك: العادي + اللايف (مع التركيز على روابط HLS و FLV)
             if (host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
-                    || host.contains("ibytedtos") || host.contains("musical.ly")) {
-                if (lowerPath.contains("/video/") || lowerPath.contains("/obj/") || lowerPath.contains("/tos")) {
+                    || host.contains("ibytedtos") || host.contains("musical.ly") || host.contains("ttlivecdn")) {
+                if (lowerPath.contains("/video/") || lowerPath.contains("/obj/") || lowerPath.contains("/tos")
+                        || lower.contains("pull-hls") || lower.contains(".m3u8") || lower.contains("pull-flv")) {
                     return true;
                 }
             }
 
+            // إنستجرام وفيسبوك وثريدز
             if (host.contains("cdninstagram.com") || host.contains("fbcdn.net")) {
                 if ((lowerPath.contains("/v/") || lowerPath.contains("/t50.") || lowerPath.contains("/t42.")
                         || lower.contains("video") || lower.contains("_n.mp4"))
@@ -190,7 +197,7 @@ public final class MediaDetector {
             if (lower.contains("mime=video") || lower.contains("type=video")
                     || lower.contains("contenttype=video") || lower.contains("format=mp4")
                     || lower.contains("video_playback") || lower.contains("/videoplayback")
-                    || lower.contains("live.m3u8")) {
+                    || lower.contains("live.m3u8") || lower.contains("pull-hls")) {
                 return true;
             }
 
@@ -375,7 +382,7 @@ public final class MediaDetector {
 
         Request request = new Request.Builder()
                 .url(embedUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .build();
 
@@ -426,7 +433,7 @@ public final class MediaDetector {
 
         Request request = new Request.Builder()
                 .url(embedUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .build();
 
@@ -622,6 +629,7 @@ public final class MediaDetector {
                         }
                     }
 
+                    // إعطاء أولوية مطلقة لروابط HLS (m3u8) للبثوث المباشرة
                     boolean hasHls = false;
                     for (String c : found) {
                         if (c.contains(".m3u8")) {
@@ -631,7 +639,7 @@ public final class MediaDetector {
                     }
 
                     for (String candidate : found) {
-                        if (hasHls && candidate.contains("video.twimg.com") && !candidate.contains(".m3u8")) {
+                        if (hasHls && !candidate.contains(".m3u8") && (candidate.contains("pull-flv") || candidate.contains("twimg.com"))) {
                             continue;
                         }
                         dispatchMediaFound(listener, candidate, kind(candidate), quality(candidate));
