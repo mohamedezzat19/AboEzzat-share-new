@@ -50,9 +50,6 @@ public final class MediaDetector {
             "(?i)\\.(?:mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$");
 
     private static final Pattern[] JSON_VIDEO_PATTERNS = new Pattern[]{
-            Pattern.compile("\"hls_pull_url\"\\s*:\\s*\"([^\"]+)\""),
-            Pattern.compile("\"live_hls_url\"\\s*:\\s*\"([^\"]+)\""),
-            Pattern.compile("\"pull_data\"\\s*:\\s*\\{[^}]*?\"stream_data\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"download_addr\"\\s*:\\s*\\{[^}]*?\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
             Pattern.compile("\"play_addr\"\\s*:\\s*\\{[^}]*?\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
 
@@ -153,6 +150,13 @@ public final class MediaDetector {
                 return false;
             }
 
+            if (host.contains("tiktok") || host.contains("byteoversea") || host.contains("ibytedtos") || host.contains("ttlivecdn")) {
+                if (lower.contains("/live/") || lower.contains("live.m3u8") || lower.contains("pull-hls")
+                        || lower.contains("pull-flv") || lower.contains("ttlivecdn") || lower.contains("webcast")) {
+                    return false;
+                }
+            }
+
             if (host.equals("video.twimg.com") || lower.contains("twimg.com")) {
                 if (lower.contains("/audio/") || lower.contains("audio_") || lower.contains(".m4a") || lower.contains(".aac")) {
                     return false;
@@ -169,9 +173,8 @@ public final class MediaDetector {
             if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$")) return true;
 
             if (host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
-                    || host.contains("ibytedtos") || host.contains("musical.ly") || host.contains("ttlivecdn")) {
-                if (lowerPath.contains("/video/") || lowerPath.contains("/obj/") || lowerPath.contains("/tos")
-                        || lower.contains("pull-") || lower.contains(".m3u8") || lower.contains(".flv")) {
+                    || host.contains("ibytedtos") || host.contains("musical.ly")) {
+                if (lowerPath.contains("/video/") || lowerPath.contains("/obj/") || lowerPath.contains("/tos")) {
                     return true;
                 }
             }
@@ -250,8 +253,19 @@ public final class MediaDetector {
         }
 
         String cleanUrl = pageUrl.trim();
+
         if (cleanUrl.contains("x.com/") || cleanUrl.contains("twitter.com/")) {
             extractTwitterSyndication(cleanUrl, listener);
+            return;
+        }
+
+        if (cleanUrl.contains("instagram.com/")) {
+            extractInstagram(cleanUrl, listener);
+            return;
+        }
+
+        if (cleanUrl.contains("threads.net/")) {
+            extractThreads(cleanUrl, listener);
             return;
         }
 
@@ -344,6 +358,114 @@ public final class MediaDetector {
                     fallbackInspectHtml(tweetUrl, listener);
                 } catch (Exception e) {
                     fallbackInspectHtml(tweetUrl, listener);
+                }
+            }
+        });
+    }
+
+    private static void extractInstagram(String instaUrl, Listener listener) {
+        Matcher matcher = Pattern.compile("(?:p|reel|tv)/([A-Za-z0-9_-]+)").matcher(instaUrl);
+        if (!matcher.find()) {
+            fallbackInspectHtml(instaUrl, listener);
+            return;
+        }
+
+        String shortcode = matcher.group(1);
+        String embedUrl = "https://www.instagram.com/p/" + shortcode + "/embed/captioned/";
+
+        Request request = new Request.Builder()
+                .url(embedUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .build();
+
+        CLIENT.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                fallbackInspectHtml(instaUrl, listener);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                try (Response r = response) {
+                    if (!r.isSuccessful() || r.body() == null) {
+                        fallbackInspectHtml(instaUrl, listener);
+                        return;
+                    }
+
+                    String html = r.body().string();
+                    Matcher videoMatcher = Pattern.compile("video_url[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)").matcher(html);
+                    if (videoMatcher.find()) {
+                        String clean = cleanMediaUrl(videoMatcher.group(1));
+                        if (isMediaCandidate(clean)) {
+                            dispatchMediaFound(listener, clean, "Video", quality(clean));
+                            return;
+                        }
+                    }
+
+                    Matcher videoSrcMatcher = Pattern.compile("<video[^>]+src=[\\\"']([^\\\"']+)").matcher(html);
+                    if (videoSrcMatcher.find()) {
+                        String clean = cleanMediaUrl(videoSrcMatcher.group(1));
+                        if (isMediaCandidate(clean)) {
+                            dispatchMediaFound(listener, clean, "Video", quality(clean));
+                            return;
+                        }
+                    }
+
+                    fallbackInspectHtml(instaUrl, listener);
+                } catch (Exception e) {
+                    fallbackInspectHtml(instaUrl, listener);
+                }
+            }
+        });
+    }
+
+    private static void extractThreads(String threadsUrl, Listener listener) {
+        String cleanUrl = threadsUrl.split("\\?")[0].replaceAll("/+$", "");
+        String embedUrl = cleanUrl + "/embed";
+
+        Request request = new Request.Builder()
+                .url(embedUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .build();
+
+        CLIENT.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                fallbackInspectHtml(threadsUrl, listener);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) {
+                try (Response r = response) {
+                    if (!r.isSuccessful() || r.body() == null) {
+                        fallbackInspectHtml(threadsUrl, listener);
+                        return;
+                    }
+
+                    String html = r.body().string();
+                    Matcher m = Pattern.compile("video_url[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)").matcher(html);
+                    if (m.find()) {
+                        String clean = cleanMediaUrl(m.group(1));
+                        if (isMediaCandidate(clean)) {
+                            dispatchMediaFound(listener, clean, "Video", quality(clean));
+                            return;
+                        }
+                    }
+
+                    Matcher videoTag = Pattern.compile("<video[^>]+src=[\\\"']([^\\\"']+)").matcher(html);
+                    if (videoTag.find()) {
+                        String clean = cleanMediaUrl(videoTag.group(1));
+                        if (isMediaCandidate(clean)) {
+                            dispatchMediaFound(listener, clean, "Video", quality(clean));
+                            return;
+                        }
+                    }
+
+                    fallbackInspectHtml(threadsUrl, listener);
+                } catch (Exception e) {
+                    fallbackInspectHtml(threadsUrl, listener);
                 }
             }
         });
