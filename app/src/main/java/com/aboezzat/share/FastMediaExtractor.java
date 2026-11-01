@@ -179,20 +179,45 @@ public final class FastMediaExtractor {
                     JSONObject json = new JSONObject(jsonStr);
 
                     String videoUrl = null;
-                    if (json.has("mediaURLs")) {
+
+                    // VXTwitter may include mixed video + image attachments.
+                    // Prefer media_extended entries explicitly marked as video so
+                    // a tweet's thumbnail/photo is never selected as the cast URL.
+                    JSONArray extended = json.optJSONArray("media_extended");
+                    if (extended != null) {
+                        for (int i = 0; i < extended.length(); i++) {
+                            JSONObject item = extended.optJSONObject(i);
+                            if (item == null || !"video".equalsIgnoreCase(item.optString("type", ""))) continue;
+                            String u = item.optString("url", "");
+                            if (u.startsWith("https://") && (u.contains(".mp4") || u.contains(".m3u8"))) {
+                                videoUrl = u;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Backward-compatible fallback for API responses without media_extended.
+                    if (videoUrl == null) {
                         JSONArray array = json.optJSONArray("mediaURLs");
-                        if (array != null && array.length() > 0) {
+                        if (array != null) {
                             for (int i = 0; i < array.length(); i++) {
-                                String u = array.optString(i);
-                                if (u.contains(".mp4") || u.contains(".m3u8")) {
+                                String u = array.optString(i, "");
+                                String lower = u.toLowerCase(Locale.ROOT);
+                                if (lower.contains(".mp4") || lower.contains(".m3u8")) {
                                     videoUrl = u;
                                     break;
                                 }
                             }
                         }
                     }
-                    if (videoUrl == null && json.has("video_url")) {
-                        videoUrl = json.optString("video_url");
+                    if (videoUrl == null) {
+                        String hd = json.optString("video_hd_url", "");
+                        String normal = json.optString("video_url", "");
+                        if (hd.startsWith("https://") && (hd.contains(".mp4") || hd.contains(".m3u8"))) {
+                            videoUrl = hd;
+                        } else if (normal.startsWith("https://") && (normal.contains(".mp4") || normal.contains(".m3u8"))) {
+                            videoUrl = normal;
+                        }
                     }
 
                     if (videoUrl != null && !videoUrl.isEmpty()) {
