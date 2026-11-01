@@ -227,8 +227,6 @@ public class MainActivity extends Activity {
             String scheme = data.getScheme();
             if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
                 String sharedUrl = BrowserEngine.normalizeAddress(data.toString());
-                // For externally opened links, try screen playback first rather than launching
-                // the embedded browser. The Receiver reports when no direct stream can be resolved.
                 sendPlatformLinkToScreen(sharedUrl);
                 return;
             }
@@ -238,15 +236,24 @@ public class MainActivity extends Activity {
                 return;
             }
         } else if (android.content.Intent.ACTION_SEND.equals(action)) {
-            // A shared image/file attachment takes precedence over any accompanying text URL.
+            // Providers may put the attachment in EXTRA_STREAM, ClipData, or both.
+            // Collect both forms before considering accompanying text so a file is never
+            // accidentally treated as a webpage URL.
+            java.util.LinkedHashSet<Uri> attachments = new java.util.LinkedHashSet<>();
             Uri attachedStream = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
-            // The URI is the authoritative attachment. Some gallery/share providers report
-            // a generic or missing MIME type, so never let accompanying text turn an image
-            // attachment into a webpage/video request.
-            if (attachedStream != null) {
-                acceptSharedMedia(java.util.Collections.singletonList(attachedStream));
+            if (attachedStream != null) attachments.add(attachedStream);
+            android.content.ClipData clip = intent.getClipData();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    Uri itemUri = clip.getItemAt(i).getUri();
+                    if (itemUri != null) attachments.add(itemUri);
+                }
+            }
+            if (!attachments.isEmpty()) {
+                acceptSharedMedia(new java.util.ArrayList<>(attachments));
                 return;
             }
+
             CharSequence sharedText = intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT);
             String shared = sharedText == null ? null : sharedText.toString();
             if (shared != null && !shared.trim().isEmpty()) {
@@ -256,23 +263,27 @@ public class MainActivity extends Activity {
                 if (matcher.find()) {
                     String sharedUrl = matcher.group().replaceAll("[),.?!;،؛؟\\]}]+$", "");
                     String normalized = BrowserEngine.normalizeAddress(sharedUrl);
-                    // A shared URL is treated as a playback request first; Receiver resolves
-                    // direct media when the public page exposes a playable stream.
                     sendPlatformLinkToScreen(normalized);
                     return;
                 }
             }
-
-            Uri stream = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM);
-            if (stream != null) {
-                acceptSharedMedia(java.util.Collections.singletonList(stream));
-                return;
-            }
         } else if (android.content.Intent.ACTION_SEND_MULTIPLE.equals(action)) {
-            java.util.ArrayList<Uri> streams = intent.getParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM);
-            if (streams != null && !streams.isEmpty()) {
-                acceptSharedMedia(streams);
-                return;
+            // Handle both the standard Parcelable ArrayList and ClipData variants.
+            java.util.LinkedHashSet<Uri> attachments = new java.util.LinkedHashSet<>();
+            java.util.ArrayList<Uri> streams =
+                    intent.getParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM);
+            if (streams != null) {
+                for (Uri uri : streams) if (uri != null) attachments.add(uri);
+            }
+            android.content.ClipData clip = intent.getClipData();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    Uri itemUri = clip.getItemAt(i).getUri();
+                    if (itemUri != null) attachments.add(itemUri);
+                }
+            }
+            if (!attachments.isEmpty()) {
+                acceptSharedMedia(new java.util.ArrayList<>(attachments));
             }
         }
     }
