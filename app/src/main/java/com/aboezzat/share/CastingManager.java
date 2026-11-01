@@ -321,10 +321,16 @@ public final class CastingManager {
                                 for (int port : ports) {
                                     try (Socket socket = new Socket()) {
                                         socket.connect(new InetSocketAddress(candidate, port), 180);
+                                    } catch (Exception unavailable) {
+                                        continue;
+                                    }
+                                    // An open TCP port is not proof that this is our Receiver.
+                                    // Require its HTTP ping response before exposing or selecting it.
+                                    if (isReceiver(candidate, port)) {
                                         DEVICE_PORTS.put(candidate, port);
                                         if (!found.contains(candidate)) found.add(candidate);
                                         break;
-                                    } catch (Exception ignored) { }
+                                    }
                                 }
                             } finally {
                                 done.countDown();
