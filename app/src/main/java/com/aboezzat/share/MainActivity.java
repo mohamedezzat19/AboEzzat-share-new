@@ -1533,7 +1533,7 @@ public class MainActivity extends Activity {
     }
 
     private void addLegacyRemoteButton(LinearLayout parent, String label, int color, Runnable action, float weight) {
-        TextView control = button(label, color, color == BLUE || color == Color.rgb(211, 47, 47) ? Color.BLACK : WHITE);
+        TextView control = button(label, color, WHITE);
         control.setTextSize(11);
         control.setGravity(Gravity.CENTER);
         control.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
