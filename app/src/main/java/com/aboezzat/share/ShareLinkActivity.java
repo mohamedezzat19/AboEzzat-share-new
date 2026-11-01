@@ -349,7 +349,8 @@ public class ShareLinkActivity extends Activity {
                 + "var es=performance.getEntriesByType(\"resource\"),now=performance.now();"
                 + "for(var j=es.length-1;j>=0;j--){var x=es[j].name||\"\";"
                 + "if(now-es[j].startTime<90000&&/^https?:/i.test(x)&&"
-                + "/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\//i.test(x)){u=x;break;}}}"
+                + "/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
+                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos)[^\\/]*\\/(?:video|obj)\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatShareCapture)window.AboEzzatShareCapture.onActiveVideoFound(u);}"
                 + "}catch(e){}})();";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
