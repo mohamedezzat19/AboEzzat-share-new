@@ -107,7 +107,6 @@ public final class CastingManager {
         final Map<String, String> safeHeaders = new java.util.LinkedHashMap<>();
         if (headers != null) {
             for (Map.Entry<String, String> entry : headers.entrySet()) {
-                if (safeHeaders.size() >= 5) break;
                 String key = entry.getKey() == null ? "" : entry.getKey().toLowerCase(java.util.Locale.ROOT);
                 String value = entry.getValue();
                 if (("user-agent".equals(key) || "referer".equals(key) || "origin".equals(key)
