@@ -36,8 +36,8 @@ public class ShareLinkActivity extends Activity {
     private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
 
-    private static final String DESKTOP_USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    private static final String REAL_CHROME_UA =
+            "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36";
 
     private static final List<String> AD_DOMAINS = Arrays.asList(
             "doubleclick.net", "googleads", "pagead2", "adservice.google",
@@ -300,13 +300,12 @@ public class ShareLinkActivity extends Activity {
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
-            
-            // استخدام Desktop User-Agent للتعامل مع بثوث تيك توك وإنستجرام
-            settings.setUserAgentString(DESKTOP_USER_AGENT);
+            settings.setUserAgentString(REAL_CHROME_UA);
 
             CookieManager cookies = CookieManager.getInstance();
             cookies.setAcceptCookie(true);
             cookies.setAcceptThirdPartyCookies(view, true);
+
             backgroundCaptureBridge = new BackgroundCaptureBridge();
             view.addJavascriptInterface(backgroundCaptureBridge, "AboEzzatShareCapture");
             view.setBackgroundColor(android.graphics.Color.BLACK);
@@ -316,6 +315,7 @@ public class ShareLinkActivity extends Activity {
                 @Override
                 public void onProgressChanged(android.webkit.WebView v, int newProgress) {
                     super.onProgressChanged(v, newProgress);
+                    injectStealthAndBypass(v);
                     injectAdKillerAndSniff(v);
                 }
             });
@@ -352,6 +352,7 @@ public class ShareLinkActivity extends Activity {
                 public void onPageFinished(android.webkit.WebView webView, String loadedUrl) {
                     super.onPageFinished(webView, loadedUrl);
                     if (webView != captureWebView || captureWindowClosed || completed.get()) return;
+                    injectStealthAndBypass(webView);
                     injectAdKillerAndSniff(webView);
                     installBackgroundVideoHook(webView);
                     scanBackgroundVideo(webView);
@@ -367,6 +368,22 @@ public class ShareLinkActivity extends Activity {
             if (pendingEngines == 0) mainHandler.post(() -> finishExtraction(
                     "تعذّر تشغيل الالتقاط الخلفي."));
         }
+    }
+
+    private void injectStealthAndBypass(android.webkit.WebView view) {
+        String js = "javascript:(function(){" +
+                "  try {" +
+                "    Object.defineProperty(navigator, 'webdriver', {get: () => false});" +
+                "    window.chrome = { runtime: {} };" +
+                "  } catch(e){}" +
+                "  try {" +
+                "    var closeBtn = document.querySelector('[aria-label=\"Close\"], [aria-label=\"إغلاق\"], .login-modal-close, button.close, [data-e2e=\"modal-close-inner-button\"]');" +
+                "    if(closeBtn) { closeBtn.click(); }" +
+                "    var playBtn = document.querySelector('.xgplayer-play, .video-player-play-btn, [data-e2e=\"live-play-btn\"], svg[class*=\"play\"]');" +
+                "    if(playBtn) { playBtn.click(); }" +
+                "  } catch(e){}" +
+                "})()";
+        try { view.evaluateJavascript(js, null); } catch (Exception ignored) {}
     }
 
     private void injectAdKillerAndSniff(android.webkit.WebView view) {
@@ -511,22 +528,21 @@ public class ShareLinkActivity extends Activity {
             }
         }
 
-        // إرفاق هيدرز الجلسة الكاملة لضمان فتح البث المباشر (TikTok Live / Instagram / Threads)
         String lower = url.toLowerCase(Locale.ROOT);
         if (lower.contains("tiktokcdn.com") || lower.contains("byteoversea") || originalSharedUrl.contains("tiktok.com")) {
             playbackHeaders.put("referer", "https://www.tiktok.com/");
             playbackHeaders.put("origin", "https://www.tiktok.com");
-            playbackHeaders.put("user-agent", DESKTOP_USER_AGENT);
+            playbackHeaders.put("user-agent", REAL_CHROME_UA);
         } else if (lower.contains("cdninstagram.com") || originalSharedUrl.contains("instagram.com")) {
             playbackHeaders.put("referer", "https://www.instagram.com/");
             playbackHeaders.put("origin", "https://www.instagram.com");
-            playbackHeaders.put("user-agent", DESKTOP_USER_AGENT);
+            playbackHeaders.put("user-agent", REAL_CHROME_UA);
         } else if (originalSharedUrl.contains("threads.net")) {
             playbackHeaders.put("referer", "https://www.threads.net/");
             playbackHeaders.put("origin", "https://www.threads.net");
-            playbackHeaders.put("user-agent", DESKTOP_USER_AGENT);
+            playbackHeaders.put("user-agent", REAL_CHROME_UA);
         } else {
-            playbackHeaders.putIfAbsent("user-agent", DESKTOP_USER_AGENT);
+            playbackHeaders.putIfAbsent("user-agent", REAL_CHROME_UA);
             playbackHeaders.putIfAbsent("referer", originalSharedUrl);
         }
 
