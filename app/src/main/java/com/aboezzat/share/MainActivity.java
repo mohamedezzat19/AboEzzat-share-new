@@ -651,7 +651,7 @@ public class MainActivity extends Activity {
         if (view == null || view != sharedCaptureWebView || generation != extractionGeneration) return;
         // Background shares use the active-visible-video scan below; do not hook every play()
         // call because social pages also autoplay advertisements and preview clips.
-        String js = "(function(){try{var vs=document.querySelectorAll('video');var best=null;var bestArea=0;"
+        String js = "(function(){try{var host=(location.hostname||\'\').toLowerCase();var vs=document.querySelectorAll(\'video\');var best=null;var bestArea=0;"
                 + "for(var i=0;i<vs.length;i++){var v=vs[i];var r=v.getBoundingClientRect();"
                 + "var visible=r.width>80&&r.height>60&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth;"
                 + "var ad=!!v.closest('[class*=\\\"ad-\\\"],[id*=\\\"ad-\\\"],[data-ad-preview]');"
@@ -664,7 +664,7 @@ public class MainActivity extends Activity {
                 + "if(!/^https?:/i.test(u)){var entries=performance.getEntriesByType('resource');var now=performance.now();"
                 + "for(var j=entries.length-1;j>=0;j--){var x=entries[j].name||'';"
                 + "var fresh=now-entries[j].startTime<90000;"
-                + "var genericStream=/\\.(mp4|m4v|mov|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);" "var isX=host.indexOf(\"x.com\")>=0||host.indexOf(\"twitter.com\")>=0;" "var isMeta=host.indexOf(\"instagram.com\")>=0||host.indexOf(\"threads.net\")>=0||host.indexOf(\"threads.com\")>=0;" "var xStream=isX&&/video\\.twimg\\.com|\\/tweet_video\\/|\\/ext_tw_video\\/|\\/amplify_video\\//i.test(x);" "var metaStream=isMeta&&/cdninstagram\\.com|fbcdn\\.net/i.test(x)&&/video|playback|\\.mp4|\\.m3u8|\\/v\\/t(15|16|39|42)\\./i.test(x);" "var stream=genericStream||xStream||metaStream;"
+                + "var genericStream=/\\.(mp4|m4v|mov|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"\n                + "var isX=host.indexOf(\\\"x.com\\\")>=0||host.indexOf(\\\"twitter.com\\\")>=0;"\n                + "var isMeta=host.indexOf(\\\"instagram.com\\\")>=0||host.indexOf(\\\"threads.net\\\")>=0||host.indexOf(\\\"threads.com\\\")>=0;"\n                + "var xStream=isX&&/video\\\\.twimg\\\\.com|\\\\/tweet_video\\\\/|\\\\/ext_tw_video\\\\/|\\\\/amplify_video\\\\//i.test(x);"\n                + "var metaStream=isMeta&&/cdninstagram\\\\.com|fbcdn\\\\.net/i.test(x)&&/video|playback|\\\\.mp4|\\\\.m3u8|\\\\/v\\\\/t(15|16|39|42)\\\\./i.test(x);"\n                + "var stream=genericStream||xStream||metaStream;"
                 + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onActiveVideoFound(u,document.title||'',best.poster||'');}"
