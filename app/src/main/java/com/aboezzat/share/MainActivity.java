@@ -3010,8 +3010,16 @@ public class MainActivity extends Activity {
                     pendingExternalShareCapture = false;
                     updateExtractionNotification("تم التقاط الفيديو",
                             "تم تأكيد الفيديو الجاري تشغيله؛ جاري إرساله إلى Receiver…", true);
+                    // Preserve the headers captured from the actual CDN request.
+                    // Signed/social media streams may reject Receiver requests without
+                    // the originating Referer, User-Agent or session Cookie.
+                    java.util.Map<String, String> capturedHeaders = mediaRequestHeaders.get(mediaUrl);
+                    java.util.Map<String, String> safeHeaders = capturedHeaders == null
+                            ? java.util.Collections.emptyMap()
+                            : new java.util.LinkedHashMap<>(capturedHeaders);
+                    int captureGeneration = sharedCaptureGeneration;
                     destroySharedCaptureWebView();
-                    sendPlatformLinkToReceiver(mediaUrl);
+                    castExtractedUrlSilently(mediaUrl, captureGeneration, safeHeaders);
                 }
             });
         }
