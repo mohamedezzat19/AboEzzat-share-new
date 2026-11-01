@@ -296,13 +296,9 @@ public class ShareLinkActivity extends Activity {
                     boolean junk = lower.contains(".ts") || lower.contains("seg-")
                             || lower.contains("preview") || lower.contains("google_ads")
                             || lower.contains("ad-interrupting");
-                    boolean media = lower.contains(".mp4") || lower.contains(".m3u8")
-                            || lower.contains(".mpd") || lower.contains(".webm")
-                            || lower.contains(".flv") || lower.contains("pull-")
-                            || lower.contains("mime=video") || lower.contains("video_playback")
-                            || lower.contains("/videoplayback")
-                            || lower.contains("/ext_tw_video/")
-                            || lower.contains("/amplify_video/");
+                    // Do not require a filename extension: social CDN video URLs are
+                    // commonly signed and extensionless (Facebook/Instagram/TikTok/X).
+                    boolean media = MediaDetector.isDirectVideoUrl(resourceUrl);
                     if (!junk && media && BrowserEngine.isWebUrl(resourceUrl)) {
                         BackgroundCaptureBridge bridge = backgroundCaptureBridge;
                         if (bridge != null) bridge.onNetworkMediaFound(resourceUrl);
