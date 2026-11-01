@@ -120,6 +120,9 @@ public class MainActivity extends Activity {
     private volatile boolean pendingExternalShareCapture = false;
     private volatile String lastPageMediaTitle = "";
     private volatile String lastPageMediaPoster = "";
+    // Stable identity and metadata for the currently active HTML5 video in the visible browser.
+    private volatile String currentPlayingVideoPoster = "";
+    private volatile String currentPlayingVideoTitle = "";
     private final LinkedHashMap<String, Boolean> selectedTrackUrls = new LinkedHashMap<>();
     private String currentPage = "home";
     private String receiverIp = "";
@@ -1422,58 +1425,78 @@ public class MainActivity extends Activity {
         parent.addView(card,p);
     }
 
-    private TextView makeSocialIcon(int index) {
-        String glyph;
-        int foreground = Color.WHITE;
-        int background;
-        switch (index) {
-            case 0: // YouTube
-                glyph = "▶";
-                background = Color.rgb(255, 0, 0);
-                break;
-            case 1: // Facebook
-                glyph = "f";
-                background = Color.rgb(24, 119, 242);
-                break;
-            case 2: // TikTok
-                glyph = "♪";
-                background = Color.rgb(8, 8, 8);
-                break;
-            case 3: // Instagram
-                glyph = "◎";
-                background = Color.rgb(193, 53, 132);
-                break;
-            case 4: // X
-                glyph = "𝕏";
-                background = Color.rgb(0, 0, 0);
-                break;
-            default: // Threads
-                glyph = "@";
-                background = Color.rgb(18, 18, 18);
-                break;
-        }
-        TextView icon = text(glyph, index == 1 ? 27 : 23, foreground, true);
-        icon.setGravity(Gravity.CENTER);
-        icon.setIncludeFontPadding(false);
-        GradientDrawable iconBackground = new GradientDrawable();
-        if (index == 3) {
-            iconBackground.setColors(new int[]{
-                    Color.rgb(255, 196, 72),
-                    Color.rgb(245, 75, 106),
-                    Color.rgb(193, 53, 132),
-                    Color.rgb(88, 81, 219)
-            });
-            iconBackground.setOrientation(GradientDrawable.Orientation.BL_TR);
-        } else {
-            iconBackground.setColor(background);
-        }
-        iconBackground.setCornerRadius(dp(10));
-        iconBackground.setStroke(dp(1), Color.argb(55, 255, 255, 255));
-        icon.setBackground(iconBackground);
-        if (index == 2) {
-            icon.setShadowLayer(dp(1), dp(1), 0, Color.rgb(0, 220, 220));
-        }
-        return icon;
+    private View makeSocialIcon(int index) {
+        // Draw recognizable platform marks locally: no remote icon downloads or font dependencies.
+        return new View(this) {
+            private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            private final android.graphics.Path path = new android.graphics.Path();
+            private final android.graphics.RectF rect = new android.graphics.RectF();
+
+            private void fill(android.graphics.Canvas canvas, int color) {
+                paint.setStyle(android.graphics.Paint.Style.FILL);
+                paint.setColor(color);
+                paint.setShader(null);
+                canvas.drawRoundRect(rect, dp(11), dp(11), paint);
+            }
+
+            @Override protected void onDraw(android.graphics.Canvas canvas) {
+                super.onDraw(canvas);
+                float scale = Math.min(getWidth(), getHeight()) / 100f;
+                canvas.save();
+                canvas.translate((getWidth() - 100f * scale) / 2f, (getHeight() - 100f * scale) / 2f);
+                canvas.scale(scale, scale);
+                rect.set(0, 0, 100, 100);
+                int black = Color.rgb(0, 0, 0);
+                int white = Color.WHITE;
+                switch (index) {
+                    case 0: // YouTube
+                        fill(canvas, Color.rgb(255, 0, 0));
+                        path.reset();
+                        path.moveTo(40, 29); path.lineTo(69, 50); path.lineTo(40, 71); path.close();
+                        paint.setColor(white); paint.setStyle(android.graphics.Paint.Style.FILL);
+                        canvas.drawPath(path, paint);
+                        break;
+                    case 1: // Facebook
+                        fill(canvas, Color.rgb(24, 119, 242));
+                        paint.setColor(white); paint.setTextSize(82); paint.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+                        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+                        canvas.drawText("f", 52, 79, paint);
+                        break;
+                    case 2: // TikTok
+                        fill(canvas, Color.rgb(8, 8, 8));
+                        paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(11); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND); paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+                        path.reset(); path.moveTo(58, 20); path.lineTo(58, 65); path.cubicTo(58, 80, 35, 83, 30, 69); path.cubicTo(25, 54, 42, 46, 53, 52);
+                        paint.setColor(Color.rgb(37, 244, 238)); canvas.save(); canvas.translate(-4, 1); canvas.drawPath(path, paint); canvas.restore();
+                        paint.setColor(Color.rgb(254, 44, 85)); canvas.save(); canvas.translate(4, -1); canvas.drawPath(path, paint); canvas.restore();
+                        paint.setColor(white); canvas.drawPath(path, paint);
+                        break;
+                    case 3: // Instagram
+                        paint.setShader(new android.graphics.LinearGradient(10, 90, 90, 5,
+                                new int[]{Color.rgb(255, 196, 72), Color.rgb(245, 75, 106), Color.rgb(193, 53, 132), Color.rgb(88, 81, 219)},
+                                null, android.graphics.Shader.TileMode.CLAMP));
+                        paint.setStyle(android.graphics.Paint.Style.FILL);
+                        rect.set(0, 0, 100, 100); canvas.drawRoundRect(rect, 23, 23, paint); paint.setShader(null);
+                        paint.setColor(white); paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(7);
+                        rect.set(22, 22, 78, 78); canvas.drawRoundRect(rect, 16, 16, paint);
+                        canvas.drawCircle(50, 50, 13, paint);
+                        paint.setStyle(android.graphics.Paint.Style.FILL); canvas.drawCircle(68, 32, 4, paint);
+                        break;
+                    case 4: // X
+                        fill(canvas, black);
+                        paint.setColor(white); paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(9); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+                        path.reset(); path.moveTo(23, 20); path.lineTo(75, 80); canvas.drawPath(path, paint);
+                        path.reset(); path.moveTo(75, 20); path.lineTo(23, 80); canvas.drawPath(path, paint);
+                        break;
+                    default: // Threads
+                        fill(canvas, Color.rgb(18, 18, 18));
+                        paint.setColor(white); paint.setStyle(android.graphics.Paint.Style.STROKE); paint.setStrokeWidth(6); paint.setStrokeCap(android.graphics.Paint.Cap.ROUND); paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+                        path.reset(); path.moveTo(69, 37); path.cubicTo(60, 17, 31, 18, 25, 42); path.cubicTo(16, 73, 42, 88, 64, 74); path.cubicTo(83, 61, 69, 42, 50, 42); path.cubicTo(34, 42, 31, 58, 43, 63); path.cubicTo(55, 68, 69, 58, 69, 48);
+                        canvas.drawPath(path, paint);
+                        break;
+                }
+                canvas.restore();
+            }
+        };
     }
 
     private void showHome() {
@@ -1554,7 +1577,7 @@ public class MainActivity extends Activity {
             LinearLayout socialItem = column();
             socialItem.setGravity(Gravity.CENTER);
             socialItem.setPadding(dp(2), dp(3), dp(2), dp(3));
-            TextView socialIcon = makeSocialIcon(homeSocialOrder[i]);
+            View socialIcon = makeSocialIcon(homeSocialOrder[i]);
             socialItem.addView(socialIcon, lp(46, 46));
             TextView socialName = text(homeSocialNames[i], 10, WHITE, true);
             socialName.setGravity(Gravity.CENTER);
@@ -2477,6 +2500,8 @@ public class MainActivity extends Activity {
                     // Otherwise the previous Facebook/Instagram clip can remain selected.
                     lastPageMediaTitle = "";
                     lastPageMediaPoster = "";
+                    currentPlayingVideoTitle = "";
+                    currentPlayingVideoPoster = "";
                     currentPlayingVideoUrl = "";
                     clearDetectedMedia();
                 }
@@ -3193,19 +3218,36 @@ public class MainActivity extends Activity {
         private void handleCapturedVideo(String mediaUrl, String title, String posterUrl,
                                          boolean activePlayerConfirmed) {
             if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl) || isObviousNonVideoMedia(mediaUrl)) return;
-            if (title != null && !title.trim().isEmpty()) lastPageMediaTitle = title.trim();
-            if (posterUrl != null && BrowserEngine.isWebUrl(posterUrl)) lastPageMediaPoster = posterUrl;
+            final String incomingTitle = title == null ? "" : title.trim();
+            final String incomingPoster = posterUrl != null && BrowserEngine.isWebUrl(posterUrl) ? posterUrl : "";
+            if (!incomingTitle.isEmpty()) lastPageMediaTitle = incomingTitle;
+            if (!incomingPoster.isEmpty()) lastPageMediaPoster = incomingPoster;
 
             // JavascriptInterface methods run on a WebView background thread. Keep all
             // WebView teardown, notifications, Toasts and casting state on Android's UI thread.
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
-                if (currentPlayingVideoUrl != null && !currentPlayingVideoUrl.isEmpty()
-                        && !currentPlayingVideoUrl.equals(mediaUrl)) {
+                boolean changedVideo = false;
+                if (currentPlayingVideoUrl != null && !currentPlayingVideoUrl.isEmpty()) {
+                    String previousKey = mediaIdentityKey(currentPlayingVideoUrl);
+                    String incomingKey = mediaIdentityKey(mediaUrl);
+                    changedVideo = !previousKey.equals(incomingKey);
+                    // Some social CDNs reuse a generic stream path; a changed player poster/title
+                    // is an additional signal that the user moved to a different clip.
+                    if (!changedVideo && !incomingPoster.isEmpty() && !currentPlayingVideoPoster.isEmpty()
+                            && !incomingPoster.equals(currentPlayingVideoPoster)) changedVideo = true;
+                    if (!changedVideo && !incomingTitle.isEmpty() && !currentPlayingVideoTitle.isEmpty()
+                            && !incomingTitle.equals(currentPlayingVideoTitle)) changedVideo = true;
+                }
+                if (changedVideo) {
                     clearDetectedMedia();
+                    currentPlayingVideoPoster = "";
+                    currentPlayingVideoTitle = "";
                 }
                 confirmedPlayerVideoUrls.add(mediaUrl);
                 currentPlayingVideoUrl = mediaUrl;
+                if (!incomingPoster.isEmpty()) currentPlayingVideoPoster = incomingPoster;
+                if (!incomingTitle.isEmpty()) currentPlayingVideoTitle = incomingTitle;
                 detectMedia(mediaUrl);
 
                 // Do not auto-cast a page's OG video, preload, preview, or generic play() event.
