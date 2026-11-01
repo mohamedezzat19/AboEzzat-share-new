@@ -589,8 +589,18 @@ public class MainActivity extends Activity {
                 capture.setWebChromeClient(new WebChromeClient());
                 capture.setWebViewClient(new WebViewClient() {
                     @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                        try { detectMedia(request.getUrl().toString(), request.getRequestHeaders()); }
-                        catch (Exception ignored) { }
+                        String requestUrl = request == null || request.getUrl() == null
+                                ? "" : request.getUrl().toString();
+                        try {
+                            if (prefs != null && prefs.getBoolean("browser_adblock", true)
+                                    && isKnownAdRequest(requestUrl)) {
+                                return new WebResourceResponse("text/plain", "UTF-8",
+                                        new ByteArrayInputStream(new byte[0]));
+                            }
+                            if (BrowserEngine.isWebUrl(requestUrl)) {
+                                detectMedia(requestUrl, request.getRequestHeaders());
+                            }
+                        } catch (Exception ignored) { }
                         return super.shouldInterceptRequest(view, request);
                     }
                     @Override public void onPageFinished(WebView view, String loadedUrl) {
@@ -2900,7 +2910,9 @@ public class MainActivity extends Activity {
                                                java.util.Map<String, String> headers) {
         if (generation != extractionGeneration || ip == null || ip.trim().isEmpty()) return;
         rememberCastUrl(mediaUrl);
-        CastingManager.sendWithHeaders(ip, mediaUrl, headers, (success, message) -> runOnUiThread(() -> {
+        CapturedMedia captured = new CapturedMedia(mediaUrl,
+                lastPageMediaTitle, lastPageMediaPoster, "", "", headers);
+        CastingManager.sendWithHeaders(ip, captured, (success, message) -> runOnUiThread(() -> {
             if (generation != extractionGeneration || isFinishing()) return;
             receiverConnected = success;
             refreshConnectionLabel();
