@@ -2328,8 +2328,13 @@ public class MainActivity extends Activity {
                 popupSettings.setJavaScriptCanOpenWindowsAutomatically(false);
                 popupSettings.setSupportMultipleWindows(true);
                 popupSettings.setUserAgentString(view.getSettings().getUserAgentString());
+                popupSettings.setMediaPlaybackRequiresUserGesture(
+                        view.getSettings().getMediaPlaybackRequiresUserGesture());
                 CookieManager.getInstance().setAcceptCookie(true);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(popupWeb, true);
+                // Video sites frequently move the actual player into target=_blank.
+                // Give that popup the exact same capture bridge as the main browser.
+                popupWeb.addJavascriptInterface(new LegacyMediaCaptureBridge(), "AboEzzatBridge");
 
                 final android.app.Dialog dialog = new android.app.Dialog(MainActivity.this);
                 dialog.setContentView(popupWeb);
@@ -2347,7 +2352,21 @@ public class MainActivity extends Activity {
                         if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(requestUrl)) {
                             return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                         }
+                        // The popup player is a separate WebView: without this call its
+                        // extensionless Facebook/Instagram/TikTok/X CDN streams were invisible.
+                        if (BrowserEngine.isWebUrl(requestUrl)) {
+                            java.util.Map<String,String> headers = request == null
+                                    ? java.util.Collections.emptyMap() : request.getRequestHeaders();
+                            detectMedia(requestUrl, headers);
+                        }
                         return super.shouldInterceptRequest(child, request);
+                    }
+                    @Override public void onPageFinished(WebView child, String loadedUrl) {
+                        super.onPageFinished(child, loadedUrl);
+                        if (child == popupWeb && BrowserEngine.isWebUrl(loadedUrl)) {
+                            installLegacyMediaCaptureHooks(child);
+                            scanPageMediaAndSkipAds(child);
+                        }
                     }
                     @Override public void onSafeBrowsingHit(WebView child, WebResourceRequest request,
                             int threatType, android.webkit.SafeBrowsingResponse response) {
@@ -3379,7 +3398,7 @@ public class MainActivity extends Activity {
             final int position = i;
             LinearLayout item = row();
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(8), dp(7), dp(8), dp(7));
+            item.setPadding(dp(4), dp(3), dp(4), dp(3));
             item.setBackground(shape(PANEL2, PANEL, 12));
             item.setFocusable(true);
             item.setClickable(true);
@@ -3388,9 +3407,10 @@ public class MainActivity extends Activity {
 
             ImageView poster = new ImageView(this);
             poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            poster.setBackground(shape(Color.rgb(48, 50, 60), Color.rgb(75, 78, 92), 8));
-            LinearLayout.LayoutParams posterParams = lp(dp(82), dp(58));
-            posterParams.setMargins(0, 0, dp(10), 0);
+            poster.setBackground(shape(Color.rgb(48, 50, 60), Color.rgb(75, 78, 92), 5));
+            // Compact single-line media row: tiny thumbnail beside the title.
+            LinearLayout.LayoutParams posterParams = lp(dp(38), dp(28));
+            posterParams.setMargins(0, 0, dp(6), 0);
             item.addView(poster, posterParams);
             String posterUrl = mediaPosters.get(selectedUrl);
             if (posterUrl == null || posterUrl.trim().isEmpty()) posterUrl = lastPageMediaPoster;
@@ -3400,8 +3420,9 @@ public class MainActivity extends Activity {
             details.setGravity(Gravity.CENTER_VERTICAL);
             String mediaTitle = mediaTitles.get(selectedUrl);
             if (mediaTitle == null || mediaTitle.trim().isEmpty()) mediaTitle = title;
-            TextView name = text(mediaTitle, 13, WHITE, true);
-            name.setMaxLines(2);
+            TextView name = text(mediaTitle, 11, WHITE, true);
+            name.setSingleLine(true);
+            name.setMaxLines(1);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);
             details.addView(name, lp(-1, -2));
 
@@ -3410,7 +3431,7 @@ public class MainActivity extends Activity {
             String format = MediaDetector.kind(selectedUrl);
             String subtitle = (position == 0 ? "الأفضل المتاح  •  " : "")
                     + quality + "  •  " + format;
-            TextView meta = text(subtitle, 12, position == 0 ? GOLD : BLUE, true);
+            TextView meta = text(subtitle, 10, position == 0 ? GOLD : BLUE, true);
             details.addView(meta, lp(-1, -2));
             item.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
 
