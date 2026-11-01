@@ -7,7 +7,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.CookieManager;
-import android.widget.Toast;
 
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
@@ -15,14 +14,15 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Handles Android shares without opening the Share UI. Runs the same configured
- * extraction engines as MainActivity, then sends the best direct result to Receiver.
+ * Handles Android shares without opening the Share UI. Runs configured
+ * extraction engines, immediately filters the best direct media, and casts it.
  */
 public class ShareLinkActivity extends Activity {
     private static final String NOTIFICATION_CHANNEL = "aboezzat_extraction_progress";
@@ -52,7 +52,7 @@ public class ShareLinkActivity extends Activity {
         captureWindowClosed = true;
         captureWindowOpen = false;
         destroyBackgroundCapture();
-        finishExtraction("انتهت مهلة الالتقاط السريع ولم يظهر رابط فيديو مباشر. لم يتم إرسال صفحة الموقع كرابط فيديو.");
+        finishExtraction("انتهت مهلة الالتقاط السريع ولم يظهر رابط فيديو مباشر.");
     };
 
     private final Runnable captureScanRunnable = new Runnable() {
@@ -60,7 +60,7 @@ public class ShareLinkActivity extends Activity {
             android.webkit.WebView view = captureWebView;
             if (view == null || completed.get() || captureWindowClosed) return;
             scanBackgroundVideo(view);
-            mainHandler.postDelayed(this, 1200L);
+            mainHandler.postDelayed(this, 1000L);
         }
     };
 
@@ -70,7 +70,7 @@ public class ShareLinkActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        mainHandler.postDelayed(activityTimeout, 55000L);
+        mainHandler.postDelayed(activityTimeout, 45000L);
 
         candidates.clear();
         extractionFinalized = false;
@@ -106,7 +106,7 @@ public class ShareLinkActivity extends Activity {
             if (completed.get()) return;
             String receiverIp = (devices == null || devices.isEmpty()) ? null : devices.get(0);
             if (receiverIp == null) {
-                finishWithMessage("مش لاقي AboEzzat Receiver؛ افتح Share واضغط إعداد IP لاختيار الجهاز، وتأكد إن الجهازين على نفس شبكة Wi‑Fi.");
+                finishWithMessage("مش لاقي AboEzzat Receiver؛ افتح التطبيق واضغط إعداد IP لاختيار الجهاز.");
                 return;
             }
             activeReceiverIp = receiverIp;
@@ -122,7 +122,13 @@ public class ShareLinkActivity extends Activity {
     private void startConfiguredExtraction(String pageUrl) {
         if (isYouTubeUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
-                    "رابط YouTube هيتبعت للريسيفر عشان يفتح SmartTube أو تطبيق YouTube.");
+                    "رابط YouTube؛ جاري الإرسال للتشغيل المباشر.");
+            return;
+        }
+
+        // إذا كان الرابط نفسه هو رابط فيديو مباشر
+        if (MediaDetector.isDirectVideoUrl(pageUrl)) {
+            sendResolvedToReceiver(pageUrl, Collections.emptyMap(), "رابط فيديو مباشر، جاري الإرسال.");
             return;
         }
 
@@ -138,25 +144,29 @@ public class ShareLinkActivity extends Activity {
                 && !apiBase.isEmpty() && engineToken.length() >= 32;
 
         pendingEngines = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
-                + (useRapid ? 1 : 0) + (useSocial ? 1 : 0);
+                + (useRapid ? 1 : 0) + (useSocial ? 1 : 0) + 1; // +1 لمحرك MediaDetector المباشر
+
         boolean useWebView = isEngineEnabled(prefs, "webview");
         captureWindowOpen = useWebView;
         captureWindowClosed = !useWebView;
-        if (useWebView) startBackgroundCapture(pageUrl);
-        if (pendingEngines == 0 && !useWebView) {
-            finishWithMessage("لا يوجد محرك استخراج مفعّل. لم يتم إرسال صفحة الموقع إلى Receiver لأنها ليست رابط فيديو مباشر.");
-            return;
-        }
 
-        long extractionDeadline = useSocial ? 36000L : (useRapid ? 26000L : 14000L);
-        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 15000L);
+        if (useWebView) startBackgroundCapture(pageUrl);
+
+        long extractionDeadline = useSocial ? 30000L : (useRapid ? 22000L : 12000L);
+        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 14000L);
         mainHandler.postDelayed(extractionTimeout, extractionDeadline);
+
         String cookies = "";
         try {
             CookieManager manager = CookieManager.getInstance();
             cookies = manager.getCookie(pageUrl);
         } catch (Exception ignored) { }
         final String pageCookies = cookies;
+
+        // الفحص المباشر عبر MediaDetector بالتوازي مع باقي المحركات
+        MediaDetector.inspectPage(this, pageUrl, (url, kind, quality) -> {
+            addCandidate(url, "MediaDetector (" + kind + " " + quality + ")", Collections.emptyMap(), kind);
+        });
 
         if (useFast) {
             FastMediaExtractor.extractDirectMedia(pageUrl, pageCookies,
@@ -168,6 +178,7 @@ public class ShareLinkActivity extends Activity {
                 @Override public void onError(String error) { engineFailed(); }
             });
         }
+
         if (useOkHttp) {
             OkHttpPageExtractor.extract(pageUrl, pageCookies, new OkHttpPageExtractor.Callback() {
                 @Override public void onSuccess(String mediaUrl) {
@@ -176,6 +187,7 @@ public class ShareLinkActivity extends Activity {
                 @Override public void onError(String reason) { engineFailed(); }
             });
         }
+
         if (useRapid) {
             RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()
@@ -187,6 +199,7 @@ public class ShareLinkActivity extends Activity {
                 }
             });
         }
+
         if (useSocial) {
             PlatformExtractor.resolve(apiBase, engineToken, pageUrl, pageCookies, (result, message) -> {
                 if (result != null && result.url != null && !result.url.trim().isEmpty()
@@ -205,7 +218,7 @@ public class ShareLinkActivity extends Activity {
 
     private boolean isDeclaredVideoFormat(String value) {
         if (value == null) return false;
-        String type = value.trim().toLowerCase(java.util.Locale.ROOT);
+        String type = value.trim().toLowerCase(Locale.ROOT);
         return type.equals("video") || type.equals("mp4") || type.equals("hls")
                 || type.equals("dash") || type.equals("video/mp4")
                 || type.equals("application/vnd.apple.mpegurl")
@@ -231,7 +244,7 @@ public class ShareLinkActivity extends Activity {
             mainHandler.removeCallbacks(extractionTimeout);
             destroyBackgroundCapture();
             sendResolvedToReceiver(url, headers,
-                    "تم التقاط أول رابط مباشر بواسطة " + engine + "؛ جاري تشغيله على Receiver.");
+                    "تم التقاط الرابط مباشرة (" + engine + ")؛ جاري الإرسال للريسيفر.");
         });
     }
 
@@ -257,12 +270,12 @@ public class ShareLinkActivity extends Activity {
                 if (qualityScore(candidate.url) > qualityScore(best.url)) best = candidate;
             }
             sendResolvedToReceiver(best.url, best.headers,
-                    "تم استخراج رابط مباشر بواسطة " + best.engine + " من " + candidates.size() + " نتيجة.");
+                    "تم الإرسال بواسطة " + best.engine);
         } else {
             String reason = fallbackMessage == null
-                    ? "لم يعثر أي محرك على رابط فيديو مباشر."
+                    ? "لم يتم العثور على رابط فيديو مباشر صالح."
                     : fallbackMessage;
-            finishWithMessage(reason + " لم نرسل رابط صفحة الموقع إلى Receiver حتى لا يظهر كأنه فيديو صالح.");
+            finishWithMessage(reason);
         }
     }
 
@@ -282,7 +295,7 @@ public class ShareLinkActivity extends Activity {
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
-            settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
+            settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36");
             CookieManager cookies = CookieManager.getInstance();
             cookies.setAcceptCookie(true);
             cookies.setAcceptThirdPartyCookies(view, true);
@@ -304,7 +317,7 @@ public class ShareLinkActivity extends Activity {
                         android.webkit.WebView webView,
                         android.webkit.WebResourceRequest request) {
                     String resourceUrl = request.getUrl() == null ? "" : request.getUrl().toString();
-                    String lower = resourceUrl.toLowerCase(java.util.Locale.ROOT);
+                    String lower = resourceUrl.toLowerCase(Locale.ROOT);
 
                     for (String ad : AD_DOMAINS) {
                         if (lower.contains(ad)) {
@@ -312,10 +325,12 @@ public class ShareLinkActivity extends Activity {
                         }
                     }
 
+                    // استبعاد التجزئة والملفات الصوتية المنفصلة لتويتر والسكريبتات
                     boolean junk = lower.contains(".ts") || lower.contains("seg-")
-                            || lower.contains(".js") || lower.contains(".css")
+                            || lower.contains("fragment") || lower.contains(".js") || lower.contains(".css")
                             || lower.contains("preview") || lower.contains("google_ads")
-                            || lower.contains("ad-interrupting");
+                            || lower.contains("ad-interrupting")
+                            || (lower.contains("twimg.com") && (lower.contains("/audio/") || lower.contains(".m4a")));
 
                     boolean media = MediaDetector.isDirectVideoUrl(resourceUrl);
                     if (!junk && media && BrowserEngine.isWebUrl(resourceUrl)) {
@@ -338,12 +353,12 @@ public class ShareLinkActivity extends Activity {
             root.addView(view, new android.widget.FrameLayout.LayoutParams(-1, -1));
             view.loadUrl(pageUrl);
             mainHandler.removeCallbacks(captureScanRunnable);
-            mainHandler.postDelayed(captureScanRunnable, 1200L);
+            mainHandler.postDelayed(captureScanRunnable, 1000L);
         } catch (Exception ignored) {
             captureWindowOpen = false;
             captureWindowClosed = true;
             if (pendingEngines == 0) mainHandler.post(() -> finishExtraction(
-                    "تعذّر تشغيل الالتقاط الخلفي ولم يتم العثور على رابط فيديو مباشر."));
+                    "تعذّر تشغيل الالتقاط الخلفي."));
         }
     }
 
@@ -413,13 +428,13 @@ public class ShareLinkActivity extends Activity {
         void onNetworkMediaFound(String url) {
             if (url == null || url.isEmpty()) return;
             mainHandler.post(() -> acceptCapturedMedia(url,
-                    "تم التقاط طلب ملف الفيديو من شبكة الموقع."));
+                    "تم التقاط طلب ملف الفيديو وإرساله للشاشة."));
         }
 
         @android.webkit.JavascriptInterface
         public void onActiveVideoFound(String url) {
             mainHandler.post(() -> acceptCapturedMedia(url,
-                    "تم التقاط الفيديو النشط من صفحة المشاركة وإرساله إلى Receiver."));
+                    "تم التقاط الفيديو النشط وإرساله مباشرة للشاشة."));
         }
     }
 
@@ -450,9 +465,8 @@ public class ShareLinkActivity extends Activity {
 
     private int qualityScore(String url) {
         if (url == null) return 0;
-        String lower = url.toLowerCase(java.util.Locale.ROOT);
+        String lower = url.toLowerCase(Locale.ROOT);
 
-        // روابط HLS والبثوث الحية تأخذ الأولوية القصوى دائماً
         if (lower.contains(".m3u8") || lower.contains("/live/") || lower.contains("pull-hls")) return 5000;
         if (lower.contains(".flv") || lower.contains("pull-flv")) return 4500;
         if (lower.contains(".mpd")) return 4000;
@@ -472,26 +486,25 @@ public class ShareLinkActivity extends Activity {
         final String url = MediaDetector.cleanMediaUrl(rawUrl);
 
         CastingManager.Callback callback = (success, message) -> mainHandler.post(() -> {
-            if (success) finishWithMessage(note + " تم إرسال الطلب إلى Receiver.");
-            else if (selectedReceiver) {
-                finishWithMessage("الجهاز المختار " + activeReceiverIp
-                        + " لم يستجب. احتفظنا بعنوانه؛ افتح إعداد IP في Share لاختبار الاتصال أو اختيار جهاز آخر. "
-                        + message);
+            if (success) {
+                finishWithMessage(note + " تم الإرسال والتشغيل بنجاح.");
+            } else if (selectedReceiver) {
+                finishWithMessage("الجهاز المختار " + activeReceiverIp + " لم يستجب: " + message);
             } else {
-                finishWithMessage("ماقدرتش أبعت الوسائط للشاشة: " + message);
+                finishWithMessage("تعذر الإرسال للشاشة: " + message);
             }
         });
 
-        java.util.Map<String, String> playbackHeaders = new java.util.LinkedHashMap<>();
+        Map<String, String> playbackHeaders = new LinkedHashMap<>();
         if (headers != null) {
             for (Map.Entry<String, String> entry : headers.entrySet()) {
                 if (entry.getKey() != null && entry.getValue() != null) {
-                    playbackHeaders.put(entry.getKey().toLowerCase(java.util.Locale.ROOT), entry.getValue());
+                    playbackHeaders.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue());
                 }
             }
         }
         playbackHeaders.putIfAbsent("user-agent",
-                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36");
+                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36");
         playbackHeaders.putIfAbsent("referer", originalSharedUrl);
         playbackHeaders.putIfAbsent("accept", "*/*");
         playbackHeaders.putIfAbsent("accept-language", "en-US,en;q=0.8");
@@ -508,7 +521,7 @@ public class ShareLinkActivity extends Activity {
         try {
             String host = Uri.parse(url).getHost();
             if (host == null) return false;
-            host = host.toLowerCase(java.util.Locale.ROOT);
+            host = host.toLowerCase(Locale.ROOT);
             return host.equals("youtu.be") || host.equals("youtube.com")
                     || host.endsWith(".youtube.com") || host.equals("youtube-nocookie.com")
                     || host.endsWith(".youtube-nocookie.com");
@@ -606,7 +619,7 @@ public class ShareLinkActivity extends Activity {
                 .setOnlyAlertOnce(true)
                 .setOngoing(false)
                 .setAutoCancel(true);
-        if (android.os.Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(6000L);
+        if (android.os.Build.VERSION.SDK_INT >= 26) builder.setTimeoutAfter(5000L);
         manager.notify(NOTIFICATION_ID, builder.build());
     }
 
