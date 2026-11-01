@@ -339,7 +339,7 @@ public class MainActivity extends Activity {
                 "تشغيل " + enabled + " محرك/محركات متاحة بالتوازي…", true);
         final ParallelExtractionRun run =
                 new ParallelExtractionRun(pageUrl, generation, enabled, false, true);
-        run.setTimeout(9000L);
+        run.setTimeout(5000L);
 
         if (useFast) {
             FastMediaExtractor.extractDirectMedia(pageUrl, android.webkit.CookieManager.getInstance().getCookie(pageUrl), new FastMediaExtractor.ExtractorCallback() {
@@ -557,6 +557,10 @@ public class MainActivity extends Activity {
         destroySharedCaptureWebView();
         pendingExternalShareCapture = true;
         sharedCaptureSent = false;
+        // Instagram and Threads: start direct extractors immediately in parallel with the hidden page.
+        // This avoids waiting for the legacy WebView timeout before attempting a direct stream.
+        final boolean fastSocialShare = isInstagramOrThreadsUrl(pageUrl);
+        if (fastSocialShare) startConfiguredFallbackExtractors(pageUrl, generation);
         synchronized (mediaOrder) {
             media.clear(); mediaOrder.clear(); mediaRequestHeaders.clear();
             mediaTitles.clear(); mediaPosters.clear();
@@ -635,9 +639,9 @@ public class MainActivity extends Activity {
                                     ? "تم رصد طلبات فيديو، لكن لم يتم تأكيد رابط التشغيل النشط. جاري تجربة المحركات الاحتياطية…"
                                     : "لم يظهر بث فيديو مباشر بعد فحص الصفحة. جاري تجربة المحركات الاحتياطية…",
                             true);
-                    startConfiguredFallbackExtractors(pageUrl, generation);
+                    if (!fastSocialShare) startConfiguredFallbackExtractors(pageUrl, generation);
                 };
-                receiverMonitorHandler.postDelayed(sharedCaptureFinishRunnable, 20000L);
+                receiverMonitorHandler.postDelayed(sharedCaptureFinishRunnable, 5000L);
             } catch (Exception error) {
                 destroySharedCaptureWebView();
                 pendingExternalShareCapture = false;
@@ -2931,6 +2935,11 @@ public class MainActivity extends Activity {
     private void extractionSucceeded(String mediaUrl, String engine, int generation, java.util.Map<String, String> headers) {
         if (generation != extractionGeneration || mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
         currentPlayingVideoUrl = mediaUrl;
+        if (pendingExternalShareCapture && generation == extractionGeneration) {
+            sharedCaptureSent = true;
+            pendingExternalShareCapture = false;
+            destroySharedCaptureWebView();
+        }
         if (castActionButton != null) castActionButton.clearAnimation();
         updateExtractionNotification("تم استخراج الفيديو", "نجح " + engine + "؛ جاري إرسال الرابط إلى Receiver…", true);
         castExtractedUrlSilently(mediaUrl, generation, headers);
@@ -3002,6 +3011,21 @@ public class MainActivity extends Activity {
                 }
             }
         }));
+    }
+
+    /** True only for the two platforms whose share-intent extraction needs the fast path. */
+    private boolean isInstagramOrThreadsUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            String host = Uri.parse(value.trim()).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("threads.com") || host.endsWith(".threads.com");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private boolean isFastExtractorPlatform(String value) {
