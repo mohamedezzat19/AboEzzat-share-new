@@ -65,7 +65,7 @@ public final class MediaDetector {
             String lower = url.toLowerCase(Locale.ROOT);
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
 
-            if (lowerPath.matches(".*\\\\.(mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd)$")) return true;
+            if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd)$")) return true;
             if (lower.contains("mime=video") || lower.contains("type=video")
                     || lower.contains("contenttype=video") || lower.contains("content-type=video")
                     || lower.contains("format=mp4") || lower.contains("video_playback")
