@@ -75,7 +75,8 @@ public final class MediaDetector {
             if (host.equals("video.twimg.com")) return true;
             if ((host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
                     || host.contains("ibytedtos"))
-                    && (lowerPath.contains("/video/") || lowerPath.contains("/obj/"))) return true;
+                    && (lowerPath.contains("/video/") || lowerPath.contains("/obj/")
+                    || lowerPath.contains("/tos"))) return true;
             if (host.endsWith("fbcdn.net")
                     && (host.startsWith("video.") || lowerPath.contains("/t42."))) return true;
             if (host.endsWith("cdninstagram.com") && lowerPath.contains("/t50.")) return true;
@@ -92,8 +93,11 @@ public final class MediaDetector {
         String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
         if (MEDIA_EXTENSION.matcher(lowerPath).find()) return true;
 
-        // Keep extensionless detection narrow: these are recognizable media endpoints,
-        // not arbitrary page URLs or generic query strings.
+        // Reuse the shared direct-stream rules so TikTok and other extensionless
+        // social CDN URLs are treated consistently by every extractor.
+        if (isDirectVideoUrl(url)) return true;
+        // Keep remaining extensionless detection narrow: these are recognizable
+        // media endpoints, not arbitrary page URLs or generic query strings.
         String lower = url.toLowerCase(Locale.ROOT);
         return lower.contains("mime=video") || lower.contains("mime=audio")
                 || lower.contains("video_playback") || lower.contains("/videoplayback")
