@@ -303,20 +303,29 @@ public final class CastingManager {
 
             List<String> found = java.util.Collections.synchronizedList(new ArrayList<>());
             if (!prefixes.isEmpty()) {
-                ExecutorService workers = Executors.newFixedThreadPool(32);
+                // Probe the configured port first, then common Receiver ports. This
+                // prevents a stale Share setting from making a running TV invisible.
+                List<Integer> ports = new ArrayList<>();
+                int configured = getReceiverPort();
+                ports.add(configured);
+                for (int candidatePort : new int[]{8081, 8080, 8082, 8090}) {
+                    if (!ports.contains(candidatePort)) ports.add(candidatePort);
+                }
+                ExecutorService workers = Executors.newFixedThreadPool(48);
                 CountDownLatch done = new CountDownLatch(prefixes.size() * 254);
                 for (String prefix : prefixes) {
                     for (int host = 1; host <= 254; host++) {
                         final String candidate = prefix + host;
                         workers.execute(() -> {
                             try {
-                                int port = getReceiverPort();
-                                try (Socket socket = new Socket()) {
-                                    // Same test as the working AboEzzat Cast: is the Receiver TCP port open?
-                                    socket.connect(new InetSocketAddress(candidate, port), 250);
-                                    DEVICE_PORTS.put(candidate, port);
-                                    found.add(candidate);
-                                } catch (Exception ignored) { }
+                                for (int port : ports) {
+                                    try (Socket socket = new Socket()) {
+                                        socket.connect(new InetSocketAddress(candidate, port), 180);
+                                        DEVICE_PORTS.put(candidate, port);
+                                        if (!found.contains(candidate)) found.add(candidate);
+                                        break;
+                                    } catch (Exception ignored) { }
+                                }
                             } finally {
                                 done.countDown();
                             }
@@ -324,7 +333,7 @@ public final class CastingManager {
                     }
                 }
                 try {
-                    done.await(5, TimeUnit.SECONDS);
+                    done.await(7, TimeUnit.SECONDS);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                 } finally {
