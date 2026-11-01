@@ -2391,6 +2391,17 @@ public class MainActivity extends Activity {
             }
         });
         web.setWebViewClient(new WebViewClient(){
+            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                if (view == web && BrowserEngine.isWebUrl(url)) {
+                    // Each new page/video must get fresh title, poster and stream rows.
+                    // Otherwise the previous Facebook/Instagram clip can remain selected.
+                    lastPageMediaTitle = "";
+                    lastPageMediaPoster = "";
+                    currentPlayingVideoUrl = "";
+                    clearDetectedMedia();
+                }
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
                 Uri u=request.getUrl();
                 if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(u.toString())) return true;
@@ -3372,18 +3383,11 @@ public class MainActivity extends Activity {
 
             int height = mediaQualityHintScore(selectedUrl);
             String quality = height > 0 ? height + "p" : "الجودة غير محددة";
-            String host;
-            try { host = Uri.parse(selectedUrl).getHost(); }
-            catch (Exception ignored) { host = "رابط مباشر"; }
             String format = MediaDetector.kind(selectedUrl);
-            String subtitle = (position == 0 ? "⭐ الأفضل المتاح  •  " : "")
+            String subtitle = (position == 0 ? "الأفضل المتاح  •  " : "")
                     + quality + "  •  " + format;
             TextView meta = text(subtitle, 12, position == 0 ? GOLD : BLUE, true);
             details.addView(meta, lp(-1, -2));
-            TextView source = text(host == null ? "مصدر فيديو مباشر" : host, 10, MUTED, false);
-            source.setMaxLines(1);
-            source.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            details.addView(source, lp(-1, -2));
             item.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
 
             item.setOnClickListener(v -> {
@@ -3407,8 +3411,7 @@ public class MainActivity extends Activity {
         scroll.setVerticalScrollBarEnabled(true);
         scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setMessage("اختار الجودة أو المصدر الذي تريد تشغيله على الشاشة. كل اختيار في سطر مستقل ويمكن تحديده باللمس أو ريموت التلفزيون.")
+                .setTitle("مصادر الفيديو المتاحة")
                 .setView(scroll)
                 .setPositiveButton("▶ بث أفضل جودة تلقائياً", (d, which) -> {
                     String bestUrl = snapshot.get(0);
