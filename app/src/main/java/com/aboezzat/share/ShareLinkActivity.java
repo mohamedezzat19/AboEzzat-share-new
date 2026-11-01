@@ -40,8 +40,9 @@ public class ShareLinkActivity extends Activity {
 
     private final Runnable extractionTimeout = () -> {
         captureWindowClosed = true;
+        captureWindowOpen = false;
         destroyBackgroundCapture();
-        finishExtraction("انتهت مهلة الالتقاط والمحركات؛ هبعت الرابط الأصلي للريسيفر.");
+        finishExtraction("انتهت مهلة الالتقاط السريع ولم يظهر رابط فيديو مباشر. لم يتم إرسال صفحة الموقع كرابط فيديو.");
     };
     private final Runnable captureScanRunnable = new Runnable() {
         @Override public void run() {
@@ -122,7 +123,9 @@ public class ShareLinkActivity extends Activity {
             return;
         }
 
-        mainHandler.postDelayed(extractionTimeout, useWebView ? 22000L : 11000L);
+        // Do not leave a share action spinning for tens of seconds. A valid direct
+        // stream is sent immediately by addCandidate(); this is only the hard fallback.
+        mainHandler.postDelayed(extractionTimeout, useWebView ? 10000L : 8000L);
         String cookies = "";
         try {
             CookieManager manager = CookieManager.getInstance();
@@ -177,14 +180,24 @@ public class ShareLinkActivity extends Activity {
     private void addCandidate(String url, String engine, Map<String, String> headers) {
         mainHandler.post(() -> {
             if (completed.get() || extractionFinalized) return;
-            if (url != null && BrowserEngine.isWebUrl(url) && !url.equals(originalSharedUrl)) {
-                boolean duplicate = false;
-                for (MediaCandidate candidate : candidates) {
-                    if (candidate.url.equals(url)) { duplicate = true; break; }
-                }
-                if (!duplicate) candidates.add(new MediaCandidate(url, engine, headers));
+            if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)) {
+                engineFinished();
+                return;
             }
-            engineFinished();
+
+            // External share is a "cast now" action, not a quality-selection session.
+            // Send the first direct candidate immediately instead of waiting for every
+            // extractor and the hidden WebView's full timeout. The browser's media list
+            // remains available for manual quality selection when the user is browsing.
+            candidates.clear();
+            candidates.add(new MediaCandidate(url, engine, headers));
+            extractionFinalized = true;
+            captureWindowClosed = true;
+            captureWindowOpen = false;
+            mainHandler.removeCallbacks(extractionTimeout);
+            destroyBackgroundCapture();
+            sendResolvedToReceiver(url, headers,
+                    "تم التقاط أول رابط مباشر بواسطة " + engine + "؛ جاري تشغيله على Receiver.");
         });
     }
 
