@@ -54,12 +54,12 @@ public class ShareLinkActivity extends Activity {
     };
 
     private final Runnable activityTimeout = () -> finishWithMessage(
-            "لسه ماوصلتش للريسيفر. اتأكد إن AboEzzat Receiver مفتوح والجهازين على نفس شبكة Wi‑Fi.");
+            "انتهت المهلة المحددة للمشاركة. اتأكد إن AboEzzat Receiver مفتوح والجهازين على نفس شبكة Wi‑Fi.");
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        mainHandler.postDelayed(activityTimeout, 40000L);
+        mainHandler.postDelayed(activityTimeout, 55000L);
         String url = extractUrl(getIntent());
         if (url == null) {
             finish();
@@ -130,7 +130,12 @@ public class ShareLinkActivity extends Activity {
 
         // Do not leave a share action spinning for tens of seconds. A valid direct
         // stream is sent immediately by addCandidate(); this is only the hard fallback.
-        mainHandler.postDelayed(extractionTimeout, useWebView ? 10000L : 8000L);
+        // Local parsers use a 12-second call timeout; optional hosted engines can
+        // legitimately take longer. Keep every attempt bounded without cutting off
+        // a valid extractor before its own network deadline.
+        long extractionDeadline = useSocial ? 36000L : (useRapid ? 26000L : 14000L);
+        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 15000L);
+        mainHandler.postDelayed(extractionTimeout, extractionDeadline);
         String cookies = "";
         try {
             CookieManager manager = CookieManager.getInstance();
