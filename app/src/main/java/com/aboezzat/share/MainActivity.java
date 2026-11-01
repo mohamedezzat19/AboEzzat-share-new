@@ -742,22 +742,39 @@ public class MainActivity extends Activity {
     }
 
     private void acceptSharedMedia(java.util.List<Uri> streams) {
-        localMediaQueue.clear();
-        for (Uri uri : streams) {
-            if (uri == null) continue;
-            try {
-                getContentResolver().takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            } catch (Exception ignored) {
-                // Most ACTION_SEND grants are temporary, so keep using the granted URI directly.
+        // Validate and de-duplicate the incoming share before replacing the user's queue.
+        // Some apps send duplicate EXTRA_STREAM + ClipData entries or an empty URI.
+        java.util.LinkedHashSet<Uri> incoming = new java.util.LinkedHashSet<>();
+        if (streams != null) {
+            for (Uri uri : streams) {
+                if (uri == null) continue;
+                String scheme = uri.getScheme();
+                if (!"content".equalsIgnoreCase(scheme) && !"file".equalsIgnoreCase(scheme)) continue;
+                incoming.add(uri);
             }
-            localMediaQueue.add(uri);
         }
-        if (localMediaQueue.isEmpty()) {
-            Toast.makeText(this, "المشاركة لا تحتوي على ملفات قابلة للفتح", Toast.LENGTH_LONG).show();
+        if (incoming.isEmpty()) {
+            Toast.makeText(this, "المشاركة لا تحتوي على ملفات قابلة للفتح؛ قائمة التشغيل الحالية محفوظة", Toast.LENGTH_LONG).show();
             return;
         }
+
+        for (Uri uri : incoming) {
+            try {
+                getContentResolver().takePersistableUriPermission(
+                        uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {
+                // ACTION_SEND grants are often temporary; use the granted URI for this session.
+            }
+        }
+
+        localMediaQueue.clear();
+        localMediaQueue.addAll(incoming);
         currentLocalMediaIndex = 0;
         selectedMediaUri = localMediaQueue.get(0);
+        // Persist the queue/index just like files selected through the document picker.
+        saveUriQueue("local_media_queue", localMediaQueue);
+        prefs.edit().putInt("local_media_index", 0).apply();
+
         showHome();
         Toast.makeText(this, "تم استلام " + localMediaQueue.size() + " ملف؛ جاري تجهيز الإرسال", Toast.LENGTH_SHORT).show();
         playSelectedLocalMedia();
