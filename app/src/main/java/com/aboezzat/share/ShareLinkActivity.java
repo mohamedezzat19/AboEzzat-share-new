@@ -20,10 +20,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Handles Android shares without opening the Share UI. Runs configured
- * extraction engines, immediately filters the best direct media, and casts it.
- */
 public class ShareLinkActivity extends Activity {
     private static final String NOTIFICATION_CHANNEL = "aboezzat_extraction_progress";
     private static final int NOTIFICATION_ID = 4708;
@@ -119,6 +115,13 @@ public class ShareLinkActivity extends Activity {
         }));
     }
 
+    private boolean requiresBrowserCapture(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase(Locale.ROOT);
+        return lower.contains("instagram.com") || lower.contains("threads.net")
+                || (lower.contains("tiktok.com") && lower.contains("/live"));
+    }
+
     private void startConfiguredExtraction(String pageUrl) {
         if (isYouTubeUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
@@ -126,7 +129,6 @@ public class ShareLinkActivity extends Activity {
             return;
         }
 
-        // إذا كان الرابط نفسه هو رابط فيديو مباشر
         if (MediaDetector.isDirectVideoUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(), "رابط فيديو مباشر، جاري الإرسال.");
             return;
@@ -144,16 +146,16 @@ public class ShareLinkActivity extends Activity {
                 && !apiBase.isEmpty() && engineToken.length() >= 32;
 
         pendingEngines = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
-                + (useRapid ? 1 : 0) + (useSocial ? 1 : 0) + 1; // +1 لمحرك MediaDetector المباشر
+                + (useRapid ? 1 : 0) + (useSocial ? 1 : 0) + 1;
 
-        boolean useWebView = isEngineEnabled(prefs, "webview");
+        boolean useWebView = isEngineEnabled(prefs, "webview") || requiresBrowserCapture(pageUrl);
         captureWindowOpen = useWebView;
         captureWindowClosed = !useWebView;
 
         if (useWebView) startBackgroundCapture(pageUrl);
 
         long extractionDeadline = useSocial ? 30000L : (useRapid ? 22000L : 12000L);
-        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 14000L);
+        if (useWebView) extractionDeadline = Math.max(extractionDeadline, 16000L);
         mainHandler.postDelayed(extractionTimeout, extractionDeadline);
 
         String cookies = "";
@@ -163,7 +165,6 @@ public class ShareLinkActivity extends Activity {
         } catch (Exception ignored) { }
         final String pageCookies = cookies;
 
-        // الفحص المباشر عبر MediaDetector بالتوازي مع باقي المحركات
         MediaDetector.inspectPage(this, pageUrl, (url, kind, quality) -> {
             addCandidate(url, "MediaDetector (" + kind + " " + quality + ")", Collections.emptyMap(), kind);
         });
@@ -232,6 +233,11 @@ public class ShareLinkActivity extends Activity {
             String url = MediaDetector.cleanMediaUrl(rawUrl);
             if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)
                     || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType))) {
+                engineFinished();
+                return;
+            }
+
+            if (url.toLowerCase(Locale.ROOT).contains("pull-flv")) {
                 engineFinished();
                 return;
             }
@@ -325,11 +331,10 @@ public class ShareLinkActivity extends Activity {
                         }
                     }
 
-                    // استبعاد التجزئة والملفات الصوتية المنفصلة لتويتر والسكريبتات
                     boolean junk = lower.contains(".ts") || lower.contains("seg-")
                             || lower.contains("fragment") || lower.contains(".js") || lower.contains(".css")
                             || lower.contains("preview") || lower.contains("google_ads")
-                            || lower.contains("ad-interrupting")
+                            || lower.contains("ad-interrupting") || lower.contains("pull-flv")
                             || (lower.contains("twimg.com") && (lower.contains("/audio/") || lower.contains(".m4a")));
 
                     boolean media = MediaDetector.isDirectVideoUrl(resourceUrl);
@@ -417,8 +422,8 @@ public class ShareLinkActivity extends Activity {
                 + "var es=performance.getEntriesByType(\"resource\"),now=performance.now();"
                 + "for(var j=es.length-1;j>=0;j--){var x=es[j].name||\"\";"
                 + "if(now-es[j].startTime<90000&&/^https?:/i.test(x)&&"
-                + "/\\.(mp4|m3u8|mpd|webm|flv)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
-                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos|ttlivecdn)[^\\/]*\\/(?:video|obj|tos|pull-|live)[^\\/]*\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
+                + "/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
+                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos|ttlivecdn)[^\\/]*\\/(?:video|obj|tos|pull-hls|live)[^\\/]*\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatShareCapture)window.AboEzzatShareCapture.onActiveVideoFound(u);}"
                 + "}catch(e){}})();";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
@@ -442,7 +447,7 @@ public class ShareLinkActivity extends Activity {
         if (completed.get() || captureWindowClosed) return;
         String url = MediaDetector.cleanMediaUrl(rawUrl);
         if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)) return;
-        if (!MediaDetector.isDirectVideoUrl(url)) return;
+        if (!MediaDetector.isDirectVideoUrl(url) || url.toLowerCase(Locale.ROOT).contains("pull-flv")) return;
         captureWindowClosed = true;
         captureWindowOpen = false;
         extractionFinalized = true;
@@ -468,8 +473,8 @@ public class ShareLinkActivity extends Activity {
         String lower = url.toLowerCase(Locale.ROOT);
 
         if (lower.contains(".m3u8") || lower.contains("/live/") || lower.contains("pull-hls")) return 5000;
-        if (lower.contains(".flv") || lower.contains("pull-flv")) return 4500;
         if (lower.contains(".mpd")) return 4000;
+        if (lower.contains(".flv") || lower.contains("pull-flv")) return 3000;
 
         Matcher matcher = Pattern.compile("(?i)(2160|1440|1080|720|540|480|360|240)p").matcher(url);
         if (matcher.find()) {
@@ -510,6 +515,9 @@ public class ShareLinkActivity extends Activity {
         playbackHeaders.putIfAbsent("accept-language", "en-US,en;q=0.8");
         try {
             String mediaCookies = CookieManager.getInstance().getCookie(url);
+            if (mediaCookies == null || mediaCookies.trim().isEmpty()) {
+                mediaCookies = CookieManager.getInstance().getCookie(originalSharedUrl);
+            }
             if (mediaCookies != null && !mediaCookies.trim().isEmpty()) {
                 playbackHeaders.putIfAbsent("cookie", mediaCookies);
             }
