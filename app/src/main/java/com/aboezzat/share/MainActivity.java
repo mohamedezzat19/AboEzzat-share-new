@@ -631,6 +631,8 @@ public class MainActivity extends Activity {
                 + "var ad=!!v.closest('[class*=\\\"ad-\\\"],[id*=\\\"ad-\\\"],[data-ad-preview]');"
                 + "var active=!v.paused&&!v.ended&&v.currentTime>0&&v.readyState>=2;"
                 + "var area=Math.min(r.width,innerWidth)*Math.min(r.height,innerHeight);"
+                + "var hasSource=!!(v.currentSrc||v.src);"
+                + "if(visible&&!ad&&hasSource&&v.readyState>=1&&!active){try{v.muted=true;var attempt=v.play();if(attempt&&attempt.catch)attempt.catch(function(){});}catch(e){}}"
                 + "if(visible&&!ad&&active&&area>bestArea){best=v;bestArea=area;}}"
                 + "if(best){var u=best.currentSrc||best.src||'';"
                 + "if(!/^https?:/i.test(u)){var entries=performance.getEntriesByType('resource');var now=performance.now();"
