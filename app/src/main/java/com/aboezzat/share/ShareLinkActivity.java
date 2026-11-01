@@ -143,7 +143,7 @@ public class ShareLinkActivity extends Activity {
                     new FastMediaExtractor.ExtractorCallback() {
                 @Override public void onSuccess(String mediaUrl, String platform) {
                     addCandidate(mediaUrl, "FastMediaExtractor / " + platform,
-                            Collections.emptyMap());
+                            Collections.emptyMap(), null);
                 }
                 @Override public void onError(String error) { engineFailed(); }
             });
@@ -151,7 +151,7 @@ public class ShareLinkActivity extends Activity {
         if (useOkHttp) {
             OkHttpPageExtractor.extract(pageUrl, pageCookies, new OkHttpPageExtractor.Callback() {
                 @Override public void onSuccess(String mediaUrl) {
-                    addCandidate(mediaUrl, "OkHttp Page Parser", Collections.emptyMap());
+                    addCandidate(mediaUrl, "OkHttp Page Parser", Collections.emptyMap(), null);
                 }
                 @Override public void onError(String reason) { engineFailed(); }
             });
@@ -160,7 +160,8 @@ public class ShareLinkActivity extends Activity {
             RapidApiExtractor.resolve(apiKey, pageUrl, (mediaUrl, mediaType, message) -> {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()
                         && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
-                    addCandidate(mediaUrl, "RapidAPI", Collections.emptyMap());
+                    addCandidate(mediaUrl, "RapidAPI", Collections.emptyMap(),
+                            "الفيديو".equals(mediaType) ? "video" : null);
                 } else {
                     engineFailed();
                 }
@@ -170,7 +171,7 @@ public class ShareLinkActivity extends Activity {
             PlatformExtractor.resolve(apiBase, engineToken, pageUrl, pageCookies, (result, message) -> {
                 if (result != null && result.url != null && !result.url.trim().isEmpty()
                         && BrowserEngine.isWebUrl(result.url) && !result.url.equals(pageUrl)) {
-                    addCandidate(result.url, "AboEzzat Social Engine", result.headers);
+                    addCandidate(result.url, "AboEzzat Social Engine", result.headers, result.type);
                 } else {
                     engineFailed();
                 }
@@ -182,10 +183,21 @@ public class ShareLinkActivity extends Activity {
         return prefs.getBoolean("engine_enabled_" + key, true);
     }
 
-    private void addCandidate(String url, String engine, Map<String, String> headers) {
+    private boolean isDeclaredVideoFormat(String value) {
+        if (value == null) return false;
+        String type = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return type.equals("video") || type.equals("mp4") || type.equals("hls")
+                || type.equals("dash") || type.equals("video/mp4")
+                || type.equals("application/vnd.apple.mpegurl")
+                || type.equals("application/x-mpegurl")
+                || type.equals("application/dash+xml");
+    }
+
+    private void addCandidate(String url, String engine, Map<String, String> headers, String declaredType) {
         mainHandler.post(() -> {
             if (completed.get() || extractionFinalized) return;
-            if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)) {
+            if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)
+                    || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType))) {
                 engineFinished();
                 return;
             }
@@ -308,7 +320,7 @@ public class ShareLinkActivity extends Activity {
             captureWindowOpen = false;
             captureWindowClosed = true;
             if (pendingEngines == 0) mainHandler.post(() -> finishExtraction(
-                    "تعذّر تشغيل الالتقاط الخلفي؛ هبعت الرابط الأصلي للريسيفر."));
+                    "تعذّر تشغيل الالتقاط الخلفي ولم يتم العثور على رابط فيديو مباشر."));
         }
     }
 
@@ -359,12 +371,7 @@ public class ShareLinkActivity extends Activity {
     private void acceptCapturedMedia(String url, String note) {
         if (completed.get() || captureWindowClosed || !BrowserEngine.isWebUrl(url)
                 || url.equals(originalSharedUrl)) return;
-        String lower = url.toLowerCase(java.util.Locale.ROOT);
-        if (!(lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".mpd")
-                || lower.contains(".webm") || lower.contains(".flv") || lower.contains("pull-")
-                || lower.contains("mime=video") || lower.contains("video_playback")
-                || lower.contains("/videoplayback") || lower.contains("/ext_tw_video/")
-                || lower.contains("/amplify_video/"))) return;
+        if (!MediaDetector.isDirectVideoUrl(url)) return;
         captureWindowClosed = true;
         captureWindowOpen = false;
         extractionFinalized = true;
@@ -410,11 +417,28 @@ public class ShareLinkActivity extends Activity {
                 finishWithMessage("ماقدرتش أبعت الوسائط للشاشة: " + message);
             }
         });
-        if (headers != null && !headers.isEmpty()) {
-            CastingManager.sendWithHeaders(activeReceiverIp, url, headers, callback);
-        } else {
-            CastingManager.send(activeReceiverIp, url, callback);
+        // Always use Receiver's direct /play endpoint. The legacy /?url= route
+        // can trigger its own page extractor instead of playing the resolved stream.
+        java.util.Map<String, String> playbackHeaders = new java.util.LinkedHashMap<>();
+        if (headers != null) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                if (entry.getKey() != null && entry.getValue() != null) {
+                    playbackHeaders.put(entry.getKey().toLowerCase(java.util.Locale.ROOT), entry.getValue());
+                }
+            }
         }
+        playbackHeaders.putIfAbsent("user-agent",
+                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36");
+        playbackHeaders.putIfAbsent("referer", originalSharedUrl);
+        playbackHeaders.putIfAbsent("accept", "*/*");
+        playbackHeaders.putIfAbsent("accept-language", "en-US,en;q=0.8");
+        try {
+            String mediaCookies = CookieManager.getInstance().getCookie(url);
+            if (mediaCookies != null && !mediaCookies.trim().isEmpty()) {
+                playbackHeaders.putIfAbsent("cookie", mediaCookies);
+            }
+        } catch (Exception ignored) { }
+        CastingManager.sendWithHeaders(activeReceiverIp, url, playbackHeaders, callback);
     }
 
     private boolean isYouTubeUrl(String url) {
