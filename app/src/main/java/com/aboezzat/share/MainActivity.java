@@ -885,7 +885,6 @@ public class MainActivity extends Activity {
         bottom.setBackgroundColor(PANEL);
         root.addView(bottom, lp(-1,64));
         nav("⌂\nالرئيسية", "home");
-        nav("◎\nالمتصفح", "browser");
         nav("▣\nالوسائط", "media");
         nav("☆\nالمكتبة", "library");
         refreshConnectionLabel();
@@ -1478,6 +1477,8 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        hideKeyboard();
+        if (browserTools != null) browserTools.setVisibility(View.GONE);
         header.setVisibility(View.VISIBLE);
         bottom.setVisibility(View.VISIBLE);
         currentPage = "home";
@@ -1519,6 +1520,7 @@ public class MainActivity extends Activity {
         goHomeParams.setMargins(dp(4), 0, 0, 0);
         homeSearch.addView(goHomeSearch, goHomeParams);
         Runnable submitHomeSearch = () -> {
+            hideKeyboard();
             String query = homeAddress.getText().toString().trim();
             if (query.isEmpty()) { homeAddress.setError("اكتب كلمة للبحث أو رابط الموقع"); return; }
             showBrowser();
@@ -1536,6 +1538,40 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams homeSearchParams = lp(-1, 54);
         homeSearchParams.bottomMargin = dp(10);
         page.addView(homeSearch, 0, homeSearchParams);
+
+        // Social shortcuts sit directly below search and above local media.
+        LinearLayout socialShortcuts = row();
+        socialShortcuts.setGravity(Gravity.CENTER);
+        socialShortcuts.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        int[] homeSocialOrder = {2, 3, 0, 4, 5}; // TikTok, Instagram, YouTube, X, Threads
+        String[] homeSocialNames = {"TikTok", "Instagram", "YouTube", "X", "Threads"};
+        String[] homeSocialUrls = {
+                "https://www.tiktok.com/", "https://www.instagram.com/",
+                "https://m.youtube.com/", "https://x.com/", "https://www.threads.net/"
+        };
+        for (int i = 0; i < homeSocialOrder.length; i++) {
+            final String socialUrl = homeSocialUrls[i];
+            LinearLayout socialItem = column();
+            socialItem.setGravity(Gravity.CENTER);
+            socialItem.setPadding(dp(2), dp(3), dp(2), dp(3));
+            TextView socialIcon = makeSocialIcon(homeSocialOrder[i]);
+            socialItem.addView(socialIcon, lp(46, 46));
+            TextView socialName = text(homeSocialNames[i], 10, WHITE, true);
+            socialName.setGravity(Gravity.CENTER);
+            socialItem.addView(socialName, lp(-1, 20));
+            socialItem.setContentDescription("فتح " + homeSocialNames[i]);
+            socialItem.setFocusable(true);
+            socialItem.setOnClickListener(v -> {
+                hideKeyboard();
+                showBrowser();
+                if (address != null) address.setText(socialUrl);
+                loadAddress();
+            });
+            LinearLayout.LayoutParams socialParams = new LinearLayout.LayoutParams(0, -2, 1f);
+            socialParams.setMargins(dp(2), 0, dp(2), dp(4));
+            socialShortcuts.addView(socialItem, socialParams);
+        }
+        page.addView(socialShortcuts, lp(-1, 74));
 
         // Receiver connection controls are centralized in the side drawer.
 
@@ -1581,9 +1617,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams remoteParams = lp(-1, -2);
         remoteParams.topMargin = dp(8);
         page.addView(remote, remoteParams);
-
-        // Site shortcuts are intentionally kept out of the home screen.
-        // Open the browser from its home card to browse; site management stays in the drawer.
 
     }
 
@@ -2002,6 +2035,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBrowser() {
+        hideKeyboard();
         header.setVisibility(View.VISIBLE); bottom.setVisibility(View.VISIBLE);
         currentPage="browser";
         resetContent();
@@ -2102,9 +2136,9 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams navParams = lp(-1,44);
         navParams.topMargin = dp(2);
         content.addView(controls, navParams);
-        go.setOnClickListener(v->loadAddress());
+        go.setOnClickListener(v->{hideKeyboard();loadAddress();});
         address.setOnEditorActionListener((v,id,event)->{
-            if(id==EditorInfo.IME_ACTION_GO || (event!=null && event.getKeyCode()==KeyEvent.KEYCODE_ENTER && event.getAction()==KeyEvent.ACTION_DOWN)){loadAddress();return true;} return false;
+            if(id==EditorInfo.IME_ACTION_GO || id==EditorInfo.IME_ACTION_SEARCH || (event!=null && event.getKeyCode()==KeyEvent.KEYCODE_ENTER && event.getAction()==KeyEvent.ACTION_DOWN)){hideKeyboard();loadAddress();return true;} return false;
         });
         if(hasPage) address.setText(web.getUrl());
         refreshConnectionLabel();
@@ -2156,6 +2190,7 @@ public class MainActivity extends Activity {
             tile.setContentDescription("فتح " + siteName + " داخل المتصفح");
             tile.setFocusable(true);
             tile.setOnClickListener(v -> {
+                hideKeyboard();
                 if (web == null) showBrowser();
                 if (web != null) {
                     browserLanding.setVisibility(View.GONE);
@@ -3042,10 +3077,37 @@ public class MainActivity extends Activity {
         });
         LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(40),1);
         p.setMargins(dp(2),dp(2),dp(2),dp(2));
-        row.addView(b,p);b.setOnClickListener(v->run.run());
+        row.addView(b,p);
+        b.setOnClickListener(v->run.run());
+        if ("⌂".equals(label)) {
+            b.setOnLongClickListener(v -> {
+                hideKeyboard();
+                if (web != null) {
+                    try { web.stopLoading(); web.setVisibility(View.GONE); } catch (Exception ignored) { }
+                }
+                if (browserTools != null) browserTools.setVisibility(View.GONE);
+                clearDetectedMedia();
+                currentPlayingVideoUrl = "";
+                lastPageMediaTitle = "";
+                lastPageMediaPoster = "";
+                showHome();
+                return true;
+            });
+        }
+    }
+
+    private void hideKeyboard() {
+        try {
+            View focused = getCurrentFocus();
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null && focused != null) imm.hideSoftInputFromWindow(focused.getWindowToken(), 0);
+            if (focused != null) focused.clearFocus();
+        } catch (Exception ignored) { }
     }
 
     private void loadAddress(){
+        hideKeyboard();
         if(address==null)return;
         String input=address.getText().toString().trim();
         if(input.isEmpty())return;
@@ -4358,12 +4420,25 @@ public class MainActivity extends Activity {
                 || ("video.twimg.com".equals(lowerHost) && knownVideoPath);
     }
 
+    private boolean isHlsOrLiveUrl(String candidate) {
+        if (candidate == null) return false;
+        try {
+            Uri uri = Uri.parse(candidate);
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+            String full = candidate.toLowerCase(Locale.ROOT);
+            return path.endsWith(".m3u8") || path.contains("/live/")
+                    || path.startsWith("/live") || full.contains("format=m3u8")
+                    || full.contains("type=live") || full.contains("manifest.m3u8");
+        } catch (Exception ignored) { return false; }
+    }
+
     private void castBestQuality() {
         String best = null;
         int bestScore = -1;
         int bestFormatScore = -1;
         for (String candidate : mediaOrder) {
             if (!isVideoCandidate(candidate)) continue;
+            if (isHlsOrLiveUrl(candidate)) { best = candidate; break; }
             String path = Uri.parse(candidate).getPath();
             String lower = (path == null ? candidate : path).toLowerCase(Locale.ROOT);
             int formatScore;
@@ -4402,6 +4477,7 @@ public class MainActivity extends Activity {
         int bestFormatScore=-1;
         for(String candidate:mediaOrder){
             if(!isVideoCandidate(candidate))continue;
+            if(isHlsOrLiveUrl(candidate)){best=candidate;break;}
             String path=Uri.parse(candidate).getPath();
             String lower=(path==null?candidate:path).toLowerCase(Locale.ROOT);
             int formatScore;
