@@ -3444,11 +3444,17 @@ public class MainActivity extends Activity {
         LinearLayout transport = row();
         transport.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         addLegacyRemoteButton(transport, "⏮️ السابق", PANEL2,
-                () -> sendRemoteCommand("previous"), 1f);
+                () -> {
+                    if (!localMediaQueue.isEmpty()) playAdjacentLocalMedia(-1);
+                    else sendRemoteCommand("previous");
+                }, 1f);
         addLegacyRemoteButton(transport, "⏯️ تشغيل", BLUE,
                 () -> sendRemoteCommand("play_pause"), 1.2f);
         addLegacyRemoteButton(transport, "التالي ⏭️", PANEL2,
-                () -> sendRemoteCommand("next"), 1f);
+                () -> {
+                    if (!localMediaQueue.isEmpty()) playAdjacentLocalMedia(1);
+                    else sendRemoteCommand("next");
+                }, 1f);
         remote.addView(transport, lp(-1, 42));
 
         LinearLayout seek = row();
