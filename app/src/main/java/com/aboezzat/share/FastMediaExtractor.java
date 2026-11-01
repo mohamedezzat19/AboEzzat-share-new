@@ -51,7 +51,7 @@ public final class FastMediaExtractor {
     private static final Pattern[] PROGRESSIVE_PATTERNS = new Pattern[]{
             Pattern.compile("['\\\"](browser_native_hd_url|browser_native_sd_url|playable_url_quality_hd|playable_url)['\\\"]\\s*:\\s*['\\\"]((?:\\\\.|[^'\\\"])*)['\\\"]", Pattern.CASE_INSENSITIVE),
             Pattern.compile("\"video_versions\"\\s*:\\s*\\[\\s*\\{[^}]*?\"url\"\\s*:\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("\"video_dash_manifest\"\\s*:\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE)
+            Pattern.compile("\"video_dash_manifest\"\\s*:\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE),
             Pattern.compile("\"(?:video_url|video_url_hd|video_url_high)\"\\s*:\\s*\"((?:\\\\.|[^\"])*)\"", Pattern.CASE_INSENSITIVE),
     };
 
