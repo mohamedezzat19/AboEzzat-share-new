@@ -105,11 +105,14 @@ public final class FastMediaExtractor {
             String host = Uri.parse(value).getHost();
             if (host == null) return null;
             host = host.toLowerCase(Locale.ROOT);
-            if (host.equals("fb.watch") || host.endsWith(".fb.watch") || host.equals("facebook.com") || host.endsWith(".facebook.com")) return "Facebook";
+            if (host.equals("fb.watch") || host.endsWith(".fb.watch")
+                    || host.equals("fb.me") || host.endsWith(".fb.me")
+                    || host.equals("facebook.com") || host.endsWith(".facebook.com")) return "Facebook";
             if (host.equals("threads.net") || host.endsWith(".threads.net") || host.equals("threads.com") || host.endsWith(".threads.com")) return "Threads";
             if (host.equals("instagram.com") || host.endsWith(".instagram.com")) return "Instagram";
             if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) return "TikTok";
-            if (host.equals("x.com") || host.endsWith(".x.com") || host.equals("twitter.com") || host.endsWith(".twitter.com")) return "X";
+            if (host.equals("t.co") || host.equals("x.com") || host.endsWith(".x.com")
+                    || host.equals("twitter.com") || host.endsWith(".twitter.com")) return "X";
         } catch (Exception ignored) {}
         return null;
     }
