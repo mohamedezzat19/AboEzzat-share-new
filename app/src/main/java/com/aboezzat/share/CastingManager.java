@@ -101,9 +101,17 @@ public final class CastingManager {
         });
     }
 
-    /** Sends a direct media URL and only playback-safe HTTP headers to Receiver. */
+    /** Backward-compatible direct URL sender. */
     public static void sendWithHeaders(String ip, String url, Map<String, String> headers, Callback callback) {
-        final String targetUrl = url == null ? "" : url.trim();
+        sendWithHeaders(ip, new CapturedMedia(url, "", "", "", "", headers), callback);
+    }
+
+    /** Sends a captured media object, preserving playback headers and page metadata. */
+    public static void sendWithHeaders(String ip, CapturedMedia media, Callback callback) {
+        final CapturedMedia captured = media == null
+                ? new CapturedMedia("", "", "", "", "", null) : media;
+        final String targetUrl = captured.url == null ? "" : captured.url.trim();
+        final Map<String, String> headers = captured.headers;
         final Map<String, String> safeHeaders = new java.util.LinkedHashMap<>();
         if (headers != null) {
             for (Map.Entry<String, String> entry : headers.entrySet()) {
@@ -126,6 +134,15 @@ public final class CastingManager {
                 org.json.JSONObject payload = new org.json.JSONObject();
                 payload.put("url", targetUrl);
                 payload.put("headers", new org.json.JSONObject(safeHeaders));
+                if (captured.title != null && !captured.title.trim().isEmpty())
+                    payload.put("title", captured.title.trim());
+                if (captured.posterUrl != null && !captured.posterUrl.trim().isEmpty())
+                    payload.put("poster", captured.posterUrl.trim());
+                if (captured.mimeType != null && !captured.mimeType.trim().isEmpty())
+                    payload.put("mimeType", captured.mimeType.trim());
+                if (captured.sourcePage != null && !captured.sourcePage.trim().isEmpty())
+                    payload.put("sourcePage", captured.sourcePage.trim());
+                payload.put("capturedAt", captured.capturedAt);
                 byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
                 try (Socket socket = new Socket()) {
                     socket.connect(new InetSocketAddress(ip, getPortFor(ip)), 3500);
