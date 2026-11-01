@@ -504,7 +504,10 @@ public class ShareLinkActivity extends Activity {
         Matcher matcher = Pattern.compile("(?i)https?://[^\\s<>\\\"']+")
                 .matcher(sharedContent.toString());
         while (matcher.find()) {
-            String url = matcher.group().replaceAll("[),.?!;،؛؟\\]}]+$", "");
+            String url = matcher.group()
+                    .replace("&amp;", "&").replace("&#38;", "&").replace("&#x26;", "&")
+                    .replace("&quot;", "").replace("&#39;", "")
+                    .replaceAll("[),.?!;،؛؟\\]}]+$", "");
             try {
                 Uri uri = Uri.parse(url);
                 String scheme = uri.getScheme();
