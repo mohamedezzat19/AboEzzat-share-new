@@ -413,7 +413,7 @@ public class MainActivity extends Activity {
                     && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
                 currentPlayingVideoUrl = mediaUrl;
                 Toast.makeText(this, "تم استخراج " + mediaType + " مباشر؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
-                castUrl(mediaUrl);
+                castDetectedMedia(mediaUrl, "Browser page media capture");
             } else {
                 Toast.makeText(this, message + " هبعت الرابط الأصلي للريسيفر من غير فتح متصفح Share.", Toast.LENGTH_LONG).show();
                 sendPlatformLinkToReceiver(pageUrl);
@@ -2961,7 +2961,7 @@ public class MainActivity extends Activity {
 
     private void captureCurrentPlayingVideoFallback() {
         captureCurrentPlayingVideoFallback(new ExtractionResult() {
-            @Override public void success(String mediaUrl, String engine) { castUrl(mediaUrl); }
+            @Override public void success(String mediaUrl, String engine) { castDetectedMedia(mediaUrl, engine); }
             @Override public void failure(String reason) {
                 updateExtractionNotification("فشل التقاط الفيديو", reason, false);
             }
@@ -4391,7 +4391,7 @@ public class MainActivity extends Activity {
             updateExtractionNotification("تم التقاط بث الفيديو", "تم العثور على طلب وسائط مباشر من صفحة الموقع؛ جاري إرساله إلى Receiver…", true);
             extractionSucceeded(best, "WebView Network Capture", generation,
                     headers == null ? java.util.Collections.emptyMap() : headers);
-        } else castUrl(best);
+        } else castDetectedMedia(best, "Browser quality selection");
     }
 
     private void castCurrent(){
@@ -4420,7 +4420,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "الصفحة الحالية مش رابط وسائط مباشر. شغّل المقطع واختار مصدرًا من قائمة المصادر المكتشفة.", Toast.LENGTH_LONG).show();
             return;
         }
-        castUrl(best);
+        castDetectedMedia(best, "Browser current-page selection");
     }
 
     private void showIptvUrlDialog() {
@@ -4606,6 +4606,27 @@ public class MainActivity extends Activity {
         }, "ReceiverPlaybackStatus");
         tracker.setDaemon(true);
         tracker.start();
+    }
+
+    /**
+     * Send a detected browser media URL through the JSON /play endpoint so the
+     * request headers captured from the social CDN (especially Facebook cookies,
+     * Referer and User-Agent) are not discarded by the legacy URL-only GET path.
+     */
+    private void castDetectedMedia(String mediaUrl, String source) {
+        if (mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) {
+            Toast.makeText(this, "رابط الفيديو المكتشف غير صالح", Toast.LENGTH_LONG).show();
+            return;
+        }
+        java.util.Map<String, String> headers;
+        synchronized (mediaOrder) {
+            java.util.Map<String, String> found = mediaRequestHeaders.get(mediaUrl);
+            headers = found == null ? java.util.Collections.emptyMap()
+                    : new java.util.LinkedHashMap<>(found);
+        }
+        int generation = extractionGeneration;
+        extractionSucceeded(mediaUrl, source == null ? "Browser capture" : source,
+                generation, headers);
     }
 
     private void castUrl(String url){
