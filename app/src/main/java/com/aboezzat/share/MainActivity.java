@@ -847,6 +847,10 @@ public class MainActivity extends Activity {
         b.setPadding(dp(12),dp(8),dp(12),dp(8));
         b.setClickable(true);
         b.setFocusable(true);
+        // Keep focus clearly visible when navigating with an Android TV / Fire TV remote.
+        b.setOnFocusChangeListener((v, focused) ->
+                v.setBackground(shape(focused ? PANEL2 : color,
+                        focused ? BLUE : (color == PANEL ? 0 : PANEL2), 13)));
         return b;
     }
 
@@ -857,6 +861,13 @@ public class MainActivity extends Activity {
         b.setIncludeFontPadding(false);
         b.setContentDescription(label.replace("\n", " "));
         bottom.addView(b, new LinearLayout.LayoutParams(0,-1,1));
+        b.setClickable(true);
+        b.setFocusable(true);
+        b.setPadding(dp(2), dp(3), dp(2), dp(3));
+        b.setBackground(shape(PANEL, 0, 10));
+        b.setOnFocusChangeListener((v, focused) ->
+                v.setBackground(shape(focused ? PANEL2 : PANEL,
+                        focused ? BLUE : 0, 10)));
         b.setOnClickListener(v -> {
             if ("home".equals(page)) showHome();
             else if ("browser".equals(page)) showBrowser();
