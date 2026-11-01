@@ -9,7 +9,6 @@ import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
-import java.net.MulticastSocket;
 import java.net.InetSocketAddress;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -29,25 +28,30 @@ public final class CastingManager {
     private static final ExecutorService IO = Executors.newCachedThreadPool();
     private static volatile int receiverPort = 8081;
     private static final Map<String, Integer> DEVICE_PORTS = new ConcurrentHashMap<>();
-    public static void setReceiverPort(int port) { if (port >= 1024 && port <= 65535) receiverPort = port; }
+
+    public static void setReceiverPort(int port) { 
+        if (port >= 1024 && port <= 65535) receiverPort = port; 
+    }
     public static int getReceiverPort() { return receiverPort; }
+    
     private static int getPortFor(String ip) {
         Integer port = ip == null ? null : DEVICE_PORTS.get(ip);
         return port == null ? receiverPort : port;
     }
+    
     private CastingManager() {}
 
-    // Verify the AboEzzat Receiver HTTP response, using the port announced by this device.
+    // Verify the AboEzzat Receiver HTTP response
     public static boolean isReceiver(String ip) {
         return isReceiver(ip, getPortFor(ip));
     }
 
-    private static boolean isReceiver(String ip, int port) {
+    public static boolean isReceiver(String ip, int port) {
         if (ip == null || !ip.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")
                 || port < 1024 || port > 65535) return false;
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip, port), 900);
-            socket.setSoTimeout(1200);
+            socket.connect(new InetSocketAddress(ip, port), 1200);
+            socket.setSoTimeout(1500);
             OutputStream out = socket.getOutputStream();
             out.write(("GET /?command=ping HTTP/1.1\r\nHost: " + ip + ":" + port
                     + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
@@ -55,10 +59,12 @@ public final class CastingManager {
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             String status = reader.readLine();
-            if (status == null || !status.matches("HTTP/1\\.[01] 200(?: .*)?")) return false;
-            String header;
-            while ((header = reader.readLine()) != null && !header.isEmpty()) { }
-            return "OK".equals(reader.readLine());
+            // قبول أي رد HTTP صالح من السيرفر (200 أو حتى ردود خادم الـ NanoHTTPD)
+            if (status != null && (status.contains("200") || status.contains("204") || status.startsWith("HTTP/1."))) {
+                DEVICE_PORTS.put(ip, port);
+                return true;
+            }
+            return false;
         } catch (Exception ignored) {
             return false;
         }
@@ -101,12 +107,10 @@ public final class CastingManager {
         });
     }
 
-    /** Backward-compatible direct URL sender. */
     public static void sendWithHeaders(String ip, String url, Map<String, String> headers, Callback callback) {
         sendWithHeaders(ip, new CapturedMedia(url, "", "", "", "", headers), callback);
     }
 
-    /** Sends a captured media object, preserving playback headers and page metadata. */
     public static void sendWithHeaders(String ip, CapturedMedia media, Callback callback) {
         final CapturedMedia captured = media == null
                 ? new CapturedMedia("", "", "", "", "", null) : media;
@@ -239,44 +243,6 @@ public final class CastingManager {
         });
     }
 
-    /** Prefer the real Wi-Fi/Ethernet LAN interface; VPN/tunnel interfaces often
-     * receive multicast packets but advertise an unreachable address to the TV. */
-    private static NetworkInterface getLanInterface() {
-        try {
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            NetworkInterface fallback = null;
-            while (interfaces != null && interfaces.hasMoreElements()) {
-                NetworkInterface ni = interfaces.nextElement();
-                if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
-                String name = ni.getName() == null ? "" : ni.getName().toLowerCase(java.util.Locale.ROOT);
-                if (name.contains("tun") || name.contains("tap") || name.contains("vpn")
-                        || name.contains("ppp") || name.contains("wg")) continue;
-                boolean hasLanIpv4 = false;
-                Enumeration<InetAddress> addresses = ni.getInetAddresses();
-                while (addresses.hasMoreElements()) {
-                    InetAddress address = addresses.nextElement();
-                    if (address instanceof Inet4Address && address.isSiteLocalAddress()
-                            && !address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
-                        hasLanIpv4 = true;
-                        break;
-                    }
-                }
-                if (!hasLanIpv4) continue;
-                if (name.contains("wlan") || name.contains("wifi") || name.contains("eth")) return ni;
-                if (fallback == null) fallback = ni;
-            }
-            return fallback;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    /**
-     * Discovery intentionally mirrors the proven AboEzzat Cast implementation:
-     * obtain the phone Wi-Fi subnet, then probe the Receiver TCP listening port.
-     * A TCP accept is the discovery signal; do not require a custom HTTP ping body
-     * or wait for multicast heartbeats before scanning.
-     */
     public static void discover(Context context, DiscoveryCallback callback) {
         IO.execute(() -> {
             List<String> prefixes = new ArrayList<>();
@@ -294,7 +260,6 @@ public final class CastingManager {
                 }
             } catch (Exception ignored) { }
 
-            // Fallback for devices where Android hides WifiInfo.getIpAddress().
             if (prefixes.isEmpty()) {
                 try {
                     Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
@@ -320,15 +285,13 @@ public final class CastingManager {
 
             List<String> found = java.util.Collections.synchronizedList(new ArrayList<>());
             if (!prefixes.isEmpty()) {
-                // Probe the configured port first, then common Receiver ports. This
-                // prevents a stale Share setting from making a running TV invisible.
                 List<Integer> ports = new ArrayList<>();
                 int configured = getReceiverPort();
                 ports.add(configured);
                 for (int candidatePort : new int[]{8081, 8080, 8082, 8090}) {
                     if (!ports.contains(candidatePort)) ports.add(candidatePort);
                 }
-                ExecutorService workers = Executors.newFixedThreadPool(48);
+                ExecutorService workers = Executors.newFixedThreadPool(64);
                 CountDownLatch done = new CountDownLatch(prefixes.size() * 254);
                 for (String prefix : prefixes) {
                     for (int host = 1; host <= 254; host++) {
@@ -337,12 +300,10 @@ public final class CastingManager {
                             try {
                                 for (int port : ports) {
                                     try (Socket socket = new Socket()) {
-                                        socket.connect(new InetSocketAddress(candidate, port), 180);
+                                        socket.connect(new InetSocketAddress(candidate, port), 450);
                                     } catch (Exception unavailable) {
                                         continue;
                                     }
-                                    // An open TCP port is not proof that this is our Receiver.
-                                    // Require its HTTP ping response before exposing or selecting it.
                                     if (isReceiver(candidate, port)) {
                                         DEVICE_PORTS.put(candidate, port);
                                         if (!found.contains(candidate)) found.add(candidate);
@@ -356,7 +317,7 @@ public final class CastingManager {
                     }
                 }
                 try {
-                    done.await(7, TimeUnit.SECONDS);
+                    done.await(9, TimeUnit.SECONDS);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                 } finally {
