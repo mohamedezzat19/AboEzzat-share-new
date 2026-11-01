@@ -5088,13 +5088,8 @@ public class MainActivity extends Activity {
 
     private void openLocalMediaPicker() {
         try {
-            localMediaQueue.clear();
-            currentLocalMediaIndex = 0;
-            selectedMediaUri = null;
-            prefs.edit().putString("local_media_queue", "[]").putInt("local_media_index", 0).apply();
-            slideshowQueue.clear();
-            selectedImageUri = null;
-            saveUriQueue("slideshow_queue", slideshowQueue);
+            // Do not clear the current playlist before the user confirms a new selection.
+            // Android may return RESULT_CANCELED; in that case the existing queue must survive.
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             // Show the Android document picker for supported media while allowing mixed multi-select.
