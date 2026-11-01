@@ -413,7 +413,7 @@ public class MainActivity extends Activity {
                     && BrowserEngine.isWebUrl(mediaUrl) && !mediaUrl.equals(pageUrl)) {
                 currentPlayingVideoUrl = mediaUrl;
                 Toast.makeText(this, "تم استخراج " + mediaType + " مباشر؛ جاري إرساله إلى Receiver…", Toast.LENGTH_LONG).show();
-                castDetectedMedia(mediaUrl, "Browser page media capture");
+                castDetectedMedia(mediaUrl, "RapidAPI extraction");
             } else {
                 Toast.makeText(this, message + " هبعت الرابط الأصلي للريسيفر من غير فتح متصفح Share.", Toast.LENGTH_LONG).show();
                 sendPlatformLinkToReceiver(pageUrl);
@@ -445,7 +445,7 @@ public class MainActivity extends Activity {
                             && BrowserEngine.isWebUrl(mediaUrl) && isVideoCandidate(mediaUrl)) {
                         currentPlayingVideoUrl = mediaUrl;
                         Toast.makeText(this, "تم العثور على رابط فيديو من موارد الصفحة؛ جاري إرساله للشاشة…", Toast.LENGTH_LONG).show();
-                        castUrl(mediaUrl);
+                        castDetectedMedia(mediaUrl, "Browser page media capture");
                         return;
                     }
                 }
