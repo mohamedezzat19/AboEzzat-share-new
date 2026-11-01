@@ -314,76 +314,7 @@ public class MainActivity extends Activity {
     /** The background legacy capture owns its timeout and starts optional fallbacks only once. */
     private void startSharedLinkExtraction(String pageUrl) {
         final int generation = ++extractionGeneration;
-        // TikTok used TikWM first in the known-good backup. Keep that fast path,
-        // and fall back to the existing hidden WebView if the API fails.
-        if (isTikTokVideoUrl(pageUrl)) {
-            updateExtractionNotification("TikTok", "جاري استخراج رابط الفيديو مباشرة…", true);
-            extractTikTokWithTikwm(pageUrl, generation);
-            return;
-        }
         openSharedPageForCapture(pageUrl, generation);
-    }
-
-    private boolean isTikTokVideoUrl(String pageUrl) {
-        try {
-            Uri uri = Uri.parse(pageUrl);
-            String host = uri.getHost();
-            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
-            return host != null && (host.equalsIgnoreCase("tiktok.com")
-                    || host.toLowerCase(Locale.ROOT).endsWith(".tiktok.com"))
-                    && !path.contains("/live");
-        } catch (Exception ignored) { return false; }
-    }
-
-    /** Backup implementation: TikWM's data.play URL, then legacy WebView capture on failure. */
-    private void extractTikTokWithTikwm(String pageUrl, int generation) {
-        new Thread(() -> {
-            HttpURLConnection connection = null;
-            try {
-                URL api = new URL("https://www.tikwm.com/api/?url=" + Uri.encode(pageUrl));
-                connection = (HttpURLConnection) api.openConnection();
-                connection.setRequestMethod("GET");
-                connection.setConnectTimeout(12000);
-                connection.setReadTimeout(12000);
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/122.0 Mobile Safari/537.36");
-                int status = connection.getResponseCode();
-                InputStream stream = status >= 200 && status < 300
-                        ? connection.getInputStream() : connection.getErrorStream();
-                if (stream == null) throw new IOException("TikWM HTTP " + status);
-                ByteArrayOutputStream output = new ByteArrayOutputStream();
-                byte[] buffer = new byte[4096];
-                int count;
-                while ((count = stream.read(buffer)) != -1) output.write(buffer, 0, count);
-                stream.close();
-                JSONObject json = new JSONObject(output.toString("UTF-8"));
-                JSONObject data = json.optJSONObject("data");
-                String direct = data == null ? "" : data.optString("play", "").trim();
-                if (json.optInt("code", -1) == 0 && !direct.isEmpty()) {
-                    if (!direct.startsWith("http")) direct = "https://www.tikwm.com" + (direct.startsWith("/") ? "" : "/") + direct;
-                    final String result = direct;
-                    receiverMonitorHandler.post(() -> {
-                        if (generation != extractionGeneration || isFinishing()) return;
-                        if (BrowserEngine.isWebUrl(result) && isVideoCandidate(result)) {
-                            updateExtractionNotification("تم استخراج TikTok", "جاري إرسال الفيديو إلى Receiver…", true);
-                            castExtractedUrlSilently(result, generation);
-                        } else {
-                            openSharedPageForCapture(pageUrl, generation);
-                        }
-                    });
-                    return;
-                }
-            } catch (Exception error) {
-                android.util.Log.w("AboEzzatShare", "TikWM extraction failed; using WebView fallback", error);
-            } finally {
-                if (connection != null) connection.disconnect();
-            }
-            receiverMonitorHandler.post(() -> {
-                if (generation == extractionGeneration && !isFinishing()) {
-                    updateExtractionNotification("تعذر استخراج TikTok مباشرة", "جاري تجربة الالتقاط القديم داخل WebView…", true);
-                    openSharedPageForCapture(pageUrl, generation);
-                }
-            });
-        }, "TikWM-Share-Extractor").start();
     }
 
     /** External shares use all configured Share extractors; RapidAPI remains optional. */
@@ -733,7 +664,7 @@ public class MainActivity extends Activity {
                 + "if(!/^https?:/i.test(u)){var entries=performance.getEntriesByType('resource');var now=performance.now();"
                 + "for(var j=entries.length-1;j>=0;j--){var x=entries[j].name||'';"
                 + "var fresh=now-entries[j].startTime<90000;"
-                + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\.|fbcdn\\.net/i.test(x);"
+                + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"
                 + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onActiveVideoFound(u,document.title||'',best.poster||'');}"
