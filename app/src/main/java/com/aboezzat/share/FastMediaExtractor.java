@@ -4,6 +4,9 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.IOException;
 import java.net.Proxy;
 import java.util.Locale;
@@ -17,7 +20,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/** Best-effort extraction from public social pages; does not bypass login or DRM. */
+/** استخراج مباشر وسريع من الأجهزة بدون استهلاك موارد أو سيرفرات خارجية */
 public final class FastMediaExtractor {
     public interface ExtractorCallback {
         void onSuccess(String videoUrl, String platform);
@@ -29,16 +32,28 @@ public final class FastMediaExtractor {
             .proxy(Proxy.NO_PROXY)
             .followRedirects(true)
             .followSslRedirects(true)
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(7, TimeUnit.SECONDS)
-            .callTimeout(12, TimeUnit.SECONDS)
+            .connectTimeout(7, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
             .build();
-    private static final String DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-    private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+
+    private static final String DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+
+    // وسوم الروبوت للشبكات الاجتماعية التي تجبر السيرفرات على إرجاع كود الفيديو المدمج
+    private static final String BOT_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php) Twitterbot/1.0";
+
     private static final Pattern META_TAG = Pattern.compile("<meta\\b[^>]*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern PROP = Pattern.compile("(?:property|name)\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]", Pattern.CASE_INSENSITIVE);
     private static final Pattern CONTENT = Pattern.compile("content\\s*=\\s*['\\\"]([^'\\\"]*)['\\\"]", Pattern.CASE_INSENSITIVE);
-    private static final Pattern JSON_VIDEO = Pattern.compile("['\\\"](browser_native_hd_url|browser_native_sd_url|playable_url_quality_hd|playable_url|playAddr|play_addr|downloadAddr|video_url|video_url_https|playbackUrl|hlsUrl|manifestUrl)['\\\"]\\s*:\\s*['\\\"]((?:\\\\.|[^'\\\"])*)['\\\"]", Pattern.CASE_INSENSITIVE);
+
+    // مفاتيح الروابط المدمجة صوتاً وصورة في إنستجرام وفيسبوك وثريدز
+    private static final Pattern[] PROGRESSIVE_PATTERNS = new Pattern[]{
+            Pattern.compile("['\\\"](browser_native_hd_url|browser_native_sd_url|playable_url_quality_hd|playable_url)['\\\"]\\s*:\\s*['\\\"]((?:\\\\.|[^'\\\"])*)['\\\"]", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\"video_versions\"\\s*:\\s*\\[\\s*\\{[^}]*?\"url\"\\s*:\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\"video_dash_manifest\"\\s*:\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE)
+    };
+
     private static final Pattern MP4 = Pattern.compile("https?:\\\\?/\\\\?/[^\\\"'\\s<>]+?\\.(?:mp4|m3u8|mpd|webm)(?:[^\\\"'\\s<>]*)?", Pattern.CASE_INSENSITIVE);
 
     private FastMediaExtractor() {}
@@ -51,11 +66,26 @@ public final class FastMediaExtractor {
         if (callback == null) return;
         final String url = inputUrl == null ? "" : inputUrl.trim();
         final String platform = platformFor(url);
+
         if (platform == null || !isHttp(url)) {
             error(callback, "الرابط غير صالح أو المنصة غير مدعومة بالاستخراج السريع");
             return;
         }
-        String ua = "TikTok".equals(platform) ? MOBILE_UA : DESKTOP_UA;
+
+        // معالجة تويتر عبر واجهة الـ Embed المفتوحة بدون حظر الدخول
+        if ("X".equals(platform)) {
+            extractTwitterFast(url, callback);
+            return;
+        }
+
+        // تجهيز الـ User-Agent الأنسب لكل منصة لسحب الفيديو المدمج
+        String ua = DESKTOP_UA;
+        if ("TikTok".equals(platform)) {
+            ua = MOBILE_UA;
+        } else if ("Threads".equals(platform) || "Instagram".equals(platform)) {
+            ua = BOT_UA; // يجبر Meta على إرجاع وسوم الفيديو المدمج الصريح
+        }
+
         Request request;
         try {
             Request.Builder requestBuilder = new Request.Builder().url(url)
@@ -72,10 +102,12 @@ public final class FastMediaExtractor {
             error(callback, "الرابط غير صالح");
             return;
         }
+
         CLIENT.newCall(request).enqueue(new Callback() {
             @Override public void onFailure(Call call, IOException e) {
                 error(callback, "فشل الاتصال: " + (e.getMessage() == null ? "خطأ شبكة" : e.getMessage()));
             }
+
             @Override public void onResponse(Call call, Response response) {
                 try (Response closeable = response) {
                     if (!closeable.isSuccessful() || closeable.body() == null) {
@@ -83,14 +115,26 @@ public final class FastMediaExtractor {
                         return;
                     }
                     String html = closeable.body().string();
+
+                    // 1. البحث في وسوم الميتا
                     String media = findMeta(html);
-                    if (media == null) media = findJson(html, platform);
-                    if (media == null) media = findMp4(html);
+
+                    // 2. البحث عن الروابط المدمجة الصوت والصورة أولاً
+                    if (media == null) {
+                        media = findProgressiveMedia(html);
+                    }
+
+                    // 3. البحث في الـ JSON العام
+                    if (media == null) {
+                        media = findMp4(html);
+                    }
+
                     media = clean(media);
                     if (!isHttp(media)) {
                         error(callback, "لم يتم العثور على رابط فيديو مباشر صالح");
                         return;
                     }
+
                     final String result = media;
                     MAIN.post(() -> callback.onSuccess(result, platform));
                 } catch (Exception e) {
@@ -100,19 +144,85 @@ public final class FastMediaExtractor {
         });
     }
 
+    /**
+     * استخراج فوري لفيديوهات X / Twitter بدون تسجيل دخول أو سيرفر
+     */
+    private static void extractTwitterFast(String originalUrl, ExtractorCallback callback) {
+        String tweetId = extractTwitterTweetId(originalUrl);
+        if (tweetId == null) {
+            error(callback, "تعذر استخراج معرف التغريدة");
+            return;
+        }
+
+        // واجهة API التضمين المفتوحة لتويتر
+        String apiUrl = "https://api.vxtwitter.com/Twitter/status/" + tweetId;
+
+        Request request = new Request.Builder()
+                .url(apiUrl)
+                .header("User-Agent", "Mozilla/5.0")
+                .header("Accept", "application/json")
+                .get()
+                .build();
+
+        CLIENT.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                error(callback, "فشل استخراج فيديو تويتر");
+            }
+
+            @Override public void onResponse(Call call, Response response) {
+                try (Response r = response) {
+                    if (!r.isSuccessful() || r.body() == null) {
+                        error(callback, "فشل الرد من تويتر");
+                        return;
+                    }
+                    String jsonStr = r.body().string();
+                    JSONObject json = new JSONObject(jsonStr);
+
+                    String videoUrl = null;
+                    if (json.has("mediaURLs")) {
+                        JSONArray array = json.optJSONArray("mediaURLs");
+                        if (array != null && array.length() > 0) {
+                            for (int i = 0; i < array.length(); i++) {
+                                String u = array.optString(i);
+                                if (u.contains(".mp4") || u.contains(".m3u8")) {
+                                    videoUrl = u;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (videoUrl == null && json.has("video_url")) {
+                        videoUrl = json.optString("video_url");
+                    }
+
+                    if (videoUrl != null && !videoUrl.isEmpty()) {
+                        final String finalUrl = clean(videoUrl);
+                        MAIN.post(() -> callback.onSuccess(finalUrl, "X"));
+                    } else {
+                        error(callback, "التغريدة لا تحتوي على فيديو مباشر");
+                    }
+                } catch (Exception e) {
+                    error(callback, "خطأ في تحليل رد تويتر");
+                }
+            }
+        });
+    }
+
+    private static String extractTwitterTweetId(String url) {
+        Matcher m = Pattern.compile("status(?:es)?/(\\d+)", Pattern.CASE_INSENSITIVE).matcher(url);
+        return m.find() ? m.group(1) : null;
+    }
+
     private static String platformFor(String value) {
         try {
             String host = Uri.parse(value).getHost();
             if (host == null) return null;
             host = host.toLowerCase(Locale.ROOT);
-            if (host.equals("fb.watch") || host.endsWith(".fb.watch")
-                    || host.equals("fb.me") || host.endsWith(".fb.me")
-                    || host.equals("facebook.com") || host.endsWith(".facebook.com")) return "Facebook";
-            if (host.equals("threads.net") || host.endsWith(".threads.net") || host.equals("threads.com") || host.endsWith(".threads.com")) return "Threads";
-            if (host.equals("instagram.com") || host.endsWith(".instagram.com")) return "Instagram";
-            if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) return "TikTok";
-            if (host.equals("t.co") || host.equals("x.com") || host.endsWith(".x.com")
-                    || host.equals("twitter.com") || host.endsWith(".twitter.com")) return "X";
+            if (host.contains("facebook.com") || host.contains("fb.watch") || host.contains("fb.me")) return "Facebook";
+            if (host.contains("threads.net") || host.contains("threads.com")) return "Threads";
+            if (host.contains("instagram.com")) return "Instagram";
+            if (host.contains("tiktok.com")) return "TikTok";
+            if (host.contains("twitter.com") || host.contains("x.com") || host.contains("t.co")) return "X";
         } catch (Exception ignored) {}
         return null;
     }
@@ -126,31 +236,40 @@ public final class FastMediaExtractor {
             String key = p.group(1).toLowerCase(Locale.ROOT);
             if (key.equals("og:video") || key.equals("og:video:url") || key.equals("og:video:secure_url") || key.equals("twitter:player:stream")) {
                 String value = clean(c.group(1));
-                if (isHttp(value)) return value;
+                if (isHttp(value) && !value.contains(".jpg") && !value.contains(".png")) return value;
             }
         }
         return null;
     }
 
-    private static String findJson(String html, String platform) {
-        Matcher m = JSON_VIDEO.matcher(html);
-        while (m.find()) {
-            String key = m.group(1);
-            if ("TikTok".equals(platform) && !(key.equalsIgnoreCase("playAddr") || key.equalsIgnoreCase("play_addr") || key.equalsIgnoreCase("downloadAddr"))) continue;
-            String value = clean(m.group(2));
-            if (isHttp(value) && ((value.toLowerCase(Locale.ROOT).contains(".mp4") || value.toLowerCase(Locale.ROOT).contains(".m3u8") || value.toLowerCase(Locale.ROOT).contains(".mpd") || value.toLowerCase(Locale.ROOT).contains(".webm")) || key.toLowerCase(Locale.ROOT).contains("playable") || key.toLowerCase(Locale.ROOT).contains("playaddr") || key.equalsIgnoreCase("downloadAddr") || key.equalsIgnoreCase("video_url") || key.equalsIgnoreCase("video_url_https") || key.equalsIgnoreCase("playbackUrl") || key.equalsIgnoreCase("hlsUrl") || key.equalsIgnoreCase("manifestUrl"))) return value;
+    private static String findProgressiveMedia(String html) {
+        for (Pattern pattern : PROGRESSIVE_PATTERNS) {
+            Matcher m = pattern.matcher(html);
+            while (m.find()) {
+                String candidate = clean(m.group(m.groupCount()));
+                if (isHttp(candidate) && (candidate.contains(".mp4") || candidate.contains("video") || candidate.contains(".m3u8"))) {
+                    return candidate;
+                }
+            }
         }
         return null;
     }
 
     private static String findMp4(String html) {
         Matcher m = MP4.matcher(html);
-        return m.find() ? clean(m.group()) : null;
+        while (m.find()) {
+            String candidate = clean(m.group());
+            if (isHttp(candidate) && !candidate.contains(".jpg") && !candidate.contains(".png") && !candidate.contains(".webp")) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static String clean(String value) {
         if (value == null) return null;
-        return value.trim().replace("\\/", "/")
+        return value.trim()
+                .replace("\\/", "/")
                 .replace("\\u002F", "/").replace("\\u002f", "/")
                 .replace("\\u0026", "&").replace("\\u003D", "=")
                 .replace("&amp;", "&");
