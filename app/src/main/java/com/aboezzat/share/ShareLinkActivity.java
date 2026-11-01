@@ -464,24 +464,57 @@ public class ShareLinkActivity extends Activity {
 
     private String extractUrl(Intent intent) {
         if (intent == null) return null;
-        String candidate = null;
-        if (Intent.ACTION_SEND.equals(intent.getAction())) {
-            CharSequence sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-            candidate = sharedText == null ? null : sharedText.toString();
-        }
-        if (candidate == null || candidate.trim().isEmpty()) return null;
-        Matcher matcher = Pattern.compile("(?i)https?://[^\\s<>\\\"']+").matcher(candidate);
-        if (!matcher.find()) return null;
-        String url = matcher.group().replaceAll("[),.?!;،؛؟\\]}]+$", "");
+        StringBuilder sharedContent = new StringBuilder();
+
+        // Most social apps use EXTRA_TEXT, but some put the shared URL in
+        // ClipData, EXTRA_STREAM, or the intent data field instead.
         try {
-            Uri uri = Uri.parse(url);
-            String scheme = uri.getScheme();
-            if (uri.getHost() == null
-                    || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) return null;
-            return url;
-        } catch (Exception ignored) {
-            return null;
+            if (Intent.ACTION_SEND.equals(intent.getAction())) {
+                CharSequence sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+                if (sharedText != null) sharedContent.append(sharedText).append(' ');
+            }
+        } catch (Exception ignored) { }
+
+        try {
+            android.content.ClipData clip = intent.getClipData();
+            if (clip != null) {
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    android.content.ClipData.Item item = clip.getItemAt(i);
+                    if (item == null) continue;
+                    CharSequence text = item.getText();
+                    if (text != null) sharedContent.append(text).append(' ');
+                    Uri itemUri = item.getUri();
+                    if (itemUri != null) sharedContent.append(itemUri.toString()).append(' ');
+                }
+            }
+        } catch (Exception ignored) { }
+
+        try {
+            Object stream = intent.getExtras() == null ? null
+                    : intent.getExtras().get(Intent.EXTRA_STREAM);
+            if (stream instanceof Uri) sharedContent.append(stream.toString()).append(' ');
+            else if (stream instanceof CharSequence) sharedContent.append(stream).append(' ');
+        } catch (Exception ignored) { }
+
+        try {
+            Uri data = intent.getData();
+            if (data != null) sharedContent.append(data.toString()).append(' ');
+        } catch (Exception ignored) { }
+
+        Matcher matcher = Pattern.compile("(?i)https?://[^\\s<>\\\"']+")
+                .matcher(sharedContent.toString());
+        while (matcher.find()) {
+            String url = matcher.group().replaceAll("[),.?!;،؛؟\\]}]+$", "");
+            try {
+                Uri uri = Uri.parse(url);
+                String scheme = uri.getScheme();
+                if (uri.getHost() != null
+                        && ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                    return url;
+                }
+            } catch (Exception ignored) { }
         }
+        return null;
     }
 
     private void showResultNotification(String message) {
