@@ -67,10 +67,15 @@ public class ShareLinkActivity extends Activity {
         }
         originalSharedUrl = url;
 
+        // Load the same configured Receiver port as the main Share app. Without this,
+        // background shares silently fall back to 8081 even when the user changed the port.
+        android.content.SharedPreferences settings =
+                getSharedPreferences("aboezzat_browser", MODE_PRIVATE);
+        CastingManager.setReceiverPort(settings.getInt("receiver_port", 8081));
+
         // Honor the IP explicitly selected in Share settings. A temporary failure
         // must not trigger discovery that silently switches to another receiver.
-        String savedIp = getSharedPreferences("aboezzat_browser", MODE_PRIVATE)
-                .getString("receiver_ip", "").trim();
+        String savedIp = settings.getString("receiver_ip", "").trim();
         if (!savedIp.isEmpty()) {
             activeReceiverIp = savedIp;
             selectedReceiver = true;
