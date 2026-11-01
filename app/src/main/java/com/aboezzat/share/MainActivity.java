@@ -758,6 +758,11 @@ public class MainActivity extends Activity {
             return;
         }
 
+        // Keep only URIs that this app can actually open now. A few share providers
+        // hand out stale or write-only content URIs; queuing those would make the TV
+        // receive a URL that can never be served. Do not replace the current queue
+        // unless at least one incoming item is readable.
+        java.util.ArrayList<Uri> readable = new java.util.ArrayList<>();
         for (Uri uri : incoming) {
             try {
                 getContentResolver().takePersistableUriPermission(
@@ -765,10 +770,22 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
                 // ACTION_SEND grants are often temporary; use the granted URI for this session.
             }
+            try (android.content.res.AssetFileDescriptor descriptor =
+                         getContentResolver().openAssetFileDescriptor(uri, "r")) {
+                if (descriptor != null) readable.add(uri);
+            } catch (Exception unreadable) {
+                android.util.Log.w("AboEzzatShare", "Shared media URI is not readable: " + uri, unreadable);
+            }
+        }
+        if (readable.isEmpty()) {
+            Toast.makeText(this,
+                    "التطبيق المرسل لم يمنح إذن قراءة الملفات؛ قائمة التشغيل الحالية محفوظة",
+                    Toast.LENGTH_LONG).show();
+            return;
         }
 
         localMediaQueue.clear();
-        localMediaQueue.addAll(incoming);
+        localMediaQueue.addAll(readable);
         currentLocalMediaIndex = 0;
         selectedMediaUri = localMediaQueue.get(0);
         // Persist the queue/index just like files selected through the document picker.
