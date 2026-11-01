@@ -3260,6 +3260,7 @@ public class MainActivity extends Activity {
         String title = lastPageMediaTitle == null || lastPageMediaTitle.trim().isEmpty()
                 ? "مصادر الفيديو المكتشفة" : lastPageMediaTitle.trim();
         LinearLayout list = column();
+        final View[] firstChoice = new View[1];
         list.setPadding(dp(10), dp(4), dp(10), dp(4));
         for (int i = 0; i < snapshot.size(); i++) {
             final String selectedUrl = snapshot.get(i);
@@ -3271,6 +3272,7 @@ public class MainActivity extends Activity {
             item.setFocusable(true);
             item.setClickable(true);
             item.setContentDescription("اختيار مصدر الفيديو رقم " + (i + 1));
+            if (i == 0) firstChoice[0] = item;
 
             ImageView poster = new ImageView(this);
             poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -3341,9 +3343,7 @@ public class MainActivity extends Activity {
                 .setNegativeButton("إغلاق", null)
                 .create();
         dialog.setOnShowListener(ignored -> {
-            if (!snapshot.isEmpty() && dialog.getButton(AlertDialog.BUTTON_POSITIVE) != null) {
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setFocusable(true);
-            }
+            if (firstChoice[0] != null) firstChoice[0].requestFocus();
         });
         dialog.show();
     }
