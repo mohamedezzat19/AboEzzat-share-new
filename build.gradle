@@ -1,3 +1,50 @@
 plugins {
-    id 'com.android.application' version '8.4.2' apply false
+    id 'com.android.application'
+}
+
+def ciVersionCode = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+def ciVersionName = "1.0.${ciVersionCode}"
+
+android {
+    namespace 'com.aboezzat.share'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.aboezzat.share'
+        minSdk 23
+        targetSdk 34
+        versionCode ciVersionCode
+        versionName ciVersionName
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv('KEYSTORE_FILE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('KEYSTORE_FILE')) signingConfig signingConfigs.release
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.webkit:webkit:1.10.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

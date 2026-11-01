@@ -2098,56 +2098,65 @@ public class MainActivity extends Activity {
         refreshConnectionLabel();
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
     private LinearLayout buildInstalledSocialLanding() {
+        // Website shortcuts, never launchers for installed native apps.
         LinearLayout landing = column();
         landing.setPadding(dp(8), dp(12), dp(8), dp(8));
-        TextView heading = text("التطبيقات", 15, WHITE, true);
+        TextView heading = text("افتح المنصة داخل متصفح AboEzzat", 15, WHITE, true);
         heading.setGravity(Gravity.CENTER);
-        landing.addView(heading, lp(-1, 30));
+        landing.addView(heading, lp(-1, 34));
 
-        String[][] apps = {
-                {"YouTube", "com.google.android.youtube"},
-                {"Facebook", "com.facebook.katana"},
-                {"TikTok", "com.zhiliaoapp.musically"},
-                {"Instagram", "com.instagram.android"},
-                {"X", "com.twitter.android"},
-                {"Threads", "com.instagram.barcelona"}
+        String[][] sites = {
+                {"YouTube", "https://m.youtube.com/", "com.google.android.youtube", "▶"},
+                {"Facebook", "https://m.facebook.com/", "com.facebook.katana", "f"},
+                {"TikTok", "https://www.tiktok.com/", "com.zhiliaoapp.musically", "♪"},
+                {"Instagram", "https://www.instagram.com/", "com.instagram.android", "◎"},
+                {"X", "https://x.com/", "com.twitter.android", "𝕏"},
+                {"Threads", "https://www.threads.net/", "com.instagram.barcelona", "@"}
         };
+
         HorizontalScrollView horizontal = new HorizontalScrollView(this);
         horizontal.setHorizontalScrollBarEnabled(false);
         LinearLayout strip = row();
         strip.setGravity(Gravity.CENTER_VERTICAL);
-        for (String[] app : apps) {
-            android.content.Intent launch = getPackageManager().getLaunchIntentForPackage(app[1]);
-            if (launch == null) continue;
+        for (String[] site : sites) {
+            final String siteName = site[0];
+            final String siteUrl = site[1];
             LinearLayout tile = column();
             tile.setGravity(Gravity.CENTER);
             tile.setPadding(dp(5), dp(4), dp(5), dp(4));
-            ImageView icon = new ImageView(this);
-            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            try { icon.setImageDrawable(getPackageManager().getApplicationIcon(app[1])); }
-            catch (Exception ignored) { continue; }
-            tile.addView(icon, lp(48, 48));
-            TextView label = text(app[0], 10, WHITE, true);
+            try {
+                android.graphics.drawable.Drawable installedIcon =
+                        getPackageManager().getApplicationIcon(site[2]);
+                ImageView icon = new ImageView(this);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                icon.setImageDrawable(installedIcon);
+                tile.addView(icon, lp(48, 48));
+            } catch (Exception notInstalled) {
+                TextView icon = text(site[3], 25, GOLD, true);
+                icon.setGravity(Gravity.CENTER);
+                icon.setBackground(shape(PANEL2, BLUE, 14));
+                tile.addView(icon, lp(48, 48));
+            }
+            TextView label = text(siteName, 10, WHITE, true);
             label.setGravity(Gravity.CENTER);
             tile.addView(label, lp(62, 22));
-            tile.setContentDescription(app[0]);
+            tile.setContentDescription("فتح " + siteName + " داخل المتصفح");
             tile.setFocusable(true);
             tile.setOnClickListener(v -> {
-                try { launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(launch); }
-                catch (Exception e) { Toast.makeText(this, "التطبيق غير متاح", Toast.LENGTH_SHORT).show(); }
+                if (web == null) showBrowser();
+                if (web != null) {
+                    browserLanding.setVisibility(View.GONE);
+                    web.setVisibility(View.VISIBLE);
+                    web.loadUrl(siteUrl);
+                } else {
+                    Toast.makeText(MainActivity.this, "تعذّر تجهيز المتصفح الداخلي", Toast.LENGTH_SHORT).show();
+                }
             });
             strip.addView(tile, lp(68, 82));
         }
-        if (strip.getChildCount() == 0) {
-            TextView empty = text("لا توجد تطبيقات سوشيال مثبتة", 12, MUTED, false);
-            empty.setGravity(Gravity.CENTER);
-            landing.addView(empty, lp(-1, 70));
-        } else {
-            horizontal.addView(strip);
-            landing.addView(horizontal, lp(-1, 90));
-        }
+        horizontal.addView(strip);
+        landing.addView(horizontal, lp(-1, 90));
         return landing;
     }
 
@@ -2393,6 +2402,10 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient(){
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
+                if (view == web && browserLanding != null) {
+                    browserLanding.setVisibility(View.GONE);
+                    web.setVisibility(View.VISIBLE);
+                }
                 if (view == web && BrowserEngine.isWebUrl(url)) {
                     // Each new page/video must get fresh title, poster and stream rows.
                     // Otherwise the previous Facebook/Instagram clip can remain selected.
@@ -2402,11 +2415,22 @@ public class MainActivity extends Activity {
                     clearDetectedMedia();
                 }
             }
-            @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
-                Uri u=request.getUrl();
-                if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(u.toString())) return true;
-                if("http".equals(u.getScheme())||"https".equals(u.getScheme())) return false;
-                return true;
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request == null ? null : request.getUrl();
+                if (uri == null) return true;
+                String target = uri.toString();
+                if (prefs.getBoolean("browser_adblock", true) && isKnownAdRequest(target)) return true;
+                String scheme = uri.getScheme();
+                // Keep web navigation in WebView; block app/deep-link schemes.
+                return scheme == null || !("http".equalsIgnoreCase(scheme)
+                        || "https".equalsIgnoreCase(scheme));
+            }
+            @Override @SuppressWarnings("deprecation")
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (url == null) return true;
+                String scheme = Uri.parse(url).getScheme();
+                return scheme == null || !("http".equalsIgnoreCase(scheme)
+                        || "https".equalsIgnoreCase(scheme));
             }
             @Override public void onSafeBrowsingHit(WebView view, WebResourceRequest request,
                     int threatType, android.webkit.SafeBrowsingResponse response) {
