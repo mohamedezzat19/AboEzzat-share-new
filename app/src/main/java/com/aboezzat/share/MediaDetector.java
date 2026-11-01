@@ -43,17 +43,18 @@ public final class MediaDetector {
             .readTimeout(18, TimeUnit.SECONDS)
             .build();
 
-    private static final Pattern URL_PATTERN = Pattern.compile(
-            "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpe?g|png|webp|gif|bmp|avif)(?:\\?[^\\s\\\"'<>]*)?)");
+    // حصر البحث على روابط الفيديو فقط واستبعاد الصور نهائياً
+    private static final Pattern VIDEO_URL_PATTERN = Pattern.compile(
+            "(?i)(https?://[^\\s\\\"'<>]+?\\.(?:mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)(?:\\?[^\\s\\\"'<>]*)?)");
 
-    private static final Pattern MEDIA_EXTENSION = Pattern.compile(
-            "(?i)\\.(?:mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpe?g|png|webp|gif|bmp|avif)$");
+    private static final Pattern VIDEO_EXTENSION = Pattern.compile(
+            "(?i)\\.(?:mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$");
 
-    // استخراج الروابط المدمجة من كود الـ JSON لمنصات Meta والتيك توك
-    private static final Pattern[] JSON_MEDIA_PATTERNS = new Pattern[]{
+    // استخراج روابط الفيديو المباشرة فقط من كود JSON المنصات
+    private static final Pattern[] JSON_VIDEO_PATTERNS = new Pattern[]{
             Pattern.compile("\"video_versions\"\\s*:\\s*\\[\\s*\\{[^}]*?\"url\"\\s*:\\s*\"([^\"]+)\""),
-            Pattern.compile("\"playable_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"playable_url_quality_hd\"\\s*:\\s*\"([^\"]+)\""),
+            Pattern.compile("\"playable_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"video_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"browser_native_hd_url\"\\s*:\\s*\"([^\"]+)\""),
             Pattern.compile("\"browser_native_sd_url\"\\s*:\\s*\"([^\"]+)\""),
@@ -70,9 +71,6 @@ public final class MediaDetector {
 
     private MediaDetector() {}
 
-    /**
-     * تنظيف الروابط من معاملات التجزئة والتشفير الخاصة بـ JavaScript
-     */
     public static String cleanMediaUrl(String url) {
         if (url == null) return "";
         String clean = url.trim()
@@ -94,29 +92,11 @@ public final class MediaDetector {
         if (url == null) return "Video";
         String lower = url.toLowerCase(Locale.ROOT);
 
-        if (lower.contains("audio") || lower.contains("dash_ln_heaac")
-                || (lower.contains("bytestart=0") && lower.contains("mime=audio"))) {
-            return "Audio";
-        }
-        if (lower.contains(".flv") || lower.contains("pull-")) {
-            return "Live-FLV";
-        }
-        if (lower.contains(".m3u8")) {
-            return "HLS";
-        }
-        if (lower.contains(".mpd")) {
-            return "DASH";
-        }
-        if (lower.contains(".mp3") || lower.contains(".m4a") || lower.contains(".aac")
-                || lower.contains(".ogg") || lower.contains(".oga") || lower.contains(".opus")
-                || lower.contains(".wav") || lower.contains(".flac")) {
-            return "Audio";
-        }
-        if (lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".png")
-                || lower.contains(".webp") || lower.contains(".gif") || lower.contains(".bmp")
-                || lower.contains(".avif")) {
-            return "Image";
-        }
+        if (lower.contains(".m3u8")) return "HLS";
+        if (lower.contains(".mpd")) return "DASH";
+        if (lower.contains(".flv") || lower.contains("pull-")) return "Live-FLV";
+        if (lower.contains("audio") || lower.contains(".mp3") || lower.contains(".m4a") || lower.contains(".aac")) return "Audio";
+
         return "Video";
     }
 
@@ -125,9 +105,6 @@ public final class MediaDetector {
         return m.find() ? m.group(1) + "p" : "جودة قياسية";
     }
 
-    /**
-     * التحقق الشامل من صلاحية الرابط المباشر للتشغيل مع دعم إنستجرام وفيسبوك وتيك توك
-     */
     public static boolean isDirectVideoUrl(String url) {
         if (url == null || url.trim().isEmpty()) return false;
         if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
@@ -138,6 +115,12 @@ public final class MediaDetector {
             String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
             String lower = url.toLowerCase(Locale.ROOT);
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+
+            // رفض الصور قطعياً
+            if (lowerPath.matches(".*\\.(jpe?g|png|webp|gif|bmp|avif)$")
+                    || lower.contains(".jpg?") || lower.contains(".jpeg?") || lower.contains(".png?") || lower.contains(".webp?")) {
+                return false;
+            }
 
             for (String ad : AD_DOMAINS) {
                 if (lower.contains(ad)) return false;
@@ -150,34 +133,35 @@ public final class MediaDetector {
                 return false;
             }
 
-            // امتدادات الفيديو الصريحة
-            if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd)$")) return true;
+            // امتدادات الفيديو
+            if (lowerPath.matches(".*\\.(mp4|m4v|webm|mov|mkv|3gp|flv|m3u8|mpd)$")) return true;
 
-            // البث المباشر
+            // روابط البث المباشر
             if (lower.contains("pull-") || lower.contains(".flv") || lower.contains(".m3u8")) return true;
 
             // تويتر / X
             if (host.equals("video.twimg.com") || lower.contains("/ext_tw_video/")
                     || lower.contains("/amplify_video/") || lower.contains("/tweet_video/")) return true;
 
-            // منصات تيك توك و ByteDance
+            // تيك توك
             if ((host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
                     || host.contains("ibytedtos"))
                     && (lowerPath.contains("/video/") || lowerPath.contains("/obj/") || lowerPath.contains("/tos"))) return true;
 
-            // إنستجرام وفيسبوك (توسيع القبول ليشمل سيرفرات الميديا حتى بدون امتداد .mp4 ظاهري)
+            // إنستجرام وفيسبوك (مقاطع الفيديو فقط مع تجنب الصور)
             if (host.contains("cdninstagram.com") || host.contains("fbcdn.net")) {
-                if (lowerPath.contains("/v/") || lowerPath.contains("/t50.") || lowerPath.contains("/t42.")
-                        || lower.contains("efg=") || lower.contains("video") || lower.contains("_n.mp4")) {
+                if ((lowerPath.contains("/v/") || lowerPath.contains("/t50.") || lowerPath.contains("/t42.")
+                        || lower.contains("video") || lower.contains("_n.mp4"))
+                        && !lower.contains(".jpg") && !lower.contains(".png") && !lower.contains(".webp")) {
                     return true;
                 }
             }
 
-            // وسوم الفيديو وـ MIME الصريحة
             if (lower.contains("mime=video") || lower.contains("type=video")
-                    || lower.contains("contenttype=video") || lower.contains("content-type=video")
-                    || lower.contains("format=mp4") || lower.contains("video_playback")
-                    || lower.contains("/videoplayback")) return true;
+                    || lower.contains("contenttype=video") || lower.contains("format=mp4")
+                    || lower.contains("video_playback") || lower.contains("/videoplayback")) {
+                return true;
+            }
 
             return false;
         } catch (Exception ignored) {
@@ -189,6 +173,12 @@ public final class MediaDetector {
         if (url == null || (!url.startsWith("http://") && !url.startsWith("https://"))) return false;
 
         String lower = url.toLowerCase(Locale.ROOT);
+
+        // منع الصور نهائياً
+        if (lower.matches(".*\\.(jpe?g|png|webp|gif|bmp|avif)(?:\\?.*)?$")
+                || lower.contains(".jpg?") || lower.contains(".png?") || lower.contains(".webp?")) {
+            return false;
+        }
 
         for (String ad : AD_DOMAINS) {
             if (lower.contains(ad)) return false;
@@ -205,19 +195,10 @@ public final class MediaDetector {
             Uri uri = Uri.parse(url);
             String path = uri.getPath();
             String lowerPath = (path == null ? "" : path).toLowerCase(Locale.ROOT);
-            if (MEDIA_EXTENSION.matcher(lowerPath).find()) return true;
+            if (VIDEO_EXTENSION.matcher(lowerPath).find()) return true;
         } catch (Exception ignored) {}
 
-        if (isDirectVideoUrl(url)) return true;
-
-        return lower.contains("mime=video") || lower.contains("mime=audio")
-                || lower.contains("dash_ln_heaac") || lower.contains("pull-")
-                || lower.contains("video_playback") || lower.contains("/videoplayback")
-                || lower.contains("format=mp4") || lower.contains("type=video")
-                || lower.contains("type=audio") || lower.contains("contenttype=video")
-                || lower.contains("content-type=video")
-                || (lower.contains("fbcdn.net") && (lower.contains("video") || lower.contains("audio")))
-                || (lower.contains("cdninstagram.com") && lower.contains("efg="));
+        return isDirectVideoUrl(url);
     }
 
     private static String resolveMediaUrl(HttpUrl base, String raw) {
@@ -233,19 +214,14 @@ public final class MediaDetector {
         return cleaned;
     }
 
-    /**
-     * الفحص التعاقبي الكامل: فحص مباشر -> فحص الـ Engine التلقائي من الـ SharedPreferences -> فحص HTML كخطة بديلة
-     */
     public static void inspectPage(Context context, String pageUrl, Listener listener) {
         if (pageUrl == null || (!pageUrl.startsWith("http://") && !pageUrl.startsWith("https://")) || listener == null) return;
 
-        // 1. إذا كان رابطاً مباشراً، تمريره فوراً
         if (isDirectVideoUrl(pageUrl)) {
             dispatchMediaFound(listener, pageUrl, kind(pageUrl), quality(pageUrl));
             return;
         }
 
-        // 2. محاولة سحب التوكن والسيرفر تلقائياً من إعدادات التطبيق وتجربة الـ Engine
         boolean engineAttempted = false;
         if (context != null) {
             SharedPreferences prefs = context.getSharedPreferences("aboezzat_browser", Context.MODE_PRIVATE);
@@ -259,15 +235,11 @@ public final class MediaDetector {
             }
         }
 
-        // 3. إذا لم يكن الـ Engine متوفراً، الانتقال لفحص صفحة الـ HTML
         if (!engineAttempted) {
             fallbackInspectHtml(pageUrl, listener);
         }
     }
 
-    /**
-     * دعم الدالة القديمة لضمان عدم حدوث أي خطأ توافق داخل أجزاء التطبيق الأخرى
-     */
     public static void inspectPage(String pageUrl, Listener listener) {
         inspectPage(null, pageUrl, listener);
     }
@@ -290,13 +262,9 @@ public final class MediaDetector {
                     .build();
 
             CLIENT.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    onFallback.run();
-                }
+                @Override public void onFailure(Call call, IOException e) { onFallback.run(); }
 
-                @Override
-                public void onResponse(Call call, Response response) {
+                @Override public void onResponse(Call call, Response response) {
                     try (Response r = response) {
                         if (!r.isSuccessful() || r.body() == null) {
                             onFallback.run();
@@ -315,14 +283,17 @@ public final class MediaDetector {
                                 for (int i = formats.length() - 1; i >= 0; i--) {
                                     JSONObject fmt = formats.optJSONObject(i);
                                     if (fmt != null && fmt.has("url")) {
-                                        directUrl = fmt.optString("url");
-                                        break;
+                                        String candidateUrl = fmt.optString("url");
+                                        if (isDirectVideoUrl(candidateUrl)) {
+                                            directUrl = candidateUrl;
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        if (directUrl != null && !directUrl.trim().isEmpty()) {
+                        if (directUrl != null && !directUrl.trim().isEmpty() && isDirectVideoUrl(directUrl)) {
                             String finalCleanUrl = cleanMediaUrl(directUrl);
                             dispatchMediaFound(listener, finalCleanUrl, kind(finalCleanUrl), quality(finalCleanUrl));
                         } else {
@@ -341,42 +312,34 @@ public final class MediaDetector {
     private static void fallbackInspectHtml(String pageUrl, Listener listener) {
         Request request = new Request.Builder()
                 .url(pageUrl)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "en-US,en;q=0.9,ar;q=0.8")
-                .header("Sec-Fetch-Mode", "navigate")
                 .build();
 
         CLIENT.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {}
+            @Override public void onFailure(Call call, IOException e) {}
 
-            @Override
-            public void onResponse(Call call, Response response) {
+            @Override public void onResponse(Call call, Response response) {
                 try (Response r = response) {
                     if (!r.isSuccessful() || r.body() == null) return;
 
                     String type = r.header("Content-Type", "");
                     String finalUrl = cleanMediaUrl(r.request().url().toString());
 
-                    if (type != null && (type.toLowerCase(Locale.ROOT).startsWith("video/")
-                            || type.toLowerCase(Locale.ROOT).startsWith("audio/"))) {
+                    // التأكد من أن الرابط النهائي فيديو وليس صورة
+                    if (type != null && type.toLowerCase(Locale.ROOT).startsWith("video/")) {
                         dispatchMediaFound(listener, finalUrl, kind(finalUrl), quality(finalUrl));
                         return;
                     }
 
                     String html;
-                    try {
-                        html = r.body().string();
-                    } catch (IOException e) {
-                        return;
-                    }
+                    try { html = r.body().string(); } catch (IOException e) { return; }
 
                     Set<String> found = new LinkedHashSet<>();
                     HttpUrl baseHttpUrl = r.request().url();
 
-                    // 1. فحص أنماط كود JSON الداخلي (Instagram / Facebook / Threads)
-                    for (Pattern p : JSON_MEDIA_PATTERNS) {
+                    // فحص وسوم JSON
+                    for (Pattern p : JSON_VIDEO_PATTERNS) {
                         Matcher jm = p.matcher(html);
                         while (jm.find()) {
                             String raw = jm.group(1);
@@ -387,11 +350,11 @@ public final class MediaDetector {
                         }
                     }
 
-                    // 2. فحص وسوم الميتا
+                    // وسوم الميتا للفيديو فقط
                     String[] tags = {
                             "(?is)<meta[^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)[\\\"'][^>]+content=[\\\"']([^\\\"']+)",
                             "(?is)<meta[^>]+content=[\\\"']([^\\\"']+)[\\\"'][^>]+(?:property|name)=[\\\"'](?:og:video|og:video:url|og:video:secure_url|twitter:player:stream)[\\\"']",
-                            "(?is)<(?:video|source|audio)[^>]+(?:src|data-src)=[\\\"']([^\\\"']+)"
+                            "(?is)<(?:video|source)[^>]+(?:src|data-src)=[\\\"']([^\\\"']+)"
                     };
                     for (String tag : tags) {
                         Matcher tm = Pattern.compile(tag).matcher(html);
@@ -403,8 +366,8 @@ public final class MediaDetector {
                         }
                     }
 
-                    // 3. مسح عام للامتدادات
-                    Matcher m = URL_PATTERN.matcher(html);
+                    // مسح الامتدادات
+                    Matcher m = VIDEO_URL_PATTERN.matcher(html);
                     while (m.find()) {
                         String candidate = resolveMediaUrl(baseHttpUrl, m.group(1));
                         if (candidate != null && isMediaCandidate(candidate)) {
