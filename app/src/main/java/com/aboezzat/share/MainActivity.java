@@ -127,6 +127,10 @@ public class MainActivity extends Activity {
     private boolean discoveryInProgress = false;
     private int receiverMonitorCycles = 0;
     private String pendingPlatformUrl;
+    // Preserve an extracted stream and its authentication headers while Receiver discovery runs.
+    private volatile String pendingExtractedMediaUrl = "";
+    private volatile java.util.Map<String, String> pendingExtractedMediaHeaders = java.util.Collections.emptyMap();
+    private volatile int pendingExtractedMediaGeneration = 0;
     private String pendingAutoCastPageUrl = "";
     private final Runnable autoCastDetectedMediaRunnable = () -> {
         if (web == null || isFinishing() || !"browser".equals(currentPage)) return;
@@ -2742,21 +2746,42 @@ public class MainActivity extends Activity {
     }
 
     private void castExtractedUrlSilently(String mediaUrl, int generation, java.util.Map<String, String> headers) {
+        if (generation != extractionGeneration || mediaUrl == null || !BrowserEngine.isWebUrl(mediaUrl)) return;
+        currentPlayingVideoUrl = mediaUrl;
+        if (castActionButton != null) castActionButton.clearAnimation();
         if (receiverIp == null || receiverIp.trim().isEmpty()) {
-            String message = "نجح الاستخراج، لكن حدّد جهاز Receiver من إعدادات الاستقبال أولًا.";
-            updateExtractionNotification("تم استخراج الفيديو", message, false);
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            pendingExtractedMediaUrl = mediaUrl;
+            pendingExtractedMediaHeaders = headers == null ? java.util.Collections.emptyMap()
+                    : new java.util.LinkedHashMap<>(headers);
+            pendingExtractedMediaGeneration = generation;
+            updateExtractionNotification("تم استخراج الفيديو",
+                    "جاري البحث عن جهاز Receiver لإرسال الفيديو المستخرج…", true);
+            discoverReceiverInBackground();
             return;
         }
-        final String ip = receiverIp.trim();
+        sendExtractedMediaToReceiver(receiverIp.trim(), mediaUrl, generation, headers);
+    }
+
+    private void sendPendingExtractedMediaToReceiver(String ip) {
+        String mediaUrl = pendingExtractedMediaUrl;
+        int generation = pendingExtractedMediaGeneration;
+        java.util.Map<String, String> headers = pendingExtractedMediaHeaders;
+        pendingExtractedMediaUrl = "";
+        pendingExtractedMediaHeaders = java.util.Collections.emptyMap();
+        if (!mediaUrl.isEmpty()) sendExtractedMediaToReceiver(ip, mediaUrl, generation, headers);
+    }
+
+    private void sendExtractedMediaToReceiver(String ip, String mediaUrl, int generation,
+                                               java.util.Map<String, String> headers) {
+        if (generation != extractionGeneration || ip == null || ip.trim().isEmpty()) return;
         rememberCastUrl(mediaUrl);
         CastingManager.sendWithHeaders(ip, mediaUrl, headers, (success, message) -> runOnUiThread(() -> {
             if (generation != extractionGeneration || isFinishing()) return;
             receiverConnected = success;
             refreshConnectionLabel();
             if (success) {
-                String notice = "Receiver استلم طلب التشغيل؛ جاري التحقق من بدء الفيديو على الشاشة.";
-                updateExtractionNotification("تم إرسال الفيديو", notice, false);
+                updateExtractionNotification("تم إرسال الفيديو",
+                        "Receiver استلم الرابط؛ جاري التحقق من بدء تشغيل الفيديو على الشاشة.", false);
                 trackReceiverExtraction(ip);
             } else {
                 String error = message == null ? "تعذر إرسال الرابط إلى Receiver." : message;
@@ -3997,6 +4022,12 @@ public class MainActivity extends Activity {
                                 "لم يتم العثور على الريسيفر الصحيح. تأكد أن الجهازين على نفس شبكة Wi-Fi.",
                                 Toast.LENGTH_LONG).show();
                     }
+                    if (!pendingExtractedMediaUrl.isEmpty()) {
+                        pendingExtractedMediaUrl = "";
+                        pendingExtractedMediaHeaders = java.util.Collections.emptyMap();
+                        updateExtractionNotification("تعذر العثور على Receiver",
+                                "تم استخراج الفيديو، لكن لم يتم العثور على جهاز Receiver على نفس شبكة Wi-Fi.", false);
+                    }
                 });
                 return;
             }
@@ -4021,6 +4052,7 @@ public class MainActivity extends Activity {
                     String pendingUrl = pendingPlatformUrl;
                     pendingPlatformUrl = null;
                     if (pendingUrl != null) castUrl(pendingUrl);
+                    sendPendingExtractedMediaToReceiver(receiverAddress);
                 });
                 return;
             }
@@ -4034,6 +4066,12 @@ public class MainActivity extends Activity {
                     Toast.makeText(this,
                             "تم العثور على عناوين غير مؤكدة لكن لم يستجب أيٌّ منها كريسيفر AboEzzat. تأكد من نفس شبكة Wi-Fi وأن تطبيق Receiver يعمل.",
                             Toast.LENGTH_LONG).show();
+                }
+                if (!pendingExtractedMediaUrl.isEmpty()) {
+                    pendingExtractedMediaUrl = "";
+                    pendingExtractedMediaHeaders = java.util.Collections.emptyMap();
+                    updateExtractionNotification("تعذر الاتصال بـ Receiver",
+                            "تم استخراج الفيديو، لكن جهاز Receiver لم يستجب لفحص الاتصال.", false);
                 }
             });
         });
