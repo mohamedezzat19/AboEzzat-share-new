@@ -928,6 +928,10 @@ public class MainActivity extends Activity {
             items.addView(item, itemLp);
             item.setContentDescription(entry[1]);
             item.setFocusable(true);
+            // Make keyboard / Android TV remote focus visible in the side drawer.
+            item.setOnFocusChangeListener((v, focused) ->
+                    v.setBackground(shape(focused ? PANEL2 : PANEL,
+                            focused ? BLUE : PANEL2, 12)));
             item.setOnClickListener(v -> handleDrawerItem(entry[2]));
         }
         scroll.addView(items);
