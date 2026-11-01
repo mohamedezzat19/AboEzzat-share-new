@@ -664,7 +664,7 @@ public class MainActivity extends Activity {
                 + "if(!/^https?:/i.test(u)){var entries=performance.getEntriesByType('resource');var now=performance.now();"
                 + "for(var j=entries.length-1;j>=0;j--){var x=entries[j].name||'';"
                 + "var fresh=now-entries[j].startTime<90000;"
-                + "var stream=/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);"
+                + "var genericStream=/\\.(mp4|m4v|mov|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|\\/v\\/t(15|16|39|42)\\./i.test(x);" "var isX=host.indexOf(\"x.com\")>=0||host.indexOf(\"twitter.com\")>=0;" "var isMeta=host.indexOf(\"instagram.com\")>=0||host.indexOf(\"threads.net\")>=0||host.indexOf(\"threads.com\")>=0;" "var xStream=isX&&/video\\.twimg\\.com|\\/tweet_video\\/|\\/ext_tw_video\\/|\\/amplify_video\\//i.test(x);" "var metaStream=isMeta&&/cdninstagram\\.com|fbcdn\\.net/i.test(x)&&/video|playback|\\.mp4|\\.m3u8|\\/v\\/t(15|16|39|42)\\./i.test(x);" "var stream=genericStream||xStream||metaStream;"
                 + "if(fresh&&stream&&/^https?:/i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onActiveVideoFound(u,document.title||'',best.poster||'');}"
