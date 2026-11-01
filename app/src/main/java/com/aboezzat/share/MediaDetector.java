@@ -105,7 +105,9 @@ public final class MediaDetector {
 
     private static String resolveMediaUrl(HttpUrl base, String raw) {
         if (raw == null) return null;
-        String value = raw.trim().replace("&amp;", "&").replace("\\/", "/");
+        String value = raw.trim().replace("&amp;", "&").replace("\\/", "/")
+                .replace("\\u002F", "/").replace("\\u002f", "/")
+                .replace("\\u0026", "&").replace("\\u003D", "=");
         if (value.isEmpty() || value.startsWith("blob:") || value.startsWith("data:")
                 || value.startsWith("javascript:")) return null;
         HttpUrl resolved = base.resolve(value);
