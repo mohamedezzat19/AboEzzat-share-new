@@ -71,6 +71,10 @@ public class ShareLinkActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         mainHandler.postDelayed(activityTimeout, 55000L);
+
+        candidates.clear();
+        extractionFinalized = false;
+
         String url = extractUrl(getIntent());
         if (url == null) {
             finish();
@@ -78,7 +82,6 @@ public class ShareLinkActivity extends Activity {
         }
         originalSharedUrl = url;
 
-        // قراءة المنفذ والـ IP مع فحص المرجعين القديم والجديد لضمان عدم ضياع العنوان
         android.content.SharedPreferences settings =
                 getSharedPreferences("aboezzat_browser", MODE_PRIVATE);
         android.content.SharedPreferences legacyPrefs =
@@ -116,7 +119,6 @@ public class ShareLinkActivity extends Activity {
         }));
     }
 
-    /** Run all enabled local/remote extractors in parallel; RapidAPI is strictly optional. */
     private void startConfiguredExtraction(String pageUrl) {
         if (isYouTubeUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
@@ -264,7 +266,6 @@ public class ShareLinkActivity extends Activity {
         }
     }
 
-    /** Hidden WebView fallback with Ad-blocking & Sniffing */
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private void startBackgroundCapture(String pageUrl) {
         try {
@@ -305,7 +306,6 @@ public class ShareLinkActivity extends Activity {
                     String resourceUrl = request.getUrl() == null ? "" : request.getUrl().toString();
                     String lower = resourceUrl.toLowerCase(java.util.Locale.ROOT);
 
-                    // حجب نطاقات الإعلانات فوراً
                     for (String ad : AD_DOMAINS) {
                         if (lower.contains(ad)) {
                             return new android.webkit.WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream("".getBytes()));
@@ -402,8 +402,8 @@ public class ShareLinkActivity extends Activity {
                 + "var es=performance.getEntriesByType(\"resource\"),now=performance.now();"
                 + "for(var j=es.length-1;j>=0;j--){var x=es[j].name||\"\";"
                 + "if(now-es[j].startTime<90000&&/^https?:/i.test(x)&&"
-                + "/\\.(mp4|m3u8|mpd|webm)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
-                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos)[^\\/]*\\/(?:video|obj|tos)[^\\/]*\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
+                + "/\\.(mp4|m3u8|mpd|webm|flv)(?:[?#]|$)|video_playback|\\/videoplayback|\\/ext_tw_video\\/|\\/amplify_video\\/|\\/tweet_video\\/|video\\.twimg\\.com|"
+                + "(?:tiktokcdn|tiktokv|byteoversea|ibytedtos|ttlivecdn)[^\\/]*\\/(?:video|obj|tos|pull-|live)[^\\/]*\\/|fbcdn\\.net\\/.*\\/t42\\.|cdninstagram\\.com\\/.*\\/t50\\./i.test(x)){u=x;break;}}}"
                 + "if(/^https?:/i.test(u)&&window.AboEzzatShareCapture)window.AboEzzatShareCapture.onActiveVideoFound(u);}"
                 + "}catch(e){}})();";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
@@ -450,14 +450,20 @@ public class ShareLinkActivity extends Activity {
 
     private int qualityScore(String url) {
         if (url == null) return 0;
+        String lower = url.toLowerCase(java.util.Locale.ROOT);
+
+        // روابط HLS والبثوث الحية تأخذ الأولوية القصوى دائماً
+        if (lower.contains(".m3u8") || lower.contains("/live/") || lower.contains("pull-hls")) return 5000;
+        if (lower.contains(".flv") || lower.contains("pull-flv")) return 4500;
+        if (lower.contains(".mpd")) return 4000;
+
         Matcher matcher = Pattern.compile("(?i)(2160|1440|1080|720|540|480|360|240)p").matcher(url);
         if (matcher.find()) {
             try { return Integer.parseInt(matcher.group(1)); }
             catch (NumberFormatException ignored) { }
         }
-        String lower = url.toLowerCase(java.util.Locale.ROOT);
-        if (lower.matches(".*\\.(mp4|m4v|webm)(?:[?#].*)?$")) return 3;
-        if (lower.contains(".m3u8") || lower.contains(".mpd")) return 2;
+
+        if (lower.matches(".*\\.(mp4|m4v|webm)(?:[?#].*)?$")) return 720;
         return 1;
     }
 
