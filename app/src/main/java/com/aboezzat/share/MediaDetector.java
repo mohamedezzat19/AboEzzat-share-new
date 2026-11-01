@@ -51,6 +51,40 @@ public final class MediaDetector {
         return m.find() ? m.group(1) + "p" : "جودة غير معروفة";
     }
 
+    /**
+     * Recognizes direct video stream endpoints, including extensionless CDN URLs
+     * used by Facebook, Instagram/Threads, TikTok and X. A normal post/player page
+     * must never be treated as a playable stream.
+     */
+    public static boolean isDirectVideoUrl(String url) {
+        if (!BrowserEngine.isWebUrl(url)) return false;
+        try {
+            Uri uri = Uri.parse(url);
+            String path = uri.getPath();
+            String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
+            String lower = url.toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+
+            if (lowerPath.matches(".*\\\\.(mp4|m4v|webm|mov|avi|mkv|3gp|flv|m3u8|mpd)$")) return true;
+            if (lower.contains("mime=video") || lower.contains("type=video")
+                    || lower.contains("contenttype=video") || lower.contains("content-type=video")
+                    || lower.contains("format=mp4") || lower.contains("video_playback")
+                    || lower.contains("/videoplayback") || lower.contains("/ext_tw_video/")
+                    || lower.contains("/amplify_video/") || lower.contains("/tweet_video/")) return true;
+
+            if (host.equals("video.twimg.com")) return true;
+            if ((host.contains("tiktokcdn") || host.contains("tiktokv") || host.contains("byteoversea")
+                    || host.contains("ibytedtos"))
+                    && (lowerPath.contains("/video/") || lowerPath.contains("/obj/"))) return true;
+            if (host.endsWith("fbcdn.net")
+                    && (host.startsWith("video.") || lowerPath.contains("/t42."))) return true;
+            if (host.endsWith("cdninstagram.com") && lowerPath.contains("/t50.")) return true;
+            return false;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private static boolean isMediaCandidate(String url) {
         if (!BrowserEngine.isWebUrl(url)) return false;
         Uri uri = Uri.parse(url);
