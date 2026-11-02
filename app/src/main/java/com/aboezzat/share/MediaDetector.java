@@ -459,7 +459,7 @@ public final class MediaDetector {
                         return;
                     }
                     String html = r.body().string();
-                    Set<String> found = new LinkedHashSet<>();
+                    Map<String, String> found = new LinkedHashMap<>();
                     Matcher scripts = Pattern.compile("(?is)<script[^>]*type=[\\\"']application/json[\\\"'][^>]*>(.*?)</script>").matcher(html);
                     while (scripts.find()) {
                         try {
@@ -469,8 +469,8 @@ public final class MediaDetector {
                     }
 
                     if (!found.isEmpty()) {
-                        for (String candidate : found) {
-                            dispatchMediaFound(listener, candidate, "Video", threadsQuality(candidate));
+                        for (Map.Entry<String, String> candidate : found.entrySet()) {
+                            dispatchMediaFound(listener, candidate.getKey(), "Video", candidate.getValue());
                         }
                     } else {
                         extractThreadsEmbedFallback(threadsUrl, listener);
@@ -483,7 +483,7 @@ public final class MediaDetector {
     }
 
     private static void collectThreadsPostMedia(Object node, String targetCode,
-                                               Set<String> output, boolean matchingPost) {
+                                               Map<String, String> output, boolean matchingPost) {
         if (node instanceof JSONObject) {
             JSONObject obj = (JSONObject) node;
             boolean isTarget = matchingPost;
@@ -521,14 +521,17 @@ public final class MediaDetector {
         }
     }
 
-    private static void collectThreadsVersions(JSONArray versions, Set<String> output) {
+    private static void collectThreadsVersions(JSONArray versions, Map<String, String> output) {
         if (versions == null) return;
         for (int i = 0; i < versions.length(); i++) {
             JSONObject item = versions.optJSONObject(i);
             if (item == null) continue;
             String url = cleanMediaUrl(item.optString("url", ""));
             if (url != null && isMediaCandidate(url) && url.toLowerCase(Locale.ROOT).contains(".mp4")) {
-                output.add(url);
+                int height = item.optInt("height", 0);
+                int width = item.optInt("width", 0);
+                String label = height > 0 ? height + "p" : (width > 0 ? width + "px" : threadsQuality(url));
+                output.put(url, label);
             }
         }
     }
