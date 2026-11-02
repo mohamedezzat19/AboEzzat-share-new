@@ -547,7 +547,7 @@ public class ShareLinkActivity extends Activity {
 
         CastingManager.Callback callback = (success, message) -> mainHandler.post(() -> {
             if (success) {
-                finishWithMessage(note + " تم الإرسال والتشغيل بنجاح.");
+                finishWithMessage(note + " Receiver استلم طلب التشغيل. تأكيد تشغيل الفيديو نفسه غير متاح من رد الشبكة.");
             } else if (selectedReceiver) {
                 finishWithMessage("الجهاز المختار " + activeReceiverIp + " لم يستجب: " + message);
             } else {
