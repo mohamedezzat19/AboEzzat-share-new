@@ -265,7 +265,12 @@ public class ShareLinkActivity extends Activity {
             }
 
             for (MediaCandidate existing : candidates) {
-                if (existing.url.equals(url)) return;
+                if (existing.url.equals(url)) {
+                    // Engine callback still needs to be counted even when another engine
+                    // already discovered the same URL, otherwise extraction waits for timeout.
+                    engineFinished();
+                    return;
+                }
             }
             String kind = isDeclaredAudioFormat(declaredType) || isAudioUrl(url) ? "صوت فقط" : "فيديو";
             candidates.add(new MediaCandidate(url, engine, headers, kind));
