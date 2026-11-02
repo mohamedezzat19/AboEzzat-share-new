@@ -36,7 +36,6 @@ public class ShareLinkActivity extends Activity {
     private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
 
-    // الـ User-Agent الذهبي القديم المتوافق مع ثريدز وفيسبوك
     private static final String SAFE_MOBILE_UA =
             "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
 
@@ -119,6 +118,14 @@ public class ShareLinkActivity extends Activity {
         }));
     }
 
+    private boolean isWebpageUrl(String url) {
+        if (url == null) return true;
+        String lower = url.toLowerCase(Locale.ROOT);
+        return lower.contains("tiktok.com/@") || lower.contains("/live?") || lower.endsWith("/live")
+                || lower.contains("instagram.com/p/") || lower.contains("instagram.com/reel/")
+                || lower.contains("threads.net/@");
+    }
+
     private void startConfiguredExtraction(String pageUrl) {
         if (isYouTubeUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
@@ -126,7 +133,7 @@ public class ShareLinkActivity extends Activity {
             return;
         }
 
-        if (MediaDetector.isDirectVideoUrl(pageUrl)) {
+        if (MediaDetector.isDirectVideoUrl(pageUrl) && !isWebpageUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(), "رابط فيديو مباشر، جاري الإرسال.");
             return;
         }
@@ -145,7 +152,6 @@ public class ShareLinkActivity extends Activity {
         pendingEngines = (useFast ? 1 : 0) + (useOkHttp ? 1 : 0)
                 + (useRapid ? 1 : 0) + (useSocial ? 1 : 0) + 1;
 
-        // تفعيل الـ WebView دائماً للمنصات الاجتماعية (انستجرام، ثريدز، تيك توك)
         boolean useWebView = true;
         captureWindowOpen = true;
         captureWindowClosed = false;
@@ -229,7 +235,7 @@ public class ShareLinkActivity extends Activity {
         mainHandler.post(() -> {
             if (completed.get() || extractionFinalized) return;
             String url = MediaDetector.cleanMediaUrl(rawUrl);
-            if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)
+            if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl) || isWebpageUrl(url)
                     || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType))) {
                 engineFinished();
                 return;
@@ -326,13 +332,18 @@ public class ShareLinkActivity extends Activity {
                             || lower.contains("rsrc.php") || lower.contains("ad-interrupting")
                             || (lower.contains("twimg.com") && (lower.contains("/audio/") || lower.contains(".m4a")));
 
-                    // التقاط مسارات MP4 الصريحة أو مسارات البث
-                    boolean isDirect = (lower.contains(".mp4") && !lower.contains("bytestart="))
+                    // صيد مباشر لروابط بث تيك توك الحي الحقيقية
+                    boolean isTikTokLiveStream = lower.contains("tiktokcdn.com")
+                            && (lower.contains("pull-flv") || lower.contains("pull-hls") || lower.contains(".flv") || lower.contains(".m3u8"))
+                            && (lower.contains("sign=") || lower.contains("_session_id="));
+
+                    boolean isDirect = isTikTokLiveStream
+                            || (lower.contains(".mp4") && !lower.contains("bytestart="))
                             || lower.contains(".m3u8") || lower.contains("pull-flv") || lower.contains("pull-hls")
                             || lower.contains("video_playback") || lower.contains("&mime=video")
                             || (lower.contains("cdninstagram.com") && lower.contains(".mp4"));
 
-                    if (!junk && isDirect && BrowserEngine.isWebUrl(resourceUrl)) {
+                    if (!junk && isDirect && BrowserEngine.isWebUrl(resourceUrl) && !isWebpageUrl(resourceUrl)) {
                         String clean = MediaDetector.cleanMediaUrl(resourceUrl);
                         BackgroundCaptureBridge bridge = backgroundCaptureBridge;
                         if (bridge != null) bridge.onNetworkMediaFound(clean);
@@ -346,6 +357,15 @@ public class ShareLinkActivity extends Activity {
                     if (webView != captureWebView || captureWindowClosed || completed.get()) return;
                     installBackgroundVideoHook(webView);
                     scanBackgroundVideo(webView);
+
+                    // تحفيز تشغيل البث في صفحات تيك توك وإنستجرام
+                    String triggerPlayJs = "(function(){try{" +
+                            "  var v = document.querySelector('video');" +
+                            "  if(v){ v.muted=true; v.play(); }" +
+                            "  var btn = document.querySelector('.xgplayer-play, [data-e2e=\"live-play-btn\"], .play-btn, svg[class*=\"play\"]');" +
+                            "  if(btn){ btn.click(); }" +
+                            "}catch(e){}})();";
+                    webView.evaluateJavascript(triggerPlayJs, null);
                 }
             });
 
@@ -365,7 +385,7 @@ public class ShareLinkActivity extends Activity {
         String js = "(function(){try{if(window.__aboezzatShareHook)return;window.__aboezzatShareHook=true;"
                 + "function scan(){var vs=document.querySelectorAll(\"video\");"
                 + "for(var i=0;i<vs.length;i++){var v=vs[i];try{v.muted=true;v.play();}catch(e){}"
-                + "var u=v.currentSrc||v.src;if(u&&/^https?:/i.test(u)&&window.AboEzzatShareCapture){"
+                + "var u=v.currentSrc||v.src;if(u&&/^https?:/i.test(u)&&!/\\/(?:live|@)/i.test(u)&&window.AboEzzatShareCapture){"
                 + "window.AboEzzatShareCapture.onActiveVideoFound(u);return;}}}"
                 + "document.addEventListener(\"play\",function(e){scan();},true);"
                 + "document.addEventListener(\"loadeddata\",scan,true);scan();}catch(e){}})();";
@@ -378,7 +398,7 @@ public class ShareLinkActivity extends Activity {
                 + "var vs=document.querySelectorAll(\"video\");"
                 + "for(var i=0;i<vs.length;i++){"
                 + "var u=vs[i].currentSrc||vs[i].src;"
-                + "if(u&&/^https?:/i.test(u)){window.AboEzzatShareCapture.onActiveVideoFound(u);return;}"
+                + "if(u&&/^https?:/i.test(u)&&!/\\/(?:live|@)/i.test(u)){window.AboEzzatShareCapture.onActiveVideoFound(u);return;}"
                 + "}"
                 + "}catch(e){}})();";
         try { view.evaluateJavascript(js, null); } catch (Exception ignored) { }
@@ -388,7 +408,7 @@ public class ShareLinkActivity extends Activity {
         void onNetworkMediaFound(String url) {
             if (url == null || url.isEmpty()) return;
             mainHandler.post(() -> acceptCapturedMedia(url,
-                    "تم التقاط طلب ملف الفيديو وإرساله للشاشة."));
+                    "تم التقاط تدفق البث وإرساله للشاشة."));
         }
 
         @android.webkit.JavascriptInterface
@@ -401,7 +421,7 @@ public class ShareLinkActivity extends Activity {
     private void acceptCapturedMedia(String rawUrl, String note) {
         if (completed.get() || captureWindowClosed) return;
         String url = MediaDetector.cleanMediaUrl(rawUrl);
-        if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl)) return;
+        if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl) || isWebpageUrl(url)) return;
         captureWindowClosed = true;
         captureWindowOpen = false;
         extractionFinalized = true;
@@ -466,12 +486,15 @@ public class ShareLinkActivity extends Activity {
         String lower = url.toLowerCase(Locale.ROOT);
         if (lower.contains("tiktokcdn.com") || lower.contains("byteoversea") || originalSharedUrl.contains("tiktok.com")) {
             playbackHeaders.put("referer", "https://www.tiktok.com/");
+            playbackHeaders.put("origin", "https://www.tiktok.com");
             playbackHeaders.put("user-agent", SAFE_MOBILE_UA);
         } else if (lower.contains("cdninstagram.com") || originalSharedUrl.contains("instagram.com")) {
             playbackHeaders.put("referer", "https://www.instagram.com/");
+            playbackHeaders.put("origin", "https://www.instagram.com");
             playbackHeaders.put("user-agent", SAFE_MOBILE_UA);
         } else if (originalSharedUrl.contains("threads.net")) {
             playbackHeaders.put("referer", "https://www.threads.net/");
+            playbackHeaders.put("origin", "https://www.threads.net");
             playbackHeaders.put("user-agent", SAFE_MOBILE_UA);
         } else {
             playbackHeaders.putIfAbsent("user-agent", SAFE_MOBILE_UA);
