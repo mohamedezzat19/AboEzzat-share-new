@@ -527,7 +527,7 @@ public final class MediaDetector {
     }
 
     private static String threadsQuality(String url) {
-        Matcher size = Pattern.compile("(?i)(?:\\\\/|/)(\\\\d{3,4})x(\\\\d{3,4})(?:\\\\/|/|\\\\.)").matcher(url);
+        Matcher size = Pattern.compile("(?i)(\\\\d{3,4})x(\\\\d{3,4})").matcher(url);
         if (size.find()) return size.group(2) + "p";
         Matcher height = Pattern.compile("(?i)(?:height|resolution|quality)[=:_-](\\\\d{3,4})").matcher(url);
         if (height.find()) return height.group(1) + "p";
