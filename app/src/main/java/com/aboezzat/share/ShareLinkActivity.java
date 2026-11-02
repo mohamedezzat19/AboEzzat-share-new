@@ -234,12 +234,32 @@ public class ShareLinkActivity extends Activity {
                 || type.equals("application/dash+xml");
     }
 
+    private boolean isAudioUrl(String value) {
+        if (value == null) return false;
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav)(?:[?#].*)?$");
+    }
+
+    private boolean isImageUrl(String value) {
+        if (value == null) return false;
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.matches(".*\\.(jpg|jpeg|png|gif|webp|bmp|svg|avif)(?:[?#].*)?$");
+    }
+
+    private boolean isDeclaredAudioFormat(String value) {
+        if (value == null) return false;
+        String type = value.toLowerCase(Locale.ROOT);
+        return type.contains("audio") || type.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav).*");
+    }
+
     private void addCandidate(String rawUrl, String engine, Map<String, String> headers, String declaredType) {
         mainHandler.post(() -> {
             if (completed.get() || extractionFinalized) return;
             String url = MediaDetector.cleanMediaUrl(rawUrl);
             if (url == null || !BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl) || isWebpageUrl(url)
-                    || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType))) {
+                    || isImageUrl(url)
+                    || (!MediaDetector.isDirectVideoUrl(url) && !isDeclaredVideoFormat(declaredType)
+                    && !isDeclaredAudioFormat(declaredType))) {
                 engineFinished();
                 return;
             }
@@ -247,7 +267,8 @@ public class ShareLinkActivity extends Activity {
             for (MediaCandidate existing : candidates) {
                 if (existing.url.equals(url)) return;
             }
-            candidates.add(new MediaCandidate(url, engine, headers));
+            String kind = isDeclaredAudioFormat(declaredType) || isAudioUrl(url) ? "صوت فقط" : "فيديو";
+            candidates.add(new MediaCandidate(url, engine, headers, kind));
             // Don't send the first URL blindly: wait briefly for other engines and WebView capture.
             if (!candidatePickerScheduled) {
                 candidatePickerScheduled = true;
@@ -269,7 +290,8 @@ public class ShareLinkActivity extends Activity {
         for (int i = 0; i < candidates.size(); i++) {
             MediaCandidate item = candidates.get(i);
             String shortUrl = item.url.length() > 65 ? item.url.substring(0, 62) + "…" : item.url;
-            labels[i] = item.engine + "\n" + shortUrl;
+            labels[i] = (item.kind.equals("صوت فقط") ? "🎵 صوت فقط" : "▶ فيديو")
+                    + "  •  " + item.engine + "\n" + shortUrl;
         }
 
         AlertDialog dialog = new AlertDialog.Builder(this)
@@ -293,8 +315,7 @@ public class ShareLinkActivity extends Activity {
     private void sendSelectedCandidates(List<MediaCandidate> selected) {
         MediaCandidate video = null, audio = null;
         for (MediaCandidate item : selected) {
-            String lower = item.url.toLowerCase(Locale.ROOT);
-            boolean isAudio = lower.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav)(?:[?#].*)?$");
+            boolean isAudio = item.kind.equals("صوت فقط");
             if (isAudio && audio == null) audio = item;
             else if (!isAudio && video == null) video = item;
         }
@@ -693,10 +714,12 @@ public class ShareLinkActivity extends Activity {
     private static final class MediaCandidate {
         final String url;
         final String engine;
+        final String kind;
         final Map<String, String> headers;
-        MediaCandidate(String url, String engine, Map<String, String> headers) {
+        MediaCandidate(String url, String engine, Map<String, String> headers, String kind) {
             this.url = url;
             this.engine = engine;
+            this.kind = kind == null ? "فيديو" : kind;
             this.headers = headers == null ? Collections.emptyMap()
                     : new LinkedHashMap<>(headers);
         }
