@@ -276,12 +276,21 @@ public class ShareLinkActivity extends Activity {
             }
             String kind = isDeclaredAudioFormat(declaredType) || isAudioUrl(url) ? "صوت فقط" : "فيديو";
             candidates.add(new MediaCandidate(url, engine, headers, kind));
-            // Do not freeze the candidate list when the first URL arrives.
-            // Instagram / Threads / X may expose additional MP4 variants or CDN
-            // requests several seconds later. Keep WebView capture and all extractors
-            // alive until extractionTimeout closes the capture window; finishExtraction()
-            // then opens the picker once, with the complete collected list.
+            // Instagram / Threads / X can report additional variants several
+            // seconds later, so keep collecting until the extraction deadline.
+            // Preserve the existing short picker window for other platforms
+            // (especially Facebook and TikTok).
+            if (!requiresFullCandidateWindow()) {
+                mainHandler.postDelayed(candidatePickerRunnable, 3500L);
+            }
         });
+    }
+
+    private boolean requiresFullCandidateWindow() {
+        String lower = originalSharedUrl == null ? "" : originalSharedUrl.toLowerCase(Locale.ROOT);
+        return lower.contains("instagram.com/")
+                || lower.contains("threads.net/") || lower.contains("threads.com/")
+                || lower.contains("x.com/") || lower.contains("twitter.com/");
     }
 
     private void showCandidatePicker() {
