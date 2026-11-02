@@ -275,15 +275,50 @@ public class ShareLinkActivity extends Activity {
                 }
             }
             String kind = isDeclaredAudioFormat(declaredType) || isAudioUrl(url) ? "صوت فقط" : "فيديو";
-            candidates.add(new MediaCandidate(url, engine, headers, kind));
+            MediaCandidate candidate = new MediaCandidate(url, engine, headers, kind);
+
+            // Facebook and TikTok use the original one-tap cast flow:
+            // send the first valid direct media URL immediately, without
+            // opening the quality/candidate dialog.
+            if (isOneTapCastPlatform() && "فيديو".equals(kind)) {
+                candidates.add(candidate);
+                extractionFinalized = true;
+                captureWindowClosed = true;
+                captureWindowOpen = false;
+                mainHandler.removeCallbacks(extractionTimeout);
+                mainHandler.removeCallbacks(candidatePickerRunnable);
+                destroyBackgroundCapture();
+                sendResolvedToReceiver(candidate.url, candidate.headers,
+                        "تم إرسال فيديو " + (isFacebookUrl(originalSharedUrl) ? "Facebook" : "TikTok") + " مباشرة.");
+                return;
+            }
+
+            candidates.add(candidate);
             // Instagram / Threads / X can report additional variants several
             // seconds later, so keep collecting until the extraction deadline.
-            // Preserve the existing short picker window for other platforms
-            // (especially Facebook and TikTok).
+            // Other platforms retain the short picker window.
             if (!requiresFullCandidateWindow()) {
                 mainHandler.postDelayed(candidatePickerRunnable, 3500L);
             }
         });
+    }
+
+    private boolean isOneTapCastPlatform() {
+        return isFacebookUrl(originalSharedUrl) || isTikTokUrl(originalSharedUrl);
+    }
+
+    private boolean isFacebookUrl(String value) {
+        if (value == null) return false;
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.contains("facebook.com/") || lower.contains("fb.watch/")
+                || lower.contains("fb.com/");
+    }
+
+    private boolean isTikTokUrl(String value) {
+        if (value == null) return false;
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.contains("tiktok.com/") || lower.contains("vm.tiktok.com/")
+                || lower.contains("vt.tiktok.com/");
     }
 
     private boolean requiresFullCandidateWindow() {
