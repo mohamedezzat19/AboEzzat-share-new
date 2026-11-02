@@ -335,9 +335,13 @@ public class ShareLinkActivity extends Activity {
                 else finishWithMessage("تعذر تشغيل الفيديو والصوت معًا: " + message);
             }));
         } else {
-            MediaCandidate first = selected.get(0);
+            // If the user selected a mix of audio/video but Receiver cannot pair
+            // them (for example, more than one audio track), never accidentally
+            // send an audio URL as the main video. Prefer the first video candidate.
+            MediaCandidate first = video != null ? video : audio;
+            if (first == null) first = selected.get(0);
             sendResolvedToReceiver(first.url, first.headers,
-                    selected.size() > 1 ? "تم إرسال أول عنصر؛ تشغيل عدة فيديوهات يحتاج دعم قائمة تشغيل." : "تم إرسال العنصر المحدد.");
+                    selected.size() > 1 ? "تم إرسال أول فيديو محدد؛ تشغيل عدة عناصر يحتاج دعم قائمة تشغيل." : "تم إرسال العنصر المحدد.");
         }
     }
 
