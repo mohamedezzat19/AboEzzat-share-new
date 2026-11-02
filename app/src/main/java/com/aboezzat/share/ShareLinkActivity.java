@@ -511,7 +511,11 @@ public class ShareLinkActivity extends Activity {
         String url = MediaDetector.cleanMediaUrl(rawUrl);
         if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl) || isWebpageUrl(url)) return;
         String lower = url.toLowerCase(Locale.ROOT);
-        String declared = lower.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav)(?:[?#].*)?$") ? "audio" : "video";
+        String declared = lower.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav)(?:[?#].*)?$")
+                ? "audio" : "video/mp4";
+        // This URL came from an actual HTML5 video element or a detected video
+        // network request, so it is stronger evidence than a generic WebView
+        // resource label. Keep generic "video" labels rejected elsewhere.
         addCandidate(url, "WebView capture", Collections.emptyMap(), declared);
     }
 
