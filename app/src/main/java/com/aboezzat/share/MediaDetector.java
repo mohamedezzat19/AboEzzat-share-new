@@ -271,7 +271,7 @@ public final class MediaDetector {
             return;
         }
 
-        if (cleanUrl.contains("threads.net/")) {
+        if (cleanUrl.contains("threads.net/") || cleanUrl.contains("threads.com/")) {
             extractThreads(cleanUrl, listener);
             return;
         }
