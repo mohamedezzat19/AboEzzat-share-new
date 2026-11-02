@@ -269,7 +269,11 @@ public final class MediaDetector {
         }
 
         if (cleanUrl.contains("instagram.com/")) {
-            extractInstagram(cleanUrl, listener);
+            String pageCookies = "";
+            try {
+                if (context != null) pageCookies = android.webkit.CookieManager.getInstance().getCookie(cleanUrl);
+            } catch (Exception ignored) { }
+            extractInstagram(cleanUrl, listener, pageCookies);
             return;
         }
 
@@ -379,56 +383,170 @@ public final class MediaDetector {
         });
     }
 
-    private static void extractInstagram(String instaUrl, Listener listener) {
+    private static void extractInstagram(String instaUrl, Listener listener, String cookies) {
         Matcher matcher = Pattern.compile("(?:p|reel|tv)/([A-Za-z0-9_-]+)").matcher(instaUrl);
         if (!matcher.find()) {
             fallbackInspectHtml(instaUrl, listener);
             return;
         }
+        final String shortcode = matcher.group(1);
 
-        String shortcode = matcher.group(1);
+        // First try the public permalink page. Instagram sometimes server-renders
+        // video_versions / video_url in its JSON even when the embed endpoint is
+        // missing the media. Cookies are optional; public links still work without them.
+        Request.Builder pageBuilder = new Request.Builder()
+                .url(instaUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36")
+                .header("Referer", "https://www.instagram.com/")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        if (cookies != null && !cookies.trim().isEmpty()) pageBuilder.header("Cookie", cookies);
+
+        CLIENT.newCall(pageBuilder.get().build()).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                extractInstagramEmbedFallback(instaUrl, shortcode, listener, cookies);
+            }
+
+            @Override public void onResponse(Call call, Response response) {
+                try (Response r = response) {
+                    if (!r.isSuccessful() || r.body() == null) {
+                        extractInstagramEmbedFallback(instaUrl, shortcode, listener, cookies);
+                        return;
+                    }
+                    String html = r.body().string();
+                    Map<String, String> found = new LinkedHashMap<>();
+
+                    Matcher scripts = Pattern.compile("(?is)<script[^>]*type=[\\\"']application/json[\\\"'][^>]*>(.*?)</script>").matcher(html);
+                    while (scripts.find()) {
+                        try {
+                            collectInstagramMedia(new JSONObject(scripts.group(1)), shortcode, found, false);
+                        } catch (Exception ignored) { }
+                    }
+
+                    // Some page variants use data-sjs scripts without type=application/json.
+                    Matcher sjs = Pattern.compile("(?is)<script[^>]*data-sjs[^>]*>(\\\\{.*?\\\\})</script>").matcher(html);
+                    while (sjs.find()) {
+                        try {
+                            collectInstagramMedia(new JSONObject(sjs.group(1)), shortcode, found, false);
+                        } catch (Exception ignored) { }
+                    }
+
+                    if (!found.isEmpty()) {
+                        for (Map.Entry<String, String> entry : found.entrySet()) {
+                            dispatchMediaFound(listener, entry.getKey(), "Video", entry.getValue());
+                        }
+                    } else {
+                        extractInstagramEmbedFallback(instaUrl, shortcode, listener, cookies);
+                    }
+                } catch (Exception e) {
+                    extractInstagramEmbedFallback(instaUrl, shortcode, listener, cookies);
+                }
+            }
+        });
+    }
+
+    private static void collectInstagramMedia(Object node, String shortcode,
+                                              Map<String, String> output, boolean matchingPost) {
+        if (node instanceof JSONObject) {
+            JSONObject obj = (JSONObject) node;
+            boolean isTarget = matchingPost;
+            String code = obj.optString("shortcode", obj.optString("code", ""));
+            if (shortcode.equals(code)) isTarget = true;
+
+            if (isTarget) {
+                collectInstagramVersions(obj.optJSONArray("video_versions"), output);
+                String videoUrl = obj.optString("video_url", "");
+                if (videoUrl.startsWith("http") && isMediaCandidate(cleanMediaUrl(videoUrl))) {
+                    output.put(cleanMediaUrl(videoUrl), "Video");
+                }
+                JSONArray carousel = obj.optJSONArray("carousel_media");
+                if (carousel != null) {
+                    for (int i = 0; i < carousel.length(); i++) {
+                        JSONObject media = carousel.optJSONObject(i);
+                        if (media != null) {
+                            collectInstagramVersions(media.optJSONArray("video_versions"), output);
+                            String carouselUrl = media.optString("video_url", "");
+                            if (carouselUrl.startsWith("http") && isMediaCandidate(cleanMediaUrl(carouselUrl))) {
+                                output.put(cleanMediaUrl(carouselUrl), "Video");
+                            }
+                        }
+                    }
+                }
+                return; // Never accidentally pick a recommended/reply post.
+            }
+
+            java.util.Iterator<String> keys = obj.keys();
+            while (keys.hasNext()) {
+                Object child = obj.opt(keys.next());
+                if (child instanceof JSONObject || child instanceof JSONArray) {
+                    collectInstagramMedia(child, shortcode, output, false);
+                }
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray arr = (JSONArray) node;
+            for (int i = 0; i < arr.length(); i++) {
+                Object child = arr.opt(i);
+                if (child instanceof JSONObject || child instanceof JSONArray) {
+                    collectInstagramMedia(child, shortcode, output, false);
+                }
+            }
+        }
+    }
+
+    private static void collectInstagramVersions(JSONArray versions, Map<String, String> output) {
+        if (versions == null) return;
+        for (int i = 0; i < versions.length(); i++) {
+            JSONObject item = versions.optJSONObject(i);
+            if (item == null) continue;
+            String url = cleanMediaUrl(item.optString("url", ""));
+            if (url != null && isMediaCandidate(url) && url.toLowerCase(Locale.ROOT).contains(".mp4")) {
+                int height = item.optInt("height", 0);
+                int width = item.optInt("width", 0);
+                String label = height > 0 ? height + "p" : (width > 0 ? width + "px" : quality(url));
+                output.put(url, label);
+            }
+        }
+    }
+
+    private static void extractInstagramEmbedFallback(String instaUrl, String shortcode,
+                                                      Listener listener, String cookies) {
         String embedUrl = "https://www.instagram.com/p/" + shortcode + "/embed/captioned/";
-
-        Request request = new Request.Builder()
+        Request.Builder builder = new Request.Builder()
                 .url(embedUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .build();
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36")
+                .header("Referer", instaUrl)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        if (cookies != null && !cookies.trim().isEmpty()) builder.header("Cookie", cookies);
 
-        CLIENT.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
+        CLIENT.newCall(builder.get().build()).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
                 fallbackInspectHtml(instaUrl, listener);
             }
 
-            @Override
-            public void onResponse(Call call, Response response) {
+            @Override public void onResponse(Call call, Response response) {
                 try (Response r = response) {
                     if (!r.isSuccessful() || r.body() == null) {
                         fallbackInspectHtml(instaUrl, listener);
                         return;
                     }
-
                     String html = r.body().string();
-                    Matcher videoMatcher = Pattern.compile("video_url[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)").matcher(html);
-                    if (videoMatcher.find()) {
+                    Map<String, String> found = new LinkedHashMap<>();
+                    Matcher videoMatcher = Pattern.compile("video_url[\\\"']\\\\s*:\\\\s*[\\\"']([^\\\"']+)").matcher(html);
+                    while (videoMatcher.find()) {
                         String clean = cleanMediaUrl(videoMatcher.group(1));
-                        if (isMediaCandidate(clean)) {
-                            dispatchMediaFound(listener, clean, "Video", quality(clean));
-                            return;
-                        }
+                        if (isMediaCandidate(clean)) found.put(clean, quality(clean));
                     }
-
                     Matcher videoSrcMatcher = Pattern.compile("<video[^>]+src=[\\\"']([^\\\"']+)").matcher(html);
-                    if (videoSrcMatcher.find()) {
+                    while (videoSrcMatcher.find()) {
                         String clean = cleanMediaUrl(videoSrcMatcher.group(1));
-                        if (isMediaCandidate(clean)) {
-                            dispatchMediaFound(listener, clean, "Video", quality(clean));
-                            return;
-                        }
+                        if (isMediaCandidate(clean)) found.put(clean, quality(clean));
                     }
-
-                    fallbackInspectHtml(instaUrl, listener);
+                    if (!found.isEmpty()) {
+                        for (Map.Entry<String, String> entry : found.entrySet()) {
+                            dispatchMediaFound(listener, entry.getKey(), "Video", entry.getValue());
+                        }
+                    } else {
+                        fallbackInspectHtml(instaUrl, listener);
+                    }
                 } catch (Exception e) {
                     fallbackInspectHtml(instaUrl, listener);
                 }
