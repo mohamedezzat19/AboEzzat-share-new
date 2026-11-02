@@ -327,12 +327,9 @@ public class ShareLinkActivity extends Activity {
         mainHandler.removeCallbacks(extractionTimeout);
         destroyBackgroundCapture();
         if (!candidates.isEmpty()) {
-            MediaCandidate best = candidates.get(0);
-            for (MediaCandidate candidate : candidates) {
-                if (qualityScore(candidate.url) > qualityScore(best.url)) best = candidate;
-            }
-            sendResolvedToReceiver(best.url, best.headers,
-                    "تم الإرسال بواسطة " + best.engine);
+            // Always let the user choose from discovered candidates; never silently
+            // send a URL that may be a preview, ad, or unsupported stream.
+            showCandidatePicker();
         } else {
             String reason = fallbackMessage == null
                     ? "لم يتم العثور على رابط فيديو مباشر صالح."
