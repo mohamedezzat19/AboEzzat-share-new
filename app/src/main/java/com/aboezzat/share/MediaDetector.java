@@ -527,9 +527,9 @@ public final class MediaDetector {
     }
 
     private static String threadsQuality(String url) {
-        Matcher size = Pattern.compile("(?i)(\\\\d{3,4})x(\\\\d{3,4})").matcher(url);
+        Matcher size = Pattern.compile("(?i)(\\d{3,4})x(\\d{3,4})").matcher(url);
         if (size.find()) return size.group(2) + "p";
-        Matcher height = Pattern.compile("(?i)(?:height|resolution|quality)[=:_-](\\\\d{3,4})").matcher(url);
+        Matcher height = Pattern.compile("(?i)(?:height|resolution|quality)[=:_-](\\d{3,4})").matcher(url);
         if (height.find()) return height.group(1) + "p";
         return quality(url);
     }
@@ -555,7 +555,7 @@ public final class MediaDetector {
                         return;
                     }
                     String html = r.body().string();
-                    Matcher m = Pattern.compile("video_url[\\\"']\\\\s*:\\\\s*[\\\"']([^\\\"']+)").matcher(html);
+                    Matcher m = Pattern.compile("video_url[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)").matcher(html);
                     boolean sent = false;
                     while (m.find()) {
                         String clean = cleanMediaUrl(m.group(1));
