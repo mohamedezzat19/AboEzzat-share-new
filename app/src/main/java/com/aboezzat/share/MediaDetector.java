@@ -271,7 +271,7 @@ public final class MediaDetector {
             return;
         }
 
-        if (cleanUrl.contains("threads.net/")) {
+        if (cleanUrl.contains("threads.net/") || cleanUrl.contains("threads.com/")) {
             extractThreads(cleanUrl, listener);
             return;
         }
@@ -428,9 +428,115 @@ public final class MediaDetector {
     }
 
     private static void extractThreads(String threadsUrl, Listener listener) {
+        // Threads public post pages expose video_versions in server-rendered JSON
+        // to link-preview crawlers. Parse the matching post only (not suggested
+        // posts/replies) and collect every progressive MP4 rendition.
+        Matcher idMatcher = Pattern.compile("(?:/post/|/t/|/share/)([A-Za-z0-9_-]+)").matcher(threadsUrl);
+        final String targetCode = idMatcher.find() ? idMatcher.group(1) : null;
+
+        Request request = new Request.Builder()
+                .url(threadsUrl)
+                .header("User-Agent", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .build();
+
+        CLIENT.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                extractThreadsEmbedFallback(threadsUrl, listener);
+            }
+
+            @Override public void onResponse(Call call, Response response) {
+                try (Response r = response) {
+                    if (!r.isSuccessful() || r.body() == null) {
+                        extractThreadsEmbedFallback(threadsUrl, listener);
+                        return;
+                    }
+                    String html = r.body().string();
+                    Set<String> found = new LinkedHashSet<>();
+                    Matcher scripts = Pattern.compile("(?is)<script[^>]*type=[\\\"']application/json[\\\"'][^>]*>(.*?)</script>").matcher(html);
+                    while (scripts.find()) {
+                        try {
+                            Object root = new JSONObject(scripts.group(1));
+                            collectThreadsPostMedia(root, targetCode, found, false);
+                        } catch (Exception ignored) { }
+                    }
+
+                    if (!found.isEmpty()) {
+                        for (String candidate : found) {
+                            dispatchMediaFound(listener, candidate, "Video", threadsQuality(candidate));
+                        }
+                    } else {
+                        extractThreadsEmbedFallback(threadsUrl, listener);
+                    }
+                } catch (Exception e) {
+                    extractThreadsEmbedFallback(threadsUrl, listener);
+                }
+            }
+        });
+    }
+
+    private static void collectThreadsPostMedia(Object node, String targetCode,
+                                               Set<String> output, boolean matchingPost) {
+        if (node instanceof JSONObject) {
+            JSONObject obj = (JSONObject) node;
+            boolean isTarget = matchingPost;
+            String code = obj.optString("code", "");
+            if (targetCode != null && targetCode.equals(code)) isTarget = true;
+
+            if (isTarget) {
+                JSONArray versions = obj.optJSONArray("video_versions");
+                collectThreadsVersions(versions, output);
+                JSONArray carousel = obj.optJSONArray("carousel_media");
+                if (carousel != null) {
+                    for (int i = 0; i < carousel.length(); i++) {
+                        JSONObject media = carousel.optJSONObject(i);
+                        if (media != null) collectThreadsVersions(media.optJSONArray("video_versions"), output);
+                    }
+                }
+            }
+
+            java.util.Iterator<String> keys = obj.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                Object child = obj.opt(key);
+                if (child instanceof JSONObject || child instanceof JSONArray) {
+                    collectThreadsPostMedia(child, targetCode, output, isTarget);
+                }
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray arr = (JSONArray) node;
+            for (int i = 0; i < arr.length(); i++) {
+                Object child = arr.opt(i);
+                if (child instanceof JSONObject || child instanceof JSONArray) {
+                    collectThreadsPostMedia(child, targetCode, output, matchingPost);
+                }
+            }
+        }
+    }
+
+    private static void collectThreadsVersions(JSONArray versions, Set<String> output) {
+        if (versions == null) return;
+        for (int i = 0; i < versions.length(); i++) {
+            JSONObject item = versions.optJSONObject(i);
+            if (item == null) continue;
+            String url = cleanMediaUrl(item.optString("url", ""));
+            if (url != null && isMediaCandidate(url) && url.toLowerCase(Locale.ROOT).contains(".mp4")) {
+                output.add(url);
+            }
+        }
+    }
+
+    private static String threadsQuality(String url) {
+        Matcher size = Pattern.compile("(?i)(?:\\\\/|/)(\\\\d{3,4})x(\\\\d{3,4})(?:\\\\/|/|\\\\.)").matcher(url);
+        if (size.find()) return size.group(2) + "p";
+        Matcher height = Pattern.compile("(?i)(?:height|resolution|quality)[=:_-](\\\\d{3,4})").matcher(url);
+        if (height.find()) return height.group(1) + "p";
+        return quality(url);
+    }
+
+    private static void extractThreadsEmbedFallback(String threadsUrl, Listener listener) {
         String cleanUrl = threadsUrl.split("\\?")[0].replaceAll("/+$", "");
         String embedUrl = cleanUrl + "/embed";
-
         Request request = new Request.Builder()
                 .url(embedUrl)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36")
@@ -438,39 +544,35 @@ public final class MediaDetector {
                 .build();
 
         CLIENT.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
+            @Override public void onFailure(Call call, IOException e) {
                 fallbackInspectHtml(threadsUrl, listener);
             }
 
-            @Override
-            public void onResponse(Call call, Response response) {
+            @Override public void onResponse(Call call, Response response) {
                 try (Response r = response) {
                     if (!r.isSuccessful() || r.body() == null) {
                         fallbackInspectHtml(threadsUrl, listener);
                         return;
                     }
-
                     String html = r.body().string();
-                    Matcher m = Pattern.compile("video_url[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)").matcher(html);
-                    if (m.find()) {
+                    Matcher m = Pattern.compile("video_url[\\\"']\\\\s*:\\\\s*[\\\"']([^\\\"']+)").matcher(html);
+                    boolean sent = false;
+                    while (m.find()) {
                         String clean = cleanMediaUrl(m.group(1));
                         if (isMediaCandidate(clean)) {
                             dispatchMediaFound(listener, clean, "Video", quality(clean));
-                            return;
+                            sent = true;
                         }
                     }
-
                     Matcher videoTag = Pattern.compile("<video[^>]+src=[\\\"']([^\\\"']+)").matcher(html);
-                    if (videoTag.find()) {
+                    while (videoTag.find()) {
                         String clean = cleanMediaUrl(videoTag.group(1));
                         if (isMediaCandidate(clean)) {
                             dispatchMediaFound(listener, clean, "Video", quality(clean));
-                            return;
+                            sent = true;
                         }
                     }
-
-                    fallbackInspectHtml(threadsUrl, listener);
+                    if (!sent) fallbackInspectHtml(threadsUrl, listener);
                 } catch (Exception e) {
                     fallbackInspectHtml(threadsUrl, listener);
                 }
