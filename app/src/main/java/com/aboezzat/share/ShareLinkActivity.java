@@ -276,13 +276,11 @@ public class ShareLinkActivity extends Activity {
             }
             String kind = isDeclaredAudioFormat(declaredType) || isAudioUrl(url) ? "صوت فقط" : "فيديو";
             candidates.add(new MediaCandidate(url, engine, headers, kind));
-            // Don't send the first URL blindly: wait briefly for other engines and WebView capture.
-            if (!candidatePickerScheduled) {
-                candidatePickerScheduled = true;
-                // Give the parallel extractors a little more time to report candidates
-                // before freezing the list shown to the user.
-                mainHandler.postDelayed(candidatePickerRunnable, 3500L);
-            }
+            // Do not freeze the candidate list when the first URL arrives.
+            // Instagram / Threads / X may expose additional MP4 variants or CDN
+            // requests several seconds later. Keep WebView capture and all extractors
+            // alive until extractionTimeout closes the capture window; finishExtraction()
+            // then opens the picker once, with the complete collected list.
         });
     }
 
