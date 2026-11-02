@@ -1,6 +1,7 @@
 package com.aboezzat.share;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -32,6 +33,8 @@ public class ShareLinkActivity extends Activity {
     private boolean extractionFinalized;
     private boolean captureWindowOpen;
     private boolean captureWindowClosed = true;
+    private boolean candidatePickerScheduled;
+    private final Runnable candidatePickerRunnable = () -> showCandidatePicker();
     private android.webkit.WebView captureWebView;
     private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
@@ -241,16 +244,70 @@ public class ShareLinkActivity extends Activity {
                 return;
             }
 
-            candidates.clear();
+            for (MediaCandidate existing : candidates) {
+                if (existing.url.equals(url)) return;
+            }
             candidates.add(new MediaCandidate(url, engine, headers));
-            extractionFinalized = true;
-            captureWindowClosed = true;
-            captureWindowOpen = false;
-            mainHandler.removeCallbacks(extractionTimeout);
-            destroyBackgroundCapture();
-            sendResolvedToReceiver(url, headers,
-                    "تم التقاط الرابط مباشرة (" + engine + ")؛ جاري الإرسال للريسيفر.");
+            // Don't send the first URL blindly: wait briefly for other engines and WebView capture.
+            if (!candidatePickerScheduled) {
+                candidatePickerScheduled = true;
+                mainHandler.postDelayed(candidatePickerRunnable, 1800L);
+            }
         });
+    }
+
+    private void showCandidatePicker() {
+        if (completed.get() || extractionFinalized || candidates.isEmpty()) return;
+        extractionFinalized = true;
+        captureWindowClosed = true;
+        captureWindowOpen = false;
+        mainHandler.removeCallbacks(extractionTimeout);
+        destroyBackgroundCapture();
+
+        String[] labels = new String[candidates.size()];
+        boolean[] checked = new boolean[candidates.size()];
+        for (int i = 0; i < candidates.size(); i++) {
+            MediaCandidate item = candidates.get(i);
+            String shortUrl = item.url.length() > 65 ? item.url.substring(0, 62) + "…" : item.url;
+            labels[i] = item.engine + "\n" + shortUrl;
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("اختار الفيديو أو الصوت")
+                .setMessage("حدد العناصر اللي عايز تبعتها للشاشة.")
+                .setMultiChoiceItems(labels, checked, (d, which, selected) -> checked[which] = selected)
+                .setNegativeButton("إلغاء", (d, which) -> finishWithMessage("تم إلغاء المشاركة."))
+                .setPositiveButton("إرسال المحدد", (d, which) -> {
+                    List<MediaCandidate> selected = new ArrayList<>();
+                    for (int i = 0; i < checked.length; i++) if (checked[i]) selected.add(candidates.get(i));
+                    if (selected.isEmpty()) {
+                        finishWithMessage("ما اخترتش أي رابط.");
+                        return;
+                    }
+                    sendSelectedCandidates(selected);
+                }).create();
+        dialog.setOnCancelListener(d -> finishWithMessage("تم إلغاء المشاركة."));
+        dialog.show();
+    }
+
+    private void sendSelectedCandidates(List<MediaCandidate> selected) {
+        MediaCandidate video = null, audio = null;
+        for (MediaCandidate item : selected) {
+            String lower = item.url.toLowerCase(Locale.ROOT);
+            boolean isAudio = lower.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav)(?:[?#].*)?$");
+            if (isAudio && audio == null) audio = item;
+            else if (!isAudio && video == null) video = item;
+        }
+        if (video != null && audio != null) {
+            CastingManager.sendTracks(activeReceiverIp, video.url, audio.url, (success, message) -> mainHandler.post(() -> {
+                if (success) finishWithMessage("تم إرسال الفيديو والصوت معًا.");
+                else finishWithMessage("تعذر تشغيل الفيديو والصوت معًا: " + message);
+            }));
+        } else {
+            MediaCandidate first = selected.get(0);
+            sendResolvedToReceiver(first.url, first.headers,
+                    selected.size() > 1 ? "تم إرسال أول عنصر؛ تشغيل عدة فيديوهات يحتاج دعم قائمة تشغيل." : "تم إرسال العنصر المحدد.");
+        }
     }
 
     private void engineFailed() {
@@ -419,15 +476,12 @@ public class ShareLinkActivity extends Activity {
     }
 
     private void acceptCapturedMedia(String rawUrl, String note) {
-        if (completed.get() || captureWindowClosed) return;
+        if (completed.get() || captureWindowClosed || extractionFinalized) return;
         String url = MediaDetector.cleanMediaUrl(rawUrl);
         if (!BrowserEngine.isWebUrl(url) || url.equals(originalSharedUrl) || isWebpageUrl(url)) return;
-        captureWindowClosed = true;
-        captureWindowOpen = false;
-        extractionFinalized = true;
-        mainHandler.removeCallbacks(extractionTimeout);
-        destroyBackgroundCapture();
-        sendResolvedToReceiver(url, Collections.emptyMap(), note);
+        String lower = url.toLowerCase(Locale.ROOT);
+        String declared = lower.matches(".*\\.(mp3|m4a|aac|ogg|opus|wav)(?:[?#].*)?$") ? "audio" : "video";
+        addCandidate(url, "WebView capture", Collections.emptyMap(), declared);
     }
 
     private void destroyBackgroundCapture() {
@@ -496,6 +550,11 @@ public class ShareLinkActivity extends Activity {
             playbackHeaders.put("referer", "https://www.threads.net/");
             playbackHeaders.put("origin", "https://www.threads.net");
             playbackHeaders.put("user-agent", SAFE_MOBILE_UA);
+        } else if (originalSharedUrl.contains("x.com") || originalSharedUrl.contains("twitter.com")
+                || lower.contains("twimg.com") || lower.contains("twitter.com")) {
+            playbackHeaders.put("referer", "https://x.com/");
+            playbackHeaders.put("origin", "https://x.com");
+            playbackHeaders.put("user-agent", SAFE_MOBILE_UA);
         } else {
             playbackHeaders.putIfAbsent("user-agent", SAFE_MOBILE_UA);
             playbackHeaders.putIfAbsent("referer", originalSharedUrl);
@@ -531,6 +590,7 @@ public class ShareLinkActivity extends Activity {
         completed.set(true);
         mainHandler.removeCallbacks(extractionTimeout);
         mainHandler.removeCallbacks(activityTimeout);
+        mainHandler.removeCallbacks(candidatePickerRunnable);
         destroyBackgroundCapture();
         super.onDestroy();
     }
