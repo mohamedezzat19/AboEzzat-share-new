@@ -334,31 +334,38 @@ public final class MediaDetector {
                         JSONObject video = root.getJSONObject("video");
                         JSONArray variants = video.optJSONArray("variants");
                         if (variants != null && variants.length() > 0) {
-                            String bestUrl = "";
-                            int bestBitrate = -1;
+                            boolean foundVariant = false;
+                            String hlsUrl = null;
 
+                            // Return every MP4 bitrate variant so the Share picker can
+                            // offer the actual choices instead of silently selecting
+                            // the highest one. Keep HLS as an additional stream option.
                             for (int i = 0; i < variants.length(); i++) {
-                                JSONObject v = variants.getJSONObject(i);
-                                String src = v.optString("src");
+                                JSONObject v = variants.optJSONObject(i);
+                                if (v == null) continue;
+                                String src = cleanMediaUrl(v.optString("src", ""));
                                 int bitrate = v.optInt("bitrate", 0);
+                                if (src == null || src.isEmpty()) continue;
 
-                                if (src.contains(".m3u8")) {
-                                    String clean = cleanMediaUrl(src);
-                                    dispatchMediaFound(listener, clean, "HLS", "أفضل جودة (HLS)");
-                                    return;
+                                if (src.toLowerCase(Locale.ROOT).contains(".m3u8")) {
+                                    hlsUrl = src;
+                                    continue;
                                 }
 
-                                if (src.contains(".mp4") && bitrate > bestBitrate) {
-                                    bestBitrate = bitrate;
-                                    bestUrl = src;
+                                if (src.toLowerCase(Locale.ROOT).contains(".mp4") && isMediaCandidate(src)) {
+                                    String qualityLabel = bitrate > 0
+                                            ? "MP4 · " + (bitrate / 1000) + " kbps"
+                                            : "MP4 · " + quality(src);
+                                    dispatchMediaFound(listener, src, "Video", qualityLabel);
+                                    foundVariant = true;
                                 }
                             }
 
-                            if (!bestUrl.isEmpty()) {
-                                String clean = cleanMediaUrl(bestUrl);
-                                dispatchMediaFound(listener, clean, "Video", quality(clean));
-                                return;
+                            if (hlsUrl != null && isMediaCandidate(hlsUrl)) {
+                                dispatchMediaFound(listener, hlsUrl, "HLS", "HLS");
+                                foundVariant = true;
                             }
+                            if (foundVariant) return;
                         }
                     }
 
