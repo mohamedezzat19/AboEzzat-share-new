@@ -349,12 +349,11 @@ public class ShareLinkActivity extends Activity {
     private void finishExtraction(String fallbackMessage) {
         if (completed.get() || extractionFinalized) return;
         if (captureWindowOpen && !captureWindowClosed) return;
-        extractionFinalized = true;
         mainHandler.removeCallbacks(extractionTimeout);
         destroyBackgroundCapture();
         if (!candidates.isEmpty()) {
-            // Always let the user choose from discovered candidates; never silently
-            // send a URL that may be a preview, ad, or unsupported stream.
+            // showCandidatePicker() owns finalization. Do not set extractionFinalized
+            // here, because its guard would otherwise suppress the picker.
             showCandidatePicker();
         } else {
             String reason = fallbackMessage == null
