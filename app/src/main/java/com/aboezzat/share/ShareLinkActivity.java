@@ -226,7 +226,9 @@ public class ShareLinkActivity extends Activity {
     private boolean isDeclaredVideoFormat(String value) {
         if (value == null) return false;
         String type = value.trim().toLowerCase(Locale.ROOT);
-        return type.equals("video") || type.equals("mp4") || type.equals("hls")
+        // A generic "video" label is not enough to trust an arbitrary URL:
+        // WebView may report a page/preview URL. Require a concrete format or MIME.
+        return type.equals("mp4") || type.equals("hls")
                 || type.equals("dash") || type.equals("flv") || type.equals("live-flv")
                 || type.equals("video/mp4")
                 || type.equals("application/vnd.apple.mpegurl")
