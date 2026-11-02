@@ -423,7 +423,7 @@ public final class MediaDetector {
                     }
 
                     // Some page variants use data-sjs scripts without type=application/json.
-                    Matcher sjs = Pattern.compile("(?is)<script[^>]*data-sjs[^>]*>(\\\\{.*?\\\\})</script>").matcher(html);
+                    Matcher sjs = Pattern.compile("(?is)<script[^>]*data-sjs[^>]*>(.*?)</script>").matcher(html);
                     while (sjs.find()) {
                         try {
                             collectInstagramMedia(new JSONObject(sjs.group(1)), shortcode, found, false);
@@ -530,7 +530,7 @@ public final class MediaDetector {
                     }
                     String html = r.body().string();
                     Map<String, String> found = new LinkedHashMap<>();
-                    Matcher videoMatcher = Pattern.compile("video_url[\\\"']\\\\s*:\\\\s*[\\\"']([^\\\"']+)").matcher(html);
+                    Matcher videoMatcher = Pattern.compile("video_url[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)").matcher(html);
                     while (videoMatcher.find()) {
                         String clean = cleanMediaUrl(videoMatcher.group(1));
                         if (isMediaCandidate(clean)) found.put(clean, quality(clean));
