@@ -277,12 +277,15 @@ public class ShareLinkActivity extends Activity {
             // Don't send the first URL blindly: wait briefly for other engines and WebView capture.
             if (!candidatePickerScheduled) {
                 candidatePickerScheduled = true;
-                mainHandler.postDelayed(candidatePickerRunnable, 1800L);
+                // Give the parallel extractors a little more time to report candidates
+                // before freezing the list shown to the user.
+                mainHandler.postDelayed(candidatePickerRunnable, 3500L);
             }
         });
     }
 
     private void showCandidatePicker() {
+        mainHandler.removeCallbacks(candidatePickerRunnable);
         if (completed.get() || extractionFinalized || candidates.isEmpty()) return;
         extractionFinalized = true;
         captureWindowClosed = true;
