@@ -83,9 +83,12 @@ public final class FastMediaExtractor {
         String ua = DESKTOP_UA;
         if ("TikTok".equals(platform)) {
             ua = MOBILE_UA;
-        } else if ("Threads".equals(platform) || "Instagram".equals(platform)) {
-            ua = BOT_UA; // يجبر Meta على إرجاع وسوم الفيديو المدمج الصريح
-        }
+        } else if ("Instagram".equals(platform)) {
+            // Instagram Reels often rejects crawler UAs or returns a reduced page.
+            // Use a normal mobile browser UA for Instagram only; leave Threads unchanged.
+            ua = MOBILE_UA;
+        } else if ("Threads".equals(platform)) {
+            ua = BOT_UA; // Threads behavior unchanged
 
         Request request;
         try {
