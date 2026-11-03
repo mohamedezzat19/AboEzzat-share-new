@@ -89,6 +89,7 @@ public final class FastMediaExtractor {
             ua = MOBILE_UA;
         } else if ("Threads".equals(platform)) {
             ua = BOT_UA; // Threads behavior unchanged
+        }
 
         Request request;
         try {
