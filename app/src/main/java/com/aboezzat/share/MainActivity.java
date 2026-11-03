@@ -606,6 +606,31 @@ public class MainActivity extends Activity {
                             }
                             if (BrowserEngine.isWebUrl(requestUrl)) {
                                 detectMedia(requestUrl, request.getRequestHeaders());
+                                // Classic Share sniffed the actual CDN request, not only the
+                                // HTML5 currentSrc. Restore that path for ACTION_SEND links:
+                                // Facebook and X often expose a playable stream only here.
+                                if (pendingExternalShareCapture
+                                        && view == sharedCaptureWebView
+                                        && sharedCaptureGeneration == generation
+                                        && !sharedCaptureSent
+                                        && isVideoCandidate(requestUrl)
+                                        && !isObviousNonVideoMedia(requestUrl)) {
+                                    final String interceptedVideoUrl = requestUrl;
+                                    final java.util.Map<String, String> interceptedHeaders =
+                                            new java.util.LinkedHashMap<>(request.getRequestHeaders());
+                                    runOnUiThread(() -> {
+                                        if (generation != extractionGeneration
+                                                || view != sharedCaptureWebView
+                                                || sharedCaptureSent
+                                                || !pendingExternalShareCapture) return;
+                                        sharedCaptureSent = true;
+                                        pendingExternalShareCapture = false;
+                                        updateExtractionNotification("تم التقاط رابط الفيديو",
+                                                "قنص Share رابط البث من طلبات الصفحة القديمة؛ جاري إرساله إلى Receiver…", true);
+                                        destroySharedCaptureWebView();
+                                        castExtractedUrlSilently(interceptedVideoUrl, generation, interceptedHeaders);
+                                    });
+                                }
                             }
                         } catch (Exception ignored) { }
                         return super.shouldInterceptRequest(view, request);
