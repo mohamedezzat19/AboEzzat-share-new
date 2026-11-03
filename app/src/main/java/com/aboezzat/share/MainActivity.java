@@ -4500,8 +4500,15 @@ public class MainActivity extends Activity {
                 || lowerHost.contains("fbsbx.com") || lowerHost.contains("cdninstagram.com");
         // CDN links from Meta/X often have no file extension. Recognize their
         // known video path families, while excluding image/audio URLs above.
+        // Threads/Instagram CDN often use extensionless paths such as
+        // /o1/v/t16/f1/... or /v/t39/f1/... (without the dot used by Facebook's
+        // older /v/t39.XXXX paths). The previous matcher missed these real streams.
         boolean knownVideoPath = lower.contains("/v/t42.") || lower.contains("/v/t39.")
                 || lower.contains("/v/t16.") || lower.contains("/v/t15.")
+                || lower.contains("/v/t42/") || lower.contains("/v/t39/")
+                || lower.contains("/v/t16/") || lower.contains("/v/t15/")
+                || lower.contains("/o1/v/t42/") || lower.contains("/o1/v/t39/")
+                || lower.contains("/o1/v/t16/") || lower.contains("/o1/v/t15/")
                 || lower.contains("/ext_tw_video/") || lower.contains("/amplify_video/")
                 || lower.contains("/tweet_video/") || lower.contains("/video/t/");
         boolean hasVideoMarker = lower.contains("video") || lower.contains("playback")
