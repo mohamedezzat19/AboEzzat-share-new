@@ -606,6 +606,31 @@ public class MainActivity extends Activity {
                             }
                             if (BrowserEngine.isWebUrl(requestUrl)) {
                                 detectMedia(requestUrl, request.getRequestHeaders());
+                                // Classic Share sniffed the actual CDN request, not only the
+                                // HTML5 currentSrc. Restore that path for ACTION_SEND links:
+                                // Facebook and X often expose a playable stream only here.
+                                if (pendingExternalShareCapture
+                                        && view == sharedCaptureWebView
+                                        && sharedCaptureGeneration == generation
+                                        && !sharedCaptureSent
+                                        && isVideoCandidate(requestUrl)
+                                        && !isObviousNonVideoMedia(requestUrl)) {
+                                    final String interceptedVideoUrl = requestUrl;
+                                    final java.util.Map<String, String> interceptedHeaders =
+                                            new java.util.LinkedHashMap<>(request.getRequestHeaders());
+                                    runOnUiThread(() -> {
+                                        if (generation != extractionGeneration
+                                                || view != sharedCaptureWebView
+                                                || sharedCaptureSent
+                                                || !pendingExternalShareCapture) return;
+                                        sharedCaptureSent = true;
+                                        pendingExternalShareCapture = false;
+                                        updateExtractionNotification("تم التقاط رابط الفيديو",
+                                                "قنص Share رابط البث من طلبات الصفحة القديمة؛ جاري إرساله إلى Receiver…", true);
+                                        destroySharedCaptureWebView();
+                                        castExtractedUrlSilently(interceptedVideoUrl, generation, interceptedHeaders);
+                                    });
+                                }
                             }
                         } catch (Exception ignored) { }
                         return super.shouldInterceptRequest(view, request);
@@ -3246,6 +3271,12 @@ public class MainActivity extends Activity {
             final String incomingPoster = posterUrl != null && BrowserEngine.isWebUrl(posterUrl) ? posterUrl : "";
             if (!incomingTitle.isEmpty()) lastPageMediaTitle = incomingTitle;
             if (!incomingPoster.isEmpty()) lastPageMediaPoster = incomingPoster;
+            // Preserve the classic Share behavior: once the legacy WebView exposes a
+            // recognizable direct stream (MP4/HLS/social video URL), send it without
+            // requiring the newer active-player heuristic. That heuristic often fails
+            // for Facebook/Threads players whose video element stays paused in WebView.
+            final boolean legacyDirectCandidate = isVideoCandidate(mediaUrl)
+                    && !isObviousNonVideoMedia(mediaUrl);
 
             // JavascriptInterface methods run on a WebView background thread. Keep all
             // WebView teardown, notifications, Toasts and casting state on Android's UI thread.
@@ -3276,7 +3307,7 @@ public class MainActivity extends Activity {
 
                 // Do not auto-cast a page's OG video, preload, preview, or generic play() event.
                 // Background auto-cast is allowed only after the active visible player scan confirms it.
-                if (activePlayerConfirmed && pendingExternalShareCapture
+                if ((activePlayerConfirmed || legacyDirectCandidate) && pendingExternalShareCapture
                         && sharedCaptureWebView != null
                         && sharedCaptureGeneration == extractionGeneration && !sharedCaptureSent) {
                     sharedCaptureSent = true;
@@ -3317,7 +3348,9 @@ public class MainActivity extends Activity {
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);"
                 + "}catch(e){}return originalPlay.apply(this,arguments);};}"
                 + "var videos=document.querySelectorAll('video');"
-                + "for(var i=0;i<videos.length;i++){var src=videos[i].currentSrc||videos[i].src||'';"
+                + "for(var i=0;i<videos.length;i++){var v=videos[i];"
+                + "try{v.muted=true;var p=v.play();if(p&&p.catch)p.catch(function(){});}catch(e){}"
+                + "var src=v.currentSrc||v.src||'';"
                 + "if(/^https?:/i.test(src)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);}"
                 + "var ov=document.querySelector('meta[property=\"og:video\"],meta[property=\"og:video:secure_url\"]');"
@@ -4467,8 +4500,15 @@ public class MainActivity extends Activity {
                 || lowerHost.contains("fbsbx.com") || lowerHost.contains("cdninstagram.com");
         // CDN links from Meta/X often have no file extension. Recognize their
         // known video path families, while excluding image/audio URLs above.
+        // Threads/Instagram CDN often use extensionless paths such as
+        // /o1/v/t16/f1/... or /v/t39/f1/... (without the dot used by Facebook's
+        // older /v/t39.XXXX paths). The previous matcher missed these real streams.
         boolean knownVideoPath = lower.contains("/v/t42.") || lower.contains("/v/t39.")
                 || lower.contains("/v/t16.") || lower.contains("/v/t15.")
+                || lower.contains("/v/t42/") || lower.contains("/v/t39/")
+                || lower.contains("/v/t16/") || lower.contains("/v/t15/")
+                || lower.contains("/o1/v/t42/") || lower.contains("/o1/v/t39/")
+                || lower.contains("/o1/v/t16/") || lower.contains("/o1/v/t15/")
                 || lower.contains("/ext_tw_video/") || lower.contains("/amplify_video/")
                 || lower.contains("/tweet_video/") || lower.contains("/video/t/");
         boolean hasVideoMarker = lower.contains("video") || lower.contains("playback")
