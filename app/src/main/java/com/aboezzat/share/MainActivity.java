@@ -3246,6 +3246,12 @@ public class MainActivity extends Activity {
             final String incomingPoster = posterUrl != null && BrowserEngine.isWebUrl(posterUrl) ? posterUrl : "";
             if (!incomingTitle.isEmpty()) lastPageMediaTitle = incomingTitle;
             if (!incomingPoster.isEmpty()) lastPageMediaPoster = incomingPoster;
+            // Preserve the classic Share behavior: once the legacy WebView exposes a
+            // recognizable direct stream (MP4/HLS/social video URL), send it without
+            // requiring the newer active-player heuristic. That heuristic often fails
+            // for Facebook/Threads players whose video element stays paused in WebView.
+            final boolean legacyDirectCandidate = isVideoCandidate(mediaUrl)
+                    && !isObviousNonVideoMedia(mediaUrl);
 
             // JavascriptInterface methods run on a WebView background thread. Keep all
             // WebView teardown, notifications, Toasts and casting state on Android's UI thread.
@@ -3276,7 +3282,7 @@ public class MainActivity extends Activity {
 
                 // Do not auto-cast a page's OG video, preload, preview, or generic play() event.
                 // Background auto-cast is allowed only after the active visible player scan confirms it.
-                if (activePlayerConfirmed && pendingExternalShareCapture
+                if ((activePlayerConfirmed || legacyDirectCandidate) && pendingExternalShareCapture
                         && sharedCaptureWebView != null
                         && sharedCaptureGeneration == extractionGeneration && !sharedCaptureSent) {
                     sharedCaptureSent = true;
@@ -3317,7 +3323,9 @@ public class MainActivity extends Activity {
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);"
                 + "}catch(e){}return originalPlay.apply(this,arguments);};}"
                 + "var videos=document.querySelectorAll('video');"
-                + "for(var i=0;i<videos.length;i++){var src=videos[i].currentSrc||videos[i].src||'';"
+                + "for(var i=0;i<videos.length;i++){var v=videos[i];"
+                + "try{v.muted=true;var p=v.play();if(p&&p.catch)p.catch(function(){});}catch(e){}"
+                + "var src=v.currentSrc||v.src||'';"
                 + "if(/^https?:/i.test(src)&&window.AboEzzatBridge)"
                 + "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);}"
                 + "var ov=document.querySelector('meta[property=\"og:video\"],meta[property=\"og:video:secure_url\"]');"
