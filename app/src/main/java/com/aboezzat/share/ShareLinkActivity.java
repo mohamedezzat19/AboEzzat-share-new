@@ -361,7 +361,7 @@ public class ShareLinkActivity extends Activity {
                 mainHandler.removeCallbacks(candidatePickerRunnable);
                 destroyBackgroundCapture();
                 sendResolvedToReceiver(candidate.url, candidate.headers,
-                        "تم إرسال فيديو " + (isFacebookUrl(originalSharedUrl) ? "Facebook" : "TikTok") + " مباشرة.");
+                        "تم إرسال فيديو " + getOneTapPlatformLabel() + " مباشرة.");
                 return;
             }
 
@@ -378,6 +378,16 @@ public class ShareLinkActivity extends Activity {
     // Backup Cast ShareActivity behavior: send the first valid direct media URL
     // immediately for social share intents, without opening a quality picker.
     // Keep YouTube's dedicated routing and TikTok's TikWM fast path unchanged.
+    private String getOneTapPlatformLabel() {
+        String lower = originalSharedUrl == null ? "" : originalSharedUrl.toLowerCase(Locale.ROOT);
+        if (isFacebookUrl(lower)) return "Facebook";
+        if (isTikTokUrl(lower)) return "TikTok";
+        if (lower.contains("instagram.com/")) return "Instagram";
+        if (lower.contains("threads.net/") || lower.contains("threads.com/")) return "Threads";
+        if (lower.contains("x.com/") || lower.contains("twitter.com/")) return "X";
+        return "السوشيال ميديا";
+    }
+
     private boolean isOneTapCastPlatform() {
         String lower = originalSharedUrl == null ? "" : originalSharedUrl.toLowerCase(Locale.ROOT);
         return isFacebookUrl(lower) || isTikTokUrl(lower)
