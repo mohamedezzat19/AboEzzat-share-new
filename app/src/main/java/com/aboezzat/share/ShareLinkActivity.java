@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.CookieManager;
@@ -762,7 +763,8 @@ public class ShareLinkActivity extends Activity {
         StringBuilder sharedContent = new StringBuilder();
 
         try {
-            if (Intent.ACTION_SEND.equals(intent.getAction())) {
+            String action = intent.getAction();
+            if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) {
                 CharSequence sharedText = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
                 if (sharedText != null) sharedContent.append(sharedText).append(' ');
             }
@@ -785,8 +787,21 @@ public class ShareLinkActivity extends Activity {
         try {
             Object stream = intent.getExtras() == null ? null
                     : intent.getExtras().get(Intent.EXTRA_STREAM);
-            if (stream instanceof Uri) sharedContent.append(stream.toString()).append(' ');
-            else if (stream instanceof CharSequence) sharedContent.append(stream).append(' ');
+            if (stream instanceof Uri) {
+                sharedContent.append(stream.toString()).append(' ');
+            } else if (stream instanceof CharSequence) {
+                sharedContent.append(stream).append(' ');
+            } else if (stream instanceof ArrayList<?>) {
+                for (Object item : (ArrayList<?>) stream) {
+                    if (item instanceof Uri || item instanceof CharSequence) {
+                        sharedContent.append(item.toString()).append(' ');
+                    }
+                }
+            } else if (stream instanceof Parcelable[]) {
+                for (Parcelable item : (Parcelable[]) stream) {
+                    if (item instanceof Uri) sharedContent.append(item.toString()).append(' ');
+                }
+            }
         } catch (Exception ignored) {}
 
         try {
