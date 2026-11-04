@@ -375,8 +375,15 @@ public class ShareLinkActivity extends Activity {
         });
     }
 
+    // Backup Cast ShareActivity behavior: send the first valid direct media URL
+    // immediately for social share intents, without opening a quality picker.
+    // Keep YouTube's dedicated routing and TikTok's TikWM fast path unchanged.
     private boolean isOneTapCastPlatform() {
-        return isFacebookUrl(originalSharedUrl) || isTikTokUrl(originalSharedUrl);
+        String lower = originalSharedUrl == null ? "" : originalSharedUrl.toLowerCase(Locale.ROOT);
+        return isFacebookUrl(lower) || isTikTokUrl(lower)
+                || lower.contains("instagram.com/")
+                || lower.contains("threads.net/") || lower.contains("threads.com/")
+                || lower.contains("x.com/") || lower.contains("twitter.com/");
     }
 
     private boolean isFacebookUrl(String value) {
