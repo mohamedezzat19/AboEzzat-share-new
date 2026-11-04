@@ -20,6 +20,16 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.json.JSONObject;
 
 public class ShareLinkActivity extends Activity {
     private static final String NOTIFICATION_CHANNEL = "aboezzat_extraction_progress";
@@ -38,6 +48,13 @@ public class ShareLinkActivity extends Activity {
     private android.webkit.WebView captureWebView;
     private BackgroundCaptureBridge backgroundCaptureBridge;
     private String originalSharedUrl = "";
+    private boolean tikTokApiAttempted;
+
+    // TikWM fast path from the Cast backup; existing extraction engines remain fallback.
+    private final OkHttpClient tikTokClient = new OkHttpClient.Builder()
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .build();
 
     private static final String SAFE_MOBILE_UA =
             "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
@@ -130,6 +147,12 @@ public class ShareLinkActivity extends Activity {
     }
 
     private void startConfiguredExtraction(String pageUrl) {
+        if (isTikTokUrl(pageUrl) && !pageUrl.toLowerCase(Locale.ROOT).contains("/live")
+                && !tikTokApiAttempted) {
+            tikTokApiAttempted = true;
+            extractTikTokViaTikWM(pageUrl);
+            return;
+        }
         if (isYouTubeUrl(pageUrl)) {
             sendResolvedToReceiver(pageUrl, Collections.emptyMap(),
                     "رابط YouTube؛ جاري الإرسال للتشغيل المباشر.");
@@ -216,6 +239,55 @@ public class ShareLinkActivity extends Activity {
                     engineFailed();
                 }
             });
+        }
+    }
+
+    private void extractTikTokViaTikWM(String pageUrl) {
+        try {
+            String apiUrl = "https://www.tikwm.com/api/?url="
+                    + URLEncoder.encode(pageUrl, "UTF-8");
+            Request request = new Request.Builder()
+                    .url(apiUrl)
+                    .header("User-Agent", SAFE_MOBILE_UA)
+                    .build();
+
+            tikTokClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    mainHandler.post(() -> startConfiguredExtraction(pageUrl));
+                }
+
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    String mediaUrl = null;
+                    try (Response safeResponse = response) {
+                        if (safeResponse.isSuccessful() && safeResponse.body() != null) {
+                            JSONObject json = new JSONObject(safeResponse.body().string());
+                            if (json.optInt("code", -1) == 0) {
+                                JSONObject data = json.optJSONObject("data");
+                                if (data != null) mediaUrl = data.optString("play", "");
+                            }
+                        }
+                    } catch (Exception ignored) { }
+
+                    final String result = mediaUrl;
+                    mainHandler.post(() -> {
+                        if (completed.get()) return;
+                        if (result != null && !result.trim().isEmpty()) {
+                            String direct = result.trim();
+                            if (!direct.startsWith("http")) direct = "https://www.tikwm.com" + direct;
+                            Map<String, String> headers = new LinkedHashMap<>();
+                            headers.put("referer", "https://www.tiktok.com/");
+                            headers.put("origin", "https://www.tiktok.com");
+                            headers.put("user-agent", SAFE_MOBILE_UA);
+                            sendResolvedToReceiver(direct, headers,
+                                    "تم استخراج رابط TikTok عبر TikWM وإرساله.");
+                        } else {
+                            startConfiguredExtraction(pageUrl);
+                        }
+                    });
+                }
+            });
+        } catch (Exception error) {
+            startConfiguredExtraction(pageUrl);
         }
     }
 
